@@ -123,7 +123,7 @@ class WPlaceBot {
       for (; this.cy < this.pixels.length; this.cy++) {
         for (; this.cx < this.pixels[0]!.length; this.cx++) {
           const pixel = this.getClosestColor(this.pixels[this.cy]![this.cx]!)
-          if (pixel.a === 0) continue
+          if (!pixel) continue
           pixel.button.click()
           await new Promise((r) => setTimeout(r, 1))
           const pixelSize = this.width / this.pixels.length
@@ -141,6 +141,7 @@ class WPlaceBot {
           this.updateUI()
         }
         this.cx = 0
+        if (this.cy === this.pixels.length - 1) this.cy = 0
       }
     } finally {
       document.querySelector('.wbot-overlay')!.classList.remove('disabled')
@@ -225,23 +226,23 @@ class WPlaceBot {
       }
     })
     // Colors to buy
-    const colorsToBuy = new Set<WPlaceColor>()
-    for (let y = 0; y < this.pixels.length; y++) {
-      for (let x = 0; x < this.pixels[y]!.length; x++) {
-        const color = this.getClosestColor(this.pixels[y]![x]!, true)
-        if (!color.available) colorsToBuy.add(color)
-      }
-    }
-    const $colors = document.querySelector('.wbot .colors')!
-    $colors.innerHTML = ''
-    for (const color of colorsToBuy) {
-      const $div = document.createElement('button')
-      $colors.append($div)
-      $div.style.backgroundColor = `rgb(${color.r} ${color.g} ${color.b})`
-      $div.addEventListener('click', () => {
-        color.button.click()
-      })
-    }
+    // const colorsToBuy = new Set<WPlaceColor>()
+    // for (let y = 0; y < this.pixels.length; y++) {
+    //   for (let x = 0; x < this.pixels[y]!.length; x++) {
+    //     const color = this.getClosestColor(this.pixels[y]![x]!, true)
+    //     if (!color.available) colorsToBuy.add(color)
+    //   }
+    // }
+    // const $colors = document.querySelector('.wbot .colors')!
+    // $colors.innerHTML = ''
+    // for (const color of colorsToBuy) {
+    //   const $div = document.createElement('button')
+    //   $colors.append($div)
+    //   $div.style.backgroundColor = `rgb(${color.r} ${color.g} ${color.b})`
+    //   $div.addEventListener('click', () => {
+    //     color.button.click()
+    //   })
+    // }
   }
 
   private processImage() {
@@ -477,22 +478,9 @@ class WPlaceBot {
     context.fillRect(0, this.cy * pixelSize, overlay.width, pixelSize)
   }
 
-  private getClosestColor({ r, g, b, a }: Color, allowNotAvailable?: boolean) {
+  private getClosestColor({ a }: Color, _allowNotAvailable?: boolean) {
     if (this.colors.length === 0) throw new Error('NO_COLORS')
-    if (a < 100) return this.colors.at(-1)!
-    let minDelta = Infinity
-    let min: WPlaceColor | undefined
-    for (let index = 0; index < this.colors.length; index++) {
-      const color = this.colors[index]!
-      if (!allowNotAvailable && !color.available) continue
-      const delta =
-        Math.abs(color.r - r) + Math.abs(color.g - g) + Math.abs(color.b - b)
-      if (delta < minDelta) {
-        minDelta = delta
-        min = color
-      }
-    }
-    return min!
+    if (a > 100) return this.colors.at(-1)!
   }
 }
 
