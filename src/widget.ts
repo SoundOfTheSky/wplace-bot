@@ -1,6 +1,6 @@
 import { WPlaceBot } from './bot'
 import { NoImageError, WPlaceBotError } from './errors'
-import { Strategy } from './types'
+import { Strategy } from './image'
 // @ts-ignore
 import html from './widget.html' with { type: 'text' }
 
@@ -138,7 +138,7 @@ export class Widget {
     this.status = `${emoji} ${status}`
     try {
       const result = await run()
-      this.status = originalStatus || `✅ ${status}`
+      this.status = originalStatus
       return result
     } catch (error) {
       if (!(error instanceof WPlaceBotError)) {

@@ -2,9 +2,8 @@
   <button class="minimize">🗕</button>
 </div>
 <div class="content">
-  <button class="select-image">Select image</button>
+  <button class="select-image">Add image</button>
   <button class="draw" disabled>Draw</button>
-  <button class="count-users">Count users</button>
   <select class="strategy">
     <option value="RANDOM" selected>Random</option>
     <option value="DOWN">Down</option>
@@ -14,14 +13,13 @@
     <option value="SPIRAL_FROM_CENTER">Spiral from center</option>
     <option value="SPIRAL_TO_CENTER">Spiral to center</option>
   </select>
-
   <label class="p">Scale:&nbsp;<input class="scale" type="number" />%</label>
   <label class="p"
     >Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"
   /></label>
   <div class="colors"></div>
-  <div class="eta p">ETA: <span class="value"></span></div>
-  <div class="progress p">Progress: <span class="value"></span></div>
+  <div class="eta p">ETA:&nbsp;<span class="value"></span></div>
+  <div class="progress p">Progress:&nbsp;<span class="value"></span></div>
   <progress max="100"></progress>
   <div class="wstatus p"></div>
 </div>

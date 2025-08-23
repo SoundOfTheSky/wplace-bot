@@ -1,8 +1,8 @@
 import { WPlaceBot } from './bot'
 import { NoImageError } from './errors'
-import { TILE_SIZE } from './position'
 import { Color } from './types'
 import { promisify } from './utilities'
+import { WORLD_TILE_SIZE } from './world-position'
 
 export class Pixels {
   /** Pixels of image. Use update() after changing variables */
@@ -12,12 +12,11 @@ export class Pixels {
   public colorsToBuy!: [Color, number][]
 
   public constructor(
+    public bot: WPlaceBot,
     /** Image element */
     public image: HTMLImageElement,
-    /** WPlace colors */
-    public colors: Color[],
     /** Change scale of image pixels */
-    public scale = 100,
+    public scalePixelDelta = 0,
   ) {
     this.update()
   }
@@ -25,8 +24,7 @@ export class Pixels {
   /** Open select image dialog and create */
   public static async fromSelectImage(
     bot: WPlaceBot,
-    colors: Color[],
-    scale?: number,
+    scalePixelDelta?: number,
   ) {
     const input = document.createElement('input')
     input.type = 'file'
@@ -41,24 +39,26 @@ export class Pixels {
     const image = new Image()
     image.src = reader.result as string
     await promisify(image, ['load'], ['error'])
-    return new Pixels(image, colors, scale)
+    return new Pixels(bot, image, scalePixelDelta)
   }
 
-  /** Create from url */
-  public static async fromURL(url: string, colors: Color[], scale?: number) {
+  public static async fromJSON(
+    bot: WPlaceBot,
+    data: ReturnType<Pixels['toJSON']>,
+  ) {
     const image = new Image()
-    image.src = await fetch(url)
+    image.src = await fetch(data.url)
       .then((x) => x.blob())
       .then((x) => URL.createObjectURL(x))
     try {
       await promisify(image, ['load'], ['error'])
     } catch {
       const canvas = document.createElement('canvas')
-      canvas.width = TILE_SIZE
-      canvas.height = TILE_SIZE
+      canvas.width = WORLD_TILE_SIZE
+      canvas.height = WORLD_TILE_SIZE
       image.src = canvas.toDataURL('image/png')
     }
-    return new Pixels(image, colors, scale)
+    return new Pixels(bot, image, data.scalePixelDelta)
   }
 
   /** Update pixels of image. Heavy operation! */
@@ -66,9 +66,9 @@ export class Pixels {
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')!
     const colorsToBuy = new Map<Color, number>()
-    const scale = this.scale / 100
-    canvas.width = this.image.width * scale
-    canvas.height = this.image.height * scale
+    const resolution = this.image.naturalWidth / this.image.naturalHeight
+    canvas.width = (this.image.naturalWidth + this.scalePixelDelta) | 0
+    canvas.height = (canvas.width * resolution) | 0
     context.drawImage(this.image, 0, 0, canvas.width, canvas.height)
     this.pixels = Array.from(
       { length: canvas.height },
@@ -84,15 +84,15 @@ export class Pixels {
         const a = data[index + 3]!
         // Find best Wplace color color
         if (a < 100) {
-          this.pixels[y]![x] = this.colors.at(-1)!
+          this.pixels[y]![x] = this.bot.colors.at(-1)!
           continue
         }
         let minDelta = Infinity
         let min: Color | undefined
         let minDeltaReal = Infinity
         let minReal: Color | undefined
-        for (let index = 0; index < this.colors.length; index++) {
-          const color = this.colors[index]!
+        for (let index = 0; index < this.bot.colors.length; index++) {
+          const color = this.bot.colors[index]!
           const delta =
             (color.r - r) ** 2 + (color.g - g) ** 2 + (color.b - b) ** 2
           if (color.available && delta < minDelta) {
@@ -118,6 +118,9 @@ export class Pixels {
     canvas.height = this.image.naturalHeight
     const context = canvas.getContext('2d')!
     context.drawImage(this.image, 0, 0)
-    return canvas.toDataURL('image/webp', 1)
+    return {
+      url: canvas.toDataURL('image/webp', 1),
+      scalePixelDelta: this.scalePixelDelta,
+    }
   }
 }

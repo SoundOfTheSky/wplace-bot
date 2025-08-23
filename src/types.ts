@@ -1,13 +1,3 @@
-export enum Strategy {
-  RANDOM = 'RANDOM',
-  DOWN = 'DOWN',
-  UP = 'UP',
-  LEFT = 'LEFT',
-  RIGHT = 'RIGHT',
-  SPIRAL_FROM_CENTER = 'SPIRAL_FROM_CENTER',
-  SPIRAL_TO_CENTER = 'SPIRAL_TO_CENTER',
-}
-
 export type Color = {
   r: number
   g: number
@@ -20,10 +10,6 @@ export type Color = {
 export type Position = {
   x: number
   y: number
-}
-
-export type DrawTask = Position & {
-  buttonId: string
 }
 
 export type Save = {

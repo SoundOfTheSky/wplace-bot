@@ -74,11 +74,71 @@
   display: none;
 }
 
-.wbot-overlay {
+.resize {
+  height: calc(100% - var(--resize) - var(--resize));
+  width: calc(100% - var(--resize) - var(--resize));
+  position: absolute;
+}
+.resize.n {
+  cursor: n-resize;
+  top: 0;
+  left: var(--resize);
+  height: var(--resize);
+}
+.resize.e {
+  cursor: e-resize;
+  top: var(--resize);
+  right: 0;
+  width: var(--resize);
+}
+.resize.s {
+  cursor: s-resize;
+  left: var(--resize);
+  bottom: 0;
+  height: var(--resize);
+}
+.resize.w {
+  cursor: e-resize;
+  top: var(--resize);
+  left: 0;
+  width: var(--resize);
+}
+.resize.ne {
+  cursor: ne-resize;
+  top: 0;
+  right: 0;
+  width: var(--resize);
+  height: var(--resize);
+}
+.resize.nw {
+  cursor: nw-resize;
+  top: 0;
+  left: 0;
+  width: var(--resize);
+  height: var(--resize);
+}
+.resize.se {
+  cursor: se-resize;
+  right: 0;
+  bottom: 0;
+  width: var(--resize);
+  height: var(--resize);
+}
+.resize.sw {
+  cursor: sw-resize;
+  left: 0;
+  bottom: 0;
+  width: var(--resize);
+  height: var(--resize);
+}
+
+.wbot-image {
   border: 1px solid var(--main);
   left: 0;
-  pointer-events: none;
   position: fixed;
   top: 0;
   z-index: 9998;
+}
+.wbot-image {
+  
 }

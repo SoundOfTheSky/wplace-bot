@@ -1,7 +1,6 @@
 import { NoImageError, NoMarkerError } from './errors'
 import { Overlay } from './overlay'
 import { Pixels } from './pixels'
-import { WorldPosition } from './position'
 import {
   DrawTask,
   PixelMetaData,
@@ -12,32 +11,24 @@ import {
 } from './types'
 import { SPACE_EVENT, strategyPositionIterator, wait } from './utilities'
 import { Widget } from './widget'
+import { WorldPosition } from './world-position'
 
 /**
  * Main class. Initializes everything.
  * Used to interact with wplace
  * */
 export class WPlaceBot {
-  /** Pixels left to draw */
-  public tasks: DrawTask[] = []
-
   /** WPlace colors. Update with updateColors() */
   public colors: Color[] = []
 
-  /** Image pixels */
-  public image?: Pixels
-
   /** Position of image to draw */
-  public startPosition?: WorldPosition
+  public anchorWorldPosition?: WorldPosition
 
   /** Screen position of starting pixel */
-  public startScreenPosition?: Position
+  public anchorScreenPosition?: Position
 
   /** Estimated pixel size */
-  public pixelSize = 64
-
-  /** How to draw */
-  public strategy: Strategy = Strategy.RANDOM
+  public pixelSize = 1
 
   /** Used to wait for pixel data on marker set */
   protected markerPixelPositionResolvers: ((
@@ -48,9 +39,16 @@ export class WPlaceBot {
   protected markerPixelDataResolvers: ((position: PixelMetaData) => unknown)[] =
     []
 
+  public maps = new Map<string, Pixels>()
+
   public widget = new Widget(this)
 
   public overlay = new Overlay(this)
+
+  public get screenPosition(): Position {
+    const [x,y] = document.querySelector<HTMLDivElement>('.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center')!.style.transform.slice(32,-29).split(', ').map(x=>Number.parseInt(x)) as [number,number]
+    return {x,y}
+  }
 
   public constructor() {
     this.registerFetchInterceptor()
@@ -105,10 +103,10 @@ export class WPlaceBot {
           undefined,
           '🖱️',
         )
-        const position = this.startPosition!.clone()
+        const position = this.anchorWorldPosition!.clone()
         const pixels =
-          (pos2.globalY - this.startPosition!.globalY) *
-          (pos2.globalX - this.startPosition!.globalX)
+          (pos2.globalY - this.anchorWorldPosition!.globalY) *
+          (pos2.globalX - this.anchorWorldPosition!.globalX)
         let counted = 0
         for (; position.globalY < pos2.globalY; position.y++) {
           for (; position.globalX < pos2.globalX; position.x++) {
@@ -117,8 +115,8 @@ export class WPlaceBot {
             })
             await this.clickMapAtPosition(
               position.toScreenPosition(
-                this.startScreenPosition!,
-                this.startPosition!,
+                this.anchorScreenPosition!,
+                this.anchorWorldPosition!,
                 this.pixelSize,
               ),
             )
@@ -129,7 +127,7 @@ export class WPlaceBot {
             this.widget.status = `⌛ Found ${users.size} users. ETA: ${((600 * (pixels - counted)) / 60_000) | 0}m (${((counted / pixels) * 100) | 0}%)`
             await wait(500)
           }
-          position.globalX = this.startPosition!.globalX
+          position.globalX = this.anchorWorldPosition!.globalX
         }
       },
       () => {
@@ -185,7 +183,11 @@ export class WPlaceBot {
 
   /** Save data to localStorage */
   public save() {
-    if (!this.image || !this.startPosition || !this.startScreenPosition) {
+    if (
+      !this.image ||
+      !this.anchorWorldPosition ||
+      !this.anchorScreenPosition
+    ) {
       localStorage.removeItem('wbot')
       return
     }
@@ -193,8 +195,8 @@ export class WPlaceBot {
       'wbot',
       JSON.stringify({
         image: this.image,
-        startScreenPosition: this.startScreenPosition,
-        startPosition: this.startPosition,
+        startScreenPosition: this.anchorScreenPosition,
+        startPosition: this.anchorWorldPosition,
         pixelSize: this.pixelSize,
         widgetX: this.widget.x,
         widgetY: this.widget.y,
@@ -226,52 +228,25 @@ export class WPlaceBot {
           document.querySelector(
             '.btn.btn-primary.btn-lg.relative.z-30 canvas',
           ) &&
-          document.querySelector('.avatar.center-absolute.absolute')
+          document.querySelector('.avatar.center-absolute.absolute') &&
+          document.querySelector<HTMLDivElement>('.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center')
         ) {
           resolve()
           clearInterval(interval)
         }
       }, 500)
     })
-    let moving = false
-    const canvas =
-      document.querySelector<HTMLCanvasElement>('.maplibregl-canvas')!
-    canvas.addEventListener('wheel', () => {
-      if (this.image) this.onMove()
-    })
-    canvas.addEventListener('mousedown', (event) => {
-      if (event.button === 0) moving = true
-    })
-    canvas.addEventListener('mouseup', (event) => {
-      if (event.button === 0) moving = false
-    })
-    canvas.addEventListener('mousemove', () => {
-      if (moving) this.onMove()
+
+    const positionPromise = new Promise<WorldPosition>((resolve) => {
+        this.markerPixelPositionResolvers.push(resolve)
+      })
+    this.clickMapAtPosition(this.screenPosition);
+    this.anchorWorldPosition = await positionPromise
+    this.anchorScreenPosition = {...this.screenPosition}
+    document.querySelector<HTMLCanvasElement>('.maplibregl-canvas')!.addEventListener('mousemove', () => {
+      /** UPDATE IMAGES */
     })
     this.widget.element.classList.remove('hidden')
-    if (!save) return
-    try {
-      this.startPosition = new WorldPosition(...save.startPosition)
-      this.startScreenPosition = save.startScreenPosition
-      this.pixelSize = save.pixelSize
-      this.strategy = save.strategy
-      await this.updateColors()
-      this.image = await Pixels.fromURL(save.image, this.colors, save.scale)
-      this.widget.element.querySelector<HTMLInputElement>(
-        '.scale',
-      )!.valueAsNumber = save.scale
-      this.overlay.opacity = save.overlayOpacity
-      this.widget.element.querySelector<HTMLInputElement>(
-        '.opacity',
-      )!.valueAsNumber = save.overlayOpacity
-      await this.updateTasks()
-      this.widget.updateText()
-      this.widget.updateColorsToBuy()
-      this.overlay.update()
-      this.widget.setDisabled('draw', false)
-    } catch {
-      localStorage.removeItem('wbot')
-    }
   }
 
   /** Opens colors and makes them visible for selection */
@@ -308,7 +283,7 @@ export class WPlaceBot {
         )
         ?.click()
       // Wait for user to place marker
-      this.startPosition = await this.widget.runWithStatusAsync(
+      this.anchorWorldPosition = await this.widget.runWithStatusAsync(
         'Place marker',
         async () =>
           new Promise<WorldPosition>((resolve) =>
@@ -317,7 +292,7 @@ export class WPlaceBot {
         undefined,
         '🖱️',
       )
-      this.startScreenPosition = this.getMarkerScreenPosition()
+      this.anchorScreenPosition = this.getMarkerScreenPosition()
 
       // Point 2
       const markerPosition2Promise = new Promise<WorldPosition>((resolve) => {
@@ -331,16 +306,16 @@ export class WPlaceBot {
       const markerScreenPosition2 = this.getMarkerScreenPosition()
       // Point 1 again
       this.pixelSize =
-        (markerScreenPosition2.x - this.startScreenPosition.x) /
-        (markerPosition2.globalX - this.startPosition.globalX)
-      this.startScreenPosition.x -= this.pixelSize / 2
+        (markerScreenPosition2.x - this.anchorScreenPosition.x) /
+        (markerPosition2.globalX - this.anchorWorldPosition.globalX)
+      this.anchorScreenPosition.x -= this.pixelSize / 2
     })
   }
 
   /** Calculates everything we need to do. Very expensive task! */
   protected updateTasks() {
     return this.widget.runWithStatusAsync('Map reading', async () => {
-      if (!this.startPosition || !this.startScreenPosition)
+      if (!this.anchorWorldPosition || !this.anchorScreenPosition)
         throw new NoMarkerError(this)
       if (!this.image) throw new NoImageError(this)
       this.tasks = []
@@ -351,12 +326,13 @@ export class WPlaceBot {
         this.strategy,
       )) {
         const color = this.image.pixels[y]![x]!
-        const position = this.startPosition.clone()
+        const position = this.anchorWorldPosition.clone()
         position.x += x
         position.y += y
         let map = maps.get(position.tileX + '/' + position.tileY)
         if (!map) {
           map = await Pixels.fromURL(
+            this,
             `https://backend.wplace.live/files/s0/tiles/${position.tileX}/${position.tileY}.png`,
             this.colors,
           )
@@ -366,8 +342,8 @@ export class WPlaceBot {
         if (color.buttonId !== colorOnMap.buttonId)
           this.tasks.push({
             ...position.toScreenPosition(
-              this.startScreenPosition,
-              this.startPosition,
+              this.anchorScreenPosition,
+              this.anchorWorldPosition,
               this.pixelSize,
             ),
             buttonId: color.buttonId,
@@ -394,7 +370,7 @@ export class WPlaceBot {
   }
 
   /** Read colors */
-  protected updateColors() {
+  public updateColors() {
     return this.widget.runWithStatusAsync('Colors update', async () => {
       await this.openColors()
       this.colors = (
@@ -509,14 +485,36 @@ export class WPlaceBot {
 
   /** Clear data on move */
   protected onMove() {
-    if (!this.image || !this.startPosition) return
-    this.startPosition = undefined
-    this.startScreenPosition = undefined
+    if (!this.image || !this.anchorWorldPosition) return
+    this.anchorWorldPosition = undefined
+    this.anchorScreenPosition = undefined
     this.pixelSize = 0
     this.image = undefined
     this.tasks.length = 0
     this.overlay.update()
     this.widget.updateText()
     this.widget.setDisabled('draw', true)
+  }
+
+  /** Move map */
+  protected moveMap(delta: Position) {
+    const canvas = document.querySelector('.maplibregl-canvas')!
+    const rect = canvas.getBoundingClientRect()
+    const startX = rect.left + rect.width / 2
+    const startY = rect.top + rect.height / 2
+    function fire(type: string, x: number, y: number) {
+      canvas.dispatchEvent(
+        new MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+          buttons: 1,
+        }),
+      )
+    }
+    fire('mousedown', startX, startY)
+    fire('mousemove', startX + delta.x, startY + delta.x)
+    fire('mouseup', startX + delta.y, startY + delta.y)
   }
 }

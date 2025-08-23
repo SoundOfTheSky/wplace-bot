@@ -37,7 +37,7 @@ Also I'm using [Firefox Multi-Account Containers](https://addons.mozilla.org/en-
 
 ## Known issues
 
-1. Once your session on wesite ends, bot obviously stops
+1. Once your session on website ends, bot obviously stops
 2. Screen with high DPI are unsupported (for now)
 
 ## Contribution
