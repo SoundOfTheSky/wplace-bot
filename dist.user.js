@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      3.1.1
+// @version      4.0.0
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -16,6 +16,120 @@
 // Wplace  --> https://wplace.live
 // License --> https://www.mozilla.org/en-US/MPL/2.0/
 
+// node_modules/@softsky/utils/dist/arrays.js
+function swap(array, index, index2) {
+  const temporary = array[index2];
+  array[index2] = array[index];
+  array[index] = temporary;
+  return array;
+}
+function removeFromArray(array, value) {
+  const index = array.indexOf(value);
+  if (index !== -1)
+    array.splice(index, 1);
+  return index;
+}
+
+// node_modules/@softsky/utils/dist/objects.js
+class Base {
+  static lastId = 0;
+  static idMap = new Map;
+  static subclasses = new Map;
+  runOnDestroy = [];
+  _id;
+  get id() {
+    return this._id;
+  }
+  set id(value) {
+    Base.idMap.delete(this._id);
+    Base.idMap.set(value, this);
+    this._id = value;
+  }
+  constructor(id = ++Base.lastId) {
+    this._id = id;
+    Base.idMap.set(id, this);
+  }
+  static registerSubclass() {
+    Base.subclasses.set(this.name, this);
+  }
+  destroy() {
+    Base.idMap.delete(this._id);
+    for (let index = 0;index < this.runOnDestroy.length; index++)
+      this.runOnDestroy[index]();
+  }
+  registerEvent(target, type, listener, options = {}) {
+    options.passive ??= true;
+    target.addEventListener(type, listener, options);
+    this.runOnDestroy.push(() => {
+      target.removeEventListener(type, listener);
+    });
+  }
+}
+
+// node_modules/@softsky/utils/dist/errors.js
+class TimeoutError extends Error {
+  name = "TimeoutError";
+  constructor() {
+    super("The operation has timed out");
+  }
+}
+
+// node_modules/@softsky/utils/dist/control.js
+var lastIncId = Math.floor(Math.random() * 65536);
+var SESSION_ID = Math.floor(Math.random() * 4503599627370496).toString(16).padStart(13, "0");
+function wait(time) {
+  return new Promise((r) => setTimeout(r, time));
+}
+function timeout(time) {
+  return new Promise((_, reject) => setTimeout(() => {
+    reject(new TimeoutError);
+  }, time));
+}
+class SimpleEventSource {
+  handlers = new Map;
+  send(name, data) {
+    return this.handlers.get(name)?.map((handler) => handler(data)) ?? [];
+  }
+  on(name, handler) {
+    let handlers = this.handlers.get(name);
+    if (!handlers) {
+      handlers = [];
+      this.handlers.set(name, handlers);
+    }
+    handlers.push(handler);
+    return () => {
+      removeFromArray(handlers, handler);
+      if (handlers.length === 0)
+        this.handlers.delete(name);
+    };
+  }
+  off(name, handler) {
+    const handlers = this.handlers.get(name);
+    if (!handlers)
+      return;
+    removeFromArray(handlers, handler);
+    if (handlers.length === 0)
+      this.handlers.delete(name);
+  }
+  get source() {
+    return {
+      on: this.on.bind(this),
+      off: this.off.bind(this)
+    };
+  }
+}
+async function withTimeout(run, ms) {
+  return Promise.race([run(), timeout(ms)]);
+}
+function promisifyEventSource(target, resolveEvents, rejectEvents = ["error"], subName = "addEventListener") {
+  return new Promise((resolve, reject) => {
+    for (let index = 0;index < resolveEvents.length; index++)
+      target[subName]?.(resolveEvents[index], resolve);
+    for (let index = 0;index < rejectEvents.length; index++)
+      target[subName]?.(rejectEvents[index], reject);
+  });
+}
+
 // src/errors.ts
 class WPlaceBotError extends Error {
   name = "WPlaceBotError";
@@ -25,10 +139,20 @@ class WPlaceBotError extends Error {
   }
 }
 
-class NoMarkerError extends WPlaceBotError {
-  name = "NoMarkerError";
+class UnfocusRequiredError extends WPlaceBotError {
+  name = "UnfocusRequiredError";
   constructor(bot) {
-    super("❌ Place marker on the map", bot);
+    super("❌ UNFOCUS WINDOW", bot);
+  }
+}
+
+class NoFavLocation extends WPlaceBotError {
+  name = "NoFavLocation";
+  constructor(bot) {
+    super("❌ Don't remove star!", bot);
+    setTimeout(() => {
+      globalThis.location.reload();
+    }, 1000);
   }
 }
 
@@ -39,268 +163,81 @@ class NoImageError extends WPlaceBotError {
   }
 }
 
-// src/overlay.ts
-class Overlay {
-  bot;
-  element = document.createElement("canvas");
-  context = this.element.getContext("2d");
-  opacity = 50;
-  constructor(bot) {
-    this.bot = bot;
-    document.body.append(this.element);
-    this.element.classList.add("wbot-overlay");
-    this.update();
-  }
-  update() {
-    if (!this.bot.image || this.bot.pixelSize === 0 || !this.bot.startScreenPosition) {
-      this.element.classList.add("hidden");
-      return;
-    }
-    this.element.classList.remove("hidden");
-    this.element.style.transform = `translate(${this.bot.startScreenPosition.x}px, ${this.bot.startScreenPosition.y}px)`;
-    this.element.width = this.bot.pixelSize * this.bot.image.pixels[0].length;
-    this.element.height = this.bot.pixelSize * this.bot.image.pixels.length;
-    this.context.clearRect(0, 0, this.element.width, this.element.height);
-    for (let y = 0;y < this.bot.image.pixels.length; y++) {
-      const row = this.bot.image.pixels[y];
-      for (let x = 0;x < row.length; x++) {
-        const pixel = row[x];
-        this.context.fillStyle = `rgb(${pixel.r} ${pixel.g} ${pixel.b})`;
-        this.context.globalAlpha = pixel.a / 255 * (this.opacity / 100);
-        this.context.fillRect(x * this.bot.pixelSize, y * this.bot.pixelSize, this.bot.pixelSize, this.bot.pixelSize);
-      }
-    }
-  }
-}
-
-// src/position.ts
-var TILE_SIZE = 1000;
-
-class WorldPosition {
-  tileX;
-  tileY;
-  get globalX() {
-    return this.tileX * TILE_SIZE + this.x;
-  }
-  set globalX(value) {
-    this.tileX = value / TILE_SIZE | 0;
-    this.x = value % TILE_SIZE;
-  }
-  get globalY() {
-    return this.tileY * TILE_SIZE + this.y;
-  }
-  set globalY(value) {
-    this.tileY = value / TILE_SIZE | 0;
-    this.y = value % TILE_SIZE;
-  }
-  _x;
-  get x() {
-    return this._x;
-  }
-  set x(value) {
-    if (value >= TILE_SIZE) {
-      this.tileX += value / TILE_SIZE | 0;
-      this._x = value % TILE_SIZE;
-    } else if (value < 0) {
-      this.tileX += value / TILE_SIZE + 1 | 0;
-      this._x = value % TILE_SIZE + TILE_SIZE;
-    } else
-      this._x = value;
-  }
-  _y;
-  get y() {
-    return this._y;
-  }
-  set y(value) {
-    if (value >= TILE_SIZE) {
-      this.tileY += value / TILE_SIZE | 0;
-      this._y = value % TILE_SIZE;
-    } else if (value < 0) {
-      this.tileY += value / TILE_SIZE + 1 | 0;
-      this._y = value % TILE_SIZE + TILE_SIZE;
-    } else
-      this._y = value;
-  }
-  constructor(tileX, tileY, x, y) {
-    this.tileX = tileX;
-    this.tileY = tileY;
-    this.x = x;
-    this.y = y;
-  }
-  toScreenPosition(startScreenPosition, startPosition, pixelSize) {
-    return {
-      x: (this.globalX - startPosition.globalX) * pixelSize + startScreenPosition.x + pixelSize / 2,
-      y: (this.globalY - startPosition.globalY) * pixelSize + startScreenPosition.y + pixelSize / 2
-    };
-  }
-  clone() {
-    return new WorldPosition(this.tileX, this.tileY, this.x, this.y);
-  }
-  toJSON() {
-    return [this.tileX, this.tileY, this.x, this.y];
-  }
-}
-
-// src/utilities.ts
-function wait(time) {
-  return new Promise((resolve) => setTimeout(resolve, time));
-}
-var SPACE_EVENT = {
-  key: " ",
-  code: "Space",
-  keyCode: 32,
-  which: 32,
-  bubbles: true,
-  cancelable: true
-};
-function promisify(target, resolveEvents, rejectEvents) {
-  return new Promise((resolve, reject) => {
-    for (let index = 0;index < resolveEvents.length; index++)
-      target.addEventListener(resolveEvents[index], resolve);
-    for (let index = 0;index < rejectEvents.length; index++)
-      target.addEventListener(rejectEvents[index], reject);
-  });
-}
-function* strategyPositionIterator(height, width, strategy) {
-  switch (strategy) {
-    case "DOWN" /* DOWN */: {
-      for (let y = 0;y < height; y++)
-        for (let x = 0;x < width; x++)
-          yield { x, y };
-      break;
-    }
-    case "UP" /* UP */: {
-      for (let y = height - 1;y >= 0; y--)
-        for (let x = 0;x < width; x++)
-          yield { x, y };
-      break;
-    }
-    case "LEFT" /* LEFT */: {
-      for (let x = 0;x < width; x++)
-        for (let y = 0;y < height; y++)
-          yield { x, y };
-      break;
-    }
-    case "RIGHT" /* RIGHT */: {
-      for (let x = width - 1;x >= 0; x--)
-        for (let y = 0;y < height; y++)
-          yield { x, y };
-      break;
-    }
-    case "RANDOM" /* RANDOM */: {
-      const positions = [];
-      for (let y = 0;y < height; y++)
-        for (let x = 0;x < width; x++)
-          positions.push({ x, y });
-      for (let index = positions.length - 1;index >= 0; index--) {
-        const index_ = Math.floor(Math.random() * (index + 1));
-        const temporary = positions[index];
-        positions[index] = positions[index_];
-        positions[index_] = temporary;
-      }
-      yield* positions;
-      break;
-    }
-    case "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */:
-    case "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */: {
-      const visited = new Set;
-      const total = width * height;
-      let x = Math.floor(width / 2);
-      let y = Math.floor(height / 2);
-      const directories = [
-        [1, 0],
-        [0, 1],
-        [-1, 0],
-        [0, -1]
-      ];
-      let directionIndex = 0;
-      let steps = 1;
-      const inBounds = (x2, y2) => x2 >= 0 && x2 < width && y2 >= 0 && y2 < height;
-      const emit = function* () {
-        let count = 0;
-        while (count < total) {
-          for (let twice = 0;twice < 2; twice++) {
-            for (let index = 0;index < steps; index++) {
-              if (inBounds(x, y)) {
-                const key = `${x},${y}`;
-                if (!visited.has(key)) {
-                  visited.add(key);
-                  yield { x, y };
-                  count++;
-                  if (count >= total)
-                    return;
-                }
-              }
-              x += directories[directionIndex][0];
-              y += directories[directionIndex][1];
-            }
-            directionIndex = (directionIndex + 1) % 4;
-          }
-          steps++;
-        }
-      };
-      if (strategy === "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */)
-        yield* emit();
-      else {
-        const collected = [...emit()];
-        for (let index = collected.length - 1;index >= 0; index--)
-          yield collected[index];
-      }
-      break;
-    }
-  }
-}
+// src/image.html
+var image_default = `<canvas></canvas>
+<div class="wsettings">
+  <div class="progress"><div></div><span></span></div>
+  <div class="colors"></div>
+  <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100" /></label>
+  <select class="strategy">
+    <option value="RANDOM" selected>Random</option>
+    <option value="DOWN">Down</option>
+    <option value="UP">Up</option>
+    <option value="LEFT">Left</option>
+    <option value="RIGHT">Right</option>
+    <option value="SPIRAL_FROM_CENTER">Spiral out</option>
+    <option value="SPIRAL_TO_CENTER">Spiral in</option>
+  </select>
+  <button class="reset-size">Reset size [<span></span>px]</button>
+  <label><input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels</label>
+</div>
+<div class="resize n"></div>
+<div class="resize e"></div>
+<div class="resize s"></div>
+<div class="resize w"></div>
+`;
 
 // src/pixels.ts
 class Pixels {
+  bot;
   image;
-  colors;
-  scale;
-  pixels;
-  colorsToBuy;
-  constructor(image, colors, scale = 100) {
-    this.image = image;
-    this.colors = colors;
-    this.scale = scale;
-    this.update();
-  }
-  static async fromSelectImage(bot, colors, scale) {
+  width;
+  static async fromSelectImage(bot, width) {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     input.click();
-    await promisify(input, ["change"], ["cancel", "error"]);
+    await promisifyEventSource(input, ["change"], ["cancel", "error"]);
     const file = input.files?.[0];
     if (!file)
       throw new NoImageError(bot);
     const reader = new FileReader;
     reader.readAsDataURL(file);
-    await promisify(reader, ["load"], ["error"]);
+    await promisifyEventSource(reader, ["load"], ["error"]);
     const image = new Image;
     image.src = reader.result;
-    await promisify(image, ["load"], ["error"]);
-    return new Pixels(image, colors, scale);
+    await promisifyEventSource(image, ["load"], ["error"]);
+    return new Pixels(bot, image, width);
   }
-  static async fromURL(url, colors, scale) {
+  static async fromJSON(bot, data) {
     const image = new Image;
-    image.src = await fetch(url).then((x) => x.blob()).then((x) => URL.createObjectURL(x));
-    try {
-      await promisify(image, ["load"], ["error"]);
-    } catch {
-      const canvas = document.createElement("canvas");
-      canvas.width = TILE_SIZE;
-      canvas.height = TILE_SIZE;
-      image.src = canvas.toDataURL("image/png");
-    }
-    return new Pixels(image, colors, scale);
+    image.crossOrigin = "anonymous";
+    image.src = data.url;
+    await promisifyEventSource(image, ["load"], ["error"]);
+    return new Pixels(bot, image, data.width);
+  }
+  pixels;
+  colorsToBuy = [];
+  resolution;
+  get height() {
+    return this.width / this.resolution | 0;
+  }
+  set height(value) {
+    this.width = value * this.resolution | 0;
+  }
+  constructor(bot, image, width = image.naturalWidth) {
+    this.bot = bot;
+    this.image = image;
+    this.width = width;
+    this.resolution = this.image.naturalWidth / this.image.naturalHeight;
+    this.update();
   }
   update() {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     const colorsToBuy = new Map;
-    const scale = this.scale / 100;
-    canvas.width = this.image.width * scale;
-    canvas.height = this.image.height * scale;
+    canvas.width = this.width;
+    canvas.height = this.height;
     context.drawImage(this.image, 0, 0, canvas.width, canvas.height);
     this.pixels = Array.from({ length: canvas.height }, () => new Array(canvas.width));
     const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -312,15 +249,15 @@ class Pixels {
         const b = data[index + 2];
         const a = data[index + 3];
         if (a < 100) {
-          this.pixels[y][x] = this.colors.at(-1);
+          this.pixels[y][x] = this.bot.colors.at(-1);
           continue;
         }
         let minDelta = Infinity;
         let min;
         let minDeltaReal = Infinity;
         let minReal;
-        for (let index2 = 0;index2 < this.colors.length; index2++) {
-          const color = this.colors[index2];
+        for (let index2 = 0;index2 < this.bot.colors.length; index2++) {
+          const color = this.bot.colors[index2];
           const delta = (color.r - r) ** 2 + (color.g - g) ** 2 + (color.b - b) ** 2;
           if (color.available && delta < minDelta) {
             minDelta = delta;
@@ -336,7 +273,7 @@ class Pixels {
           colorsToBuy.set(minReal, (colorsToBuy.get(minReal) ?? 0) + 1);
       }
     }
-    this.colorsToBuy = [...colorsToBuy.entries()].sort(([, a], [, b]) => b - a);
+    this.colorsToBuy.splice(0, Infinity, ...[...colorsToBuy.entries()].sort(([, a], [, b]) => b - a));
   }
   toJSON() {
     const canvas = document.createElement("canvas");
@@ -344,43 +281,386 @@ class Pixels {
     canvas.height = this.image.naturalHeight;
     const context = canvas.getContext("2d");
     context.drawImage(this.image, 0, 0);
-    return canvas.toDataURL("image/webp", 1);
+    return {
+      url: canvas.toDataURL("image/webp", 1),
+      width: this.width
+    };
+  }
+}
+
+// src/world-position.ts
+var WORLD_TILE_SIZE = 1000;
+
+class WorldPosition {
+  bot;
+  static fromJSON(bot, data) {
+    return new WorldPosition(bot, ...data);
+  }
+  static fromScreenPosition(bot, position) {
+    if (!bot.anchorWorldPosition)
+      throw new UnfocusRequiredError(bot);
+    return new WorldPosition(bot, bot.anchorWorldPosition.globalX + (position.x - bot.anchorScreenPosition.x) / bot.pixelSize | 0, bot.anchorWorldPosition.globalY + (position.y - bot.anchorScreenPosition.y) / bot.pixelSize | 0);
+  }
+  globalX = 0;
+  globalY = 0;
+  get tileX() {
+    return this.globalX / WORLD_TILE_SIZE | 0;
+  }
+  set tileX(value) {
+    this.globalX = value * WORLD_TILE_SIZE + this.x;
+  }
+  get tileY() {
+    return this.globalY / WORLD_TILE_SIZE | 0;
+  }
+  set tileY(value) {
+    this.globalY = value * WORLD_TILE_SIZE + this.y;
+  }
+  get x() {
+    return this.globalX % WORLD_TILE_SIZE;
+  }
+  set x(value) {
+    this.globalX = this.tileX * WORLD_TILE_SIZE + value;
+  }
+  get y() {
+    return this.globalY % WORLD_TILE_SIZE;
+  }
+  set y(value) {
+    this.globalY = this.tileY * WORLD_TILE_SIZE + value;
+  }
+  constructor(bot, tileorGlobalX, tileorGlobalY, x, y) {
+    this.bot = bot;
+    if (x === undefined || y === undefined) {
+      this.globalX = tileorGlobalX;
+      this.globalY = tileorGlobalY;
+    } else {
+      this.globalX = tileorGlobalX * WORLD_TILE_SIZE + x;
+      this.globalY = tileorGlobalY * WORLD_TILE_SIZE + y;
+    }
+  }
+  toScreenPosition() {
+    if (!this.bot.anchorWorldPosition)
+      throw new UnfocusRequiredError(this.bot);
+    return {
+      x: (this.globalX - this.bot.anchorWorldPosition.globalX) * this.bot.pixelSize + this.bot.anchorScreenPosition.x,
+      y: (this.globalY - this.bot.anchorWorldPosition.globalY) * this.bot.pixelSize + this.bot.anchorScreenPosition.y
+    };
+  }
+  async getMapColor() {
+    const key = this.tileX + "/" + this.tileY;
+    let map = this.bot.mapsCache.get(key);
+    if (!map) {
+      map = await Pixels.fromJSON(this.bot, {
+        url: `https://backend.wplace.live/files/s0/tiles/${key}.png`
+      });
+      this.bot.mapsCache.set(key, map);
+    }
+    return map.pixels[this.y][this.x];
+  }
+  scrollScreenTo() {
+    const { x, y } = this.toScreenPosition();
+    console.log(x, y);
+    this.bot.moveMap({
+      x: -x,
+      y: -y
+    });
+  }
+  clone() {
+    return new WorldPosition(this.bot, this.tileX, this.tileY, this.x, this.y);
+  }
+  toJSON() {
+    return [this.tileX, this.tileY, this.x, this.y];
+  }
+}
+
+// src/image.ts
+class BotImage extends Base {
+  bot;
+  position;
+  pixels;
+  strategy;
+  opacity;
+  drawTransparentPixels;
+  static async fromJSON(bot, data) {
+    return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels);
+  }
+  element = document.createElement("div");
+  canvas;
+  context;
+  tasks = [];
+  moveInfo;
+  constructor(bot, position, pixels, strategy = "RANDOM" /* RANDOM */, opacity = 50, drawTransparentPixels = false) {
+    super();
+    this.bot = bot;
+    this.position = position;
+    this.pixels = pixels;
+    this.strategy = strategy;
+    this.opacity = opacity;
+    this.drawTransparentPixels = drawTransparentPixels;
+    document.body.append(this.element);
+    this.element.innerHTML = image_default;
+    this.element.classList.add("wimage");
+    this.canvas = this.element.querySelector("canvas");
+    this.context = this.canvas.getContext("2d");
+    const $strategy = this.element.querySelector(".strategy");
+    $strategy.addEventListener("change", () => {
+      this.strategy = $strategy.value;
+      this.bot.save();
+    });
+    const $opacity = this.element.querySelector(".opacity");
+    $opacity.addEventListener("input", () => {
+      this.opacity = $opacity.valueAsNumber;
+      this.update();
+      this.bot.save();
+    });
+    this.element.querySelector(".reset-size").addEventListener("click", () => {
+      this.pixels.width = this.pixels.image.naturalWidth;
+      this.pixels.update();
+      this.update();
+      this.bot.save();
+    });
+    const $drawTransparent = this.element.querySelector(".draw-transparent");
+    $drawTransparent.addEventListener("click", () => {
+      this.drawTransparentPixels = $drawTransparent.checked;
+      this.bot.save();
+    });
+    this.canvas.addEventListener("mousedown", (event) => {
+      this.moveInfo = {
+        globalX: this.position.globalX,
+        globalY: this.position.globalY,
+        clientX: event.clientX,
+        clientY: event.clientY
+      };
+    });
+    this.registerEvent(document, "mouseup", () => {
+      this.moveInfo = undefined;
+    });
+    this.registerEvent(document, "mousemove", (event) => {
+      if (this.moveInfo)
+        this.move(event.clientX, event.clientY);
+    });
+    for (const $resize of this.element.querySelectorAll(".resize")) {
+      $resize.addEventListener("mousedown", (event) => {
+        this.moveInfo = {
+          clientX: event.clientX,
+          clientY: event.clientY
+        };
+        if ($resize.classList.contains("n")) {
+          this.moveInfo.height = this.pixels.height;
+          this.moveInfo.globalY = this.position.globalY;
+        }
+        if ($resize.classList.contains("e"))
+          this.moveInfo.width = this.pixels.width;
+        if ($resize.classList.contains("s"))
+          this.moveInfo.height = this.pixels.height;
+        if ($resize.classList.contains("w")) {
+          this.moveInfo.width = this.pixels.width;
+          this.moveInfo.globalX = this.position.globalX;
+        }
+      });
+    }
+    this.update();
+    this.updateTasks();
+  }
+  toJSON() {
+    return {
+      pixels: this.pixels.toJSON(),
+      position: this.position.toJSON(),
+      strategy: this.strategy,
+      opacity: this.opacity,
+      drawTransparentPixels: this.drawTransparentPixels
+    };
+  }
+  async updateTasks() {
+    this.tasks.length = 0;
+    const position = this.position.clone();
+    for (const { x, y } of this.strategyPositionIterator()) {
+      const color = this.pixels.pixels[y][x];
+      position.globalX = this.position.globalX + x;
+      position.globalY = this.position.globalY + y;
+      const mapColor = await position.getMapColor();
+      if (color.buttonId !== mapColor.buttonId && (this.drawTransparentPixels || color.a !== 0)) {
+        const { x: x2, y: y2 } = position.toScreenPosition();
+        this.tasks.push({
+          x: x2,
+          y: y2,
+          buttonId: color.buttonId
+        });
+      }
+    }
+    this.update();
+  }
+  update() {
+    const halfPixel = this.bot.pixelSize / 2;
+    try {
+      const { x, y } = this.position.toScreenPosition();
+      this.element.style.transform = `translate(${x - halfPixel}px, ${y - halfPixel}px)`;
+      this.element.classList.remove("hidden");
+    } catch {
+      this.element.classList.add("hidden");
+    }
+    this.canvas.width = this.bot.pixelSize * this.pixels.pixels[0].length;
+    this.canvas.height = this.bot.pixelSize * this.pixels.pixels.length;
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    for (let y = 0;y < this.pixels.pixels.length; y++) {
+      const row = this.pixels.pixels[y];
+      for (let x = 0;x < row.length; x++) {
+        const pixel = row[x];
+        this.context.fillStyle = `rgb(${pixel.r} ${pixel.g} ${pixel.b})`;
+        this.context.globalAlpha = pixel.a / 255 * (this.opacity / 100);
+        this.context.fillRect(x * this.bot.pixelSize, y * this.bot.pixelSize, this.bot.pixelSize, this.bot.pixelSize);
+      }
+    }
+    this.element.querySelector(".reset-size span").textContent = this.pixels.width.toString();
+    this.element.querySelector(".strategy").value = this.strategy;
+    this.element.querySelector(".opacity").valueAsNumber = this.opacity;
+    this.element.querySelector(".draw-transparent").checked = this.drawTransparentPixels;
+    const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0].length;
+    const doneTasks = maxTasks - this.tasks.length;
+    const percent = doneTasks / maxTasks * 100 | 0;
+    this.element.querySelector(".progress span").textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${this.tasks.length / 120 | 0}:${this.tasks.length % 120 / 2 | 0}`;
+    this.element.querySelector(".progress div").style.transform = `scaleX(${percent}%)`;
+  }
+  destroy() {
+    super.destroy();
+    this.element.remove();
+  }
+  move(clientX, clientY) {
+    if (!this.moveInfo)
+      return;
+    const deltaX = Math.round((clientX - this.moveInfo.clientX) / this.bot.pixelSize);
+    const deltaY = Math.round((clientY - this.moveInfo.clientY) / this.bot.pixelSize);
+    if (this.moveInfo.globalX !== undefined) {
+      this.position.globalX = deltaX + this.moveInfo.globalX;
+      if (this.moveInfo.width !== undefined)
+        this.pixels.width = Math.max(1, this.moveInfo.width - deltaX);
+    } else if (this.moveInfo.width !== undefined)
+      this.pixels.width = Math.max(1, deltaX + this.moveInfo.width);
+    if (this.moveInfo.globalY !== undefined) {
+      this.position.globalY = deltaY + this.moveInfo.globalY;
+      if (this.moveInfo.height !== undefined)
+        this.pixels.height = Math.max(1, this.moveInfo.height - deltaY);
+    } else if (this.moveInfo.height !== undefined)
+      this.pixels.height = Math.max(1, deltaY + this.moveInfo.height);
+    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined)
+      this.pixels.update();
+    this.update();
+    this.bot.save();
+  }
+  *strategyPositionIterator() {
+    const width = this.pixels.pixels[0].length;
+    const height = this.pixels.pixels.length;
+    switch (this.strategy) {
+      case "DOWN" /* DOWN */: {
+        for (let y = 0;y < height; y++)
+          for (let x = 0;x < width; x++)
+            yield { x, y };
+        break;
+      }
+      case "UP" /* UP */: {
+        for (let y = height - 1;y >= 0; y--)
+          for (let x = 0;x < width; x++)
+            yield { x, y };
+        break;
+      }
+      case "LEFT" /* LEFT */: {
+        for (let x = 0;x < width; x++)
+          for (let y = 0;y < height; y++)
+            yield { x, y };
+        break;
+      }
+      case "RIGHT" /* RIGHT */: {
+        for (let x = width - 1;x >= 0; x--)
+          for (let y = 0;y < height; y++)
+            yield { x, y };
+        break;
+      }
+      case "RANDOM" /* RANDOM */: {
+        const positions = [];
+        for (let y = 0;y < height; y++)
+          for (let x = 0;x < width; x++)
+            positions.push({ x, y });
+        for (let index = positions.length - 1;index >= 0; index--) {
+          const index_ = Math.floor(Math.random() * (index + 1));
+          const temporary = positions[index];
+          positions[index] = positions[index_];
+          positions[index_] = temporary;
+        }
+        yield* positions;
+        break;
+      }
+      case "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */:
+      case "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */: {
+        const visited = new Set;
+        const total = width * height;
+        let x = Math.floor(width / 2);
+        let y = Math.floor(height / 2);
+        const directories = [
+          [1, 0],
+          [0, 1],
+          [-1, 0],
+          [0, -1]
+        ];
+        let directionIndex = 0;
+        let steps = 1;
+        const inBounds = (x2, y2) => x2 >= 0 && x2 < width && y2 >= 0 && y2 < height;
+        const emit = function* () {
+          let count = 0;
+          while (count < total) {
+            for (let twice = 0;twice < 2; twice++) {
+              for (let index = 0;index < steps; index++) {
+                if (inBounds(x, y)) {
+                  const key = `${x},${y}`;
+                  if (!visited.has(key)) {
+                    visited.add(key);
+                    yield { x, y };
+                    count++;
+                    if (count >= total)
+                      return;
+                  }
+                }
+                x += directories[directionIndex][0];
+                y += directories[directionIndex][1];
+              }
+              directionIndex = (directionIndex + 1) % 4;
+            }
+            steps++;
+          }
+        };
+        if (this.strategy === "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */)
+          yield* emit();
+        else {
+          const collected = [...emit()];
+          for (let index = collected.length - 1;index >= 0; index--)
+            yield collected[index];
+        }
+        break;
+      }
+    }
   }
 }
 
 // src/widget.html
 var widget_default = `<div class="move">
-  <button class="minimize">🗕</button>
+  <button class="minimize">-</button>
 </div>
-<div class="content">
-  <button class="select-image">Select image</button>
+<div class="wsettings">
+  <div class="wp wstatus"></div>
+  <div class="progress"><div></div><span></span></div>
   <button class="draw" disabled>Draw</button>
-  <button class="count-users">Count users</button>
   <select class="strategy">
-    <option value="RANDOM" selected>Random</option>
-    <option value="DOWN">Down</option>
-    <option value="UP">Up</option>
-    <option value="LEFT">Left</option>
-    <option value="RIGHT">Right</option>
-    <option value="SPIRAL_FROM_CENTER">Spiral from center</option>
-    <option value="SPIRAL_TO_CENTER">Spiral to center</option>
+    <option value="SEQUENTIAL" selected>Sequential</option>
+    <option value="ALL">All</option>
+    <option value="PERCENTAGE">Percentage</option>
   </select>
-
-  <label class="p">Scale:&nbsp;<input class="scale" type="number" />%</label>
-  <label class="p"
-    >Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"
-  /></label>
-  <div class="colors"></div>
-  <div class="eta p">ETA: <span class="value"></span></div>
-  <div class="progress p">Progress: <span class="value"></span></div>
-  <progress max="100"></progress>
-  <div class="wstatus p"></div>
+  <div class="images"></div>
+  <button class="add-image" disabled>Add image</button>
 </div>
 `;
 
 // src/widget.ts
-class Widget {
+class Widget extends Base {
   bot;
+  element = document.createElement("div");
   x = 64;
   y = 64;
   get status() {
@@ -389,13 +669,15 @@ class Widget {
   set status(value) {
     this.element.querySelector(".wstatus").innerHTML = value;
   }
-  element = document.createElement("div");
+  strategy = "SEQUENTIAL" /* SEQUENTIAL */;
+  images = [];
   moveInfo;
   constructor(bot) {
+    super();
     this.bot = bot;
-    this.element.classList.add("wbot-widget", "hidden");
-    document.body.append(this.element);
+    this.element.classList.add("wwidget");
     this.element.innerHTML = widget_default;
+    document.body.append(this.element);
     this.element.querySelector(".minimize").addEventListener("click", () => {
       this.minimize();
     });
@@ -403,78 +685,95 @@ class Widget {
     $move.addEventListener("mousedown", (event) => {
       this.moveStart(event.clientX, event.clientY);
     });
-    document.addEventListener("mouseup", () => {
+    this.registerEvent(document, "mouseup", () => {
       this.moveStop();
     });
-    document.addEventListener("mousemove", (event) => {
+    this.registerEvent(document, "mousemove", (event) => {
       if (this.moveInfo)
         this.move(event.clientX, event.clientY);
       this.element.style.transform = `translate(${this.x}px, ${this.y}px)`;
     });
     this.element.style.transform = `translate(${this.x}px, ${this.y}px)`;
-    this.element.querySelector(".select-image").addEventListener("click", () => this.bot.selectImage());
     this.element.querySelector(".draw").addEventListener("click", () => this.bot.draw());
-    this.element.querySelector(".count-users").addEventListener("click", () => this.bot.countUsers());
-    const $scale = this.element.querySelector(".scale");
-    $scale.addEventListener("change", () => {
-      if (!this.bot.image)
-        return;
-      this.bot.image.scale = $scale.valueAsNumber;
-      this.bot.image.update();
-      this.bot.overlay.update();
-    });
-    const $opacity = this.element.querySelector(".opacity");
-    $opacity.addEventListener("input", () => {
-      this.bot.overlay.opacity = $opacity.valueAsNumber;
-      this.bot.overlay.update();
-    });
+    this.element.querySelector(".add-image").addEventListener("click", () => this.addImage());
     const $strategy = this.element.querySelector(".strategy");
     $strategy.addEventListener("change", () => {
-      this.bot.strategy = $strategy.value;
+      this.strategy = $strategy.value;
     });
-    this.updateText();
+    this.update();
+  }
+  addImage() {
+    this.setDisabled("add-image", true);
+    return this.run("Adding image", async () => {
+      await this.bot.updateColors();
+      this.images.push(new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
+        x: 256,
+        y: 32
+      }), await Pixels.fromSelectImage(this.bot)));
+      this.update();
+      this.bot.save();
+    }, () => {
+      this.setDisabled("add-image", false);
+    });
+  }
+  update() {
+    this.element.querySelector(".strategy").value = this.strategy;
+    let maxTasks = 0;
+    let totalTasks = 0;
+    for (let index = 0;index < this.images.length; index++) {
+      const image = this.images[index];
+      maxTasks += image.pixels.pixels.length * image.pixels.pixels[0].length;
+      totalTasks += image.tasks.length;
+    }
+    const doneTasks = maxTasks - totalTasks;
+    const percent = doneTasks / maxTasks * 100 | 0;
+    this.element.querySelector(".progress span").textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${totalTasks / 120 | 0}:${totalTasks % 120 / 2 | 0}`;
+    this.element.querySelector(".progress div").style.transform = `scaleX(${percent}%)`;
+    const $images = this.element.querySelector(".images");
+    $images.innerHTML = "";
+    for (let index = 0;index < this.images.length; index++) {
+      const image = this.images[index];
+      const $image = document.createElement("div");
+      $images.append($image);
+      $image.className = "image";
+      $image.innerHTML = `<img src="${image.pixels.image.src}">
+  <button class="up" title="Move up" ${index === 0 ? "disabled" : ""}>▴</button>
+  <button class="down" title="Move down" ${index === this.images.length - 1 ? "disabled" : ""}>▾</button>
+  <button class="delete" title="Move delete">X</button>`;
+      $image.querySelector("img").addEventListener("click", () => {
+        image.position.scrollScreenTo();
+      });
+      $image.querySelector(".up").addEventListener("click", () => {
+        swap(this.images, index, index - 1);
+        this.update();
+        this.bot.save();
+      });
+      $image.querySelector(".down").addEventListener("click", () => {
+        swap(this.images, index, index + 1);
+        this.update();
+        this.bot.save();
+      });
+      $image.querySelector(".delete").addEventListener("click", () => {
+        this.images.splice(index, 1);
+        image.destroy();
+        this.update();
+        this.bot.save();
+      });
+    }
+  }
+  updateImages() {
+    for (let index = 0;index < this.images.length; index++)
+      this.images[index].update();
   }
   setDisabled(name, disabled) {
     this.element.querySelector("." + name).disabled = disabled;
   }
-  updateColorsToBuy() {
-    if (!this.bot.image)
-      throw new NoImageError(this.bot);
-    let sum = 0;
-    for (let index = 0;index < this.bot.image.colorsToBuy.length; index++)
-      sum += this.bot.image.colorsToBuy[index][1];
-    const $colors = this.element.querySelector(".colors");
-    $colors.innerHTML = "";
-    for (let index = 0;index < this.bot.image.colorsToBuy.length; index++) {
-      const [color, amount] = this.bot.image.colorsToBuy[index];
-      const $div = document.createElement("button");
-      $colors.append($div);
-      $div.style.backgroundColor = `rgb(${color.r} ${color.g} ${color.b})`;
-      $div.style.width = amount / sum * 100 + "%";
-      $div.addEventListener("click", async () => {
-        await this.bot.openColors();
-        document.getElementById(color.buttonId)?.click();
-      });
-    }
-  }
-  updateText() {
-    if (this.bot.image)
-      this.updateColorsToBuy();
-    this.element.querySelector(".strategy").value = this.bot.strategy;
-    const maxTasks = this.bot.image ? this.bot.image.pixels.length * this.bot.image.pixels[0].length : 0;
-    this.element.querySelector(".scale").valueAsNumber = this.bot.image?.scale ?? 100;
-    const doneTasks = maxTasks - this.bot.tasks.length;
-    const percent = doneTasks / maxTasks * 100 | 0;
-    this.element.querySelector(".eta .value").textContent = `${this.bot.tasks.length / 120 | 0}h ${this.bot.tasks.length % 120 / 2 | 0}m`;
-    this.element.querySelector(".progress .value").textContent = `${percent}% ${doneTasks}/${maxTasks}`;
-    this.element.querySelector("progress").value = percent;
-  }
-  async runWithStatusAsync(status, run, fin, emoji = "⌛") {
+  async run(status, run, fin, emoji = "⌛") {
     const originalStatus = this.status;
     this.status = `${emoji} ${status}`;
     try {
       const result = await run();
-      this.status = originalStatus || `✅ ${status}`;
+      this.status = originalStatus;
       return result;
     } catch (error) {
       if (!(error instanceof WPlaceBotError)) {
@@ -486,8 +785,16 @@ class Widget {
       await fin?.();
     }
   }
+  toJSON() {
+    return {
+      x: this.x,
+      y: this.y,
+      images: this.images.map((x) => x.toJSON()),
+      strategy: this.strategy
+    };
+  }
   minimize() {
-    this.element.querySelector(".content").classList.toggle("hidden");
+    this.element.querySelector(".wsettings").classList.toggle("hidden");
   }
   moveStart(x, y) {
     this.moveInfo = {
@@ -509,71 +816,63 @@ class Widget {
 }
 
 // src/bot.ts
+var SAVE_VERSION = 1;
+
 class WPlaceBot {
-  tasks = [];
-  colors = [];
-  image;
-  startPosition;
-  startScreenPosition;
-  pixelSize = 64;
-  strategy = "RANDOM" /* RANDOM */;
-  markerPixelPositionResolvers = [];
-  markerPixelDataResolvers = [];
   widget = new Widget(this);
-  overlay = new Overlay(this);
+  colors = [];
+  anchorWorldPosition;
+  pixelSize = 1;
+  mapsCache = new Map;
+  get anchorScreenPosition() {
+    const $favLocation = document.querySelector(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center");
+    if (!$favLocation)
+      throw new NoFavLocation(this);
+    const [x, y] = $favLocation.style.transform.slice(32, -29).split(", ").map((x2) => Number.parseInt(x2));
+    return { x, y };
+  }
+  markerPixelPositionResolvers = [];
+  estimatingSize = false;
+  saveTimeout;
   constructor() {
     this.registerFetchInterceptor();
-    this.init();
-  }
-  async selectImage() {
-    this.widget.status = "";
-    return this.widget.runWithStatusAsync("Selecting image", async () => {
-      this.widget.setDisabled("select-image", true);
-      await this.updateColors();
-      this.image = await Pixels.fromSelectImage(this, this.colors, this.widget.element.querySelector(".scale").valueAsNumber);
-      await this.updatePositionsWithMarker();
-      await this.updateTasks();
-      await this.updateColors();
-      this.overlay.update();
-      this.widget.updateText();
-      this.widget.setDisabled("draw", false);
-      this.save();
-    }, () => {
-      this.widget.setDisabled("select-image", false);
-    });
-  }
-  async countUsers() {
-    this.widget.status = "";
-    const users = new Set;
-    return this.widget.runWithStatusAsync("Counting users", async () => {
-      this.widget.setDisabled("count-users", true);
-      this.widget.setDisabled("draw", true);
-      this.widget.setDisabled("select-image", true);
-      await this.updatePositionsWithMarker();
-      const pos2 = await this.widget.runWithStatusAsync("Place bottom-right corner", async () => new Promise((resolve) => this.markerPixelPositionResolvers.push(resolve)), undefined, "\uD83D\uDDB1️");
-      const position = this.startPosition.clone();
-      const pixels = (pos2.globalY - this.startPosition.globalY) * (pos2.globalX - this.startPosition.globalX);
-      let counted = 0;
-      for (;position.globalY < pos2.globalY; position.y++) {
-        for (;position.globalX < pos2.globalX; position.x++) {
-          const dataPromise = new Promise((resolve) => {
-            this.markerPixelDataResolvers.push(resolve);
-          });
-          await this.clickMapAtPosition(position.toScreenPosition(this.startScreenPosition, this.startPosition, this.pixelSize));
-          const data = await dataPromise;
-          if (data.paintedBy.id !== 0)
-            users.add(data.paintedBy.id);
-          counted++;
-          this.widget.status = `⌛ Found ${users.size} users. ETA: ${600 * (pixels - counted) / 60000 | 0}m (${counted / pixels * 100 | 0}%)`;
-          await wait(500);
-        }
-        position.globalX = this.startPosition.globalX;
+    this.widget.run("Initializing", async () => {
+      const json = localStorage.getItem("wbot");
+      let save;
+      try {
+        save = JSON.parse(json);
+        if (typeof save !== "object" || save.version !== SAVE_VERSION)
+          throw new Error("NOT VALID SAVE");
+      } catch {
+        localStorage.removeItem("wbot");
+        save = undefined;
       }
-    }, () => {
-      this.widget.status = `✅ Found ${users.size} users`;
-      this.widget.setDisabled("count-users", false);
+      if (save) {
+        this.widget.x = save.widget.x;
+        this.widget.y = save.widget.y;
+        this.widget.strategy = save.widget.strategy;
+      }
+      while (!document.querySelector(".maplibregl-canvas") || !document.querySelector(".btn.btn-primary.btn-lg.relative.z-30 canvas") || !document.querySelector(".avatar.center-absolute.absolute"))
+        await wait(500);
+      await wait(500);
+      await this.estimateSize();
+      await this.updateColors();
+      if (save)
+        for (let index = 0;index < save.widget.images.length; index++) {
+          const image = await BotImage.fromJSON(this, save.widget.images[index]);
+          this.widget.images.push(image);
+          image.update();
+        }
+      this.widget.update();
+      const $canvas = document.querySelector(".maplibregl-canvas");
+      setInterval(() => {
+        this.widget.updateImages();
+      }, 50);
+      $canvas.addEventListener("wheel", () => {
+        this.estimateSize();
+      });
       this.widget.setDisabled("draw", false);
-      this.widget.setDisabled("select-image", false);
+      this.widget.setDisabled("add-image", false);
     });
   }
   draw() {
@@ -583,175 +882,75 @@ class WPlaceBot {
         event.stopPropagation();
     };
     globalThis.addEventListener("mousemove", prevent, true);
-    return this.widget.runWithStatusAsync("Drawing", async () => {
+    return this.widget.run("Drawing", async () => {
+      this.mapsCache.clear();
       this.widget.setDisabled("draw", true);
-      await this.updateColors();
-      await this.updateTasks();
-      while (this.tasks.length > 0 && !document.querySelector("ol")) {
-        const task = this.tasks.shift();
-        document.getElementById(task.buttonId).click();
-        document.documentElement.dispatchEvent(new MouseEvent("mousemove", {
-          bubbles: true,
-          clientX: task.x,
-          clientY: task.y,
-          shiftKey: true
-        }));
-        document.documentElement.dispatchEvent(new KeyboardEvent("keydown", SPACE_EVENT));
-        document.documentElement.dispatchEvent(new KeyboardEvent("keyup", SPACE_EVENT));
-        await wait(1);
-      }
-      this.widget.updateText();
       this.save();
+      await this.updateColors();
+      for (let index = 0;index < this.widget.images.length; index++)
+        await this.widget.images[index].updateTasks();
+      const n = this.widget.images.reduce((accumulator, x) => accumulator + x.tasks.length, 0);
+      switch (this.widget.strategy) {
+        case "ALL" /* ALL */: {
+          while (!document.querySelector("ol")) {
+            let end = true;
+            for (let imageIndex = 0;imageIndex < this.widget.images.length; imageIndex++) {
+              const task = this.widget.images[imageIndex].tasks.shift();
+              if (!task)
+                continue;
+              await this.drawTask(task);
+              end = false;
+            }
+            if (end)
+              break;
+          }
+          break;
+        }
+        case "PERCENTAGE" /* PERCENTAGE */: {
+          for (let taskIndex = 0;taskIndex < n && !document.querySelector("ol"); taskIndex++) {
+            let minPercent = 1;
+            let minImage;
+            for (let imageIndex = 0;imageIndex < this.widget.images.length; imageIndex++) {
+              const image = this.widget.images[imageIndex];
+              const percent = 1 - image.tasks.length / (image.pixels.pixels.length * image.pixels.pixels[0].length);
+              if (percent < minPercent) {
+                minPercent = percent;
+                minImage = image;
+              }
+            }
+            await this.drawTask(minImage.tasks.shift());
+          }
+          break;
+        }
+        case "SEQUENTIAL" /* SEQUENTIAL */: {
+          for (let imageIndex = 0;imageIndex < this.widget.images.length; imageIndex++) {
+            const image = this.widget.images[imageIndex];
+            for (let task = image.tasks.shift();task && !document.querySelector("ol"); task = image.tasks.shift())
+              await this.drawTask(task);
+          }
+        }
+      }
+      this.widget.updateImages();
+      this.widget.update();
     }, () => {
       globalThis.removeEventListener("mousemove", prevent, true);
       this.widget.setDisabled("draw", false);
     });
   }
   save() {
-    if (!this.image || !this.startPosition || !this.startScreenPosition) {
-      localStorage.removeItem("wbot");
-      return;
-    }
-    localStorage.setItem("wbot", JSON.stringify({
-      image: this.image,
-      startScreenPosition: this.startScreenPosition,
-      startPosition: this.startPosition,
-      pixelSize: this.pixelSize,
-      widgetX: this.widget.x,
-      widgetY: this.widget.y,
-      overlayOpacity: this.overlay.opacity,
-      scale: this.image.scale,
-      strategy: this.strategy,
-      location: localStorage.getItem("location")
-    }));
+    clearTimeout(this.saveTimeout);
+    this.saveTimeout = setTimeout(() => {
+      localStorage.setItem("wbot", JSON.stringify(this));
+    }, 1000);
   }
-  async init() {
-    const json = localStorage.getItem("wbot");
-    let save;
-    try {
-      save = JSON.parse(json);
-    } catch {
-      localStorage.removeItem("wbot");
-    }
-    if (save?.location?.[0] === "{")
-      localStorage.setItem("location", save.location);
-    await new Promise((resolve) => {
-      const interval = setInterval(() => {
-        if (document.querySelector(".maplibregl-canvas") && document.querySelector(".btn.btn-primary.btn-lg.relative.z-30 canvas") && document.querySelector(".avatar.center-absolute.absolute")) {
-          resolve();
-          clearInterval(interval);
-        }
-      }, 500);
-    });
-    let moving = false;
-    const canvas = document.querySelector(".maplibregl-canvas");
-    canvas.addEventListener("wheel", () => {
-      if (this.image)
-        this.onMove();
-    });
-    canvas.addEventListener("mousedown", (event) => {
-      if (event.button === 0)
-        moving = true;
-    });
-    canvas.addEventListener("mouseup", (event) => {
-      if (event.button === 0)
-        moving = false;
-    });
-    canvas.addEventListener("mousemove", () => {
-      if (moving)
-        this.onMove();
-    });
-    this.widget.element.classList.remove("hidden");
-    if (!save)
-      return;
-    try {
-      this.startPosition = new WorldPosition(...save.startPosition);
-      this.startScreenPosition = save.startScreenPosition;
-      this.pixelSize = save.pixelSize;
-      this.strategy = save.strategy;
-      await this.updateColors();
-      this.image = await Pixels.fromURL(save.image, this.colors, save.scale);
-      this.widget.element.querySelector(".scale").valueAsNumber = save.scale;
-      this.overlay.opacity = save.overlayOpacity;
-      this.widget.element.querySelector(".opacity").valueAsNumber = save.overlayOpacity;
-      await this.updateTasks();
-      this.widget.updateText();
-      this.widget.updateColorsToBuy();
-      this.overlay.update();
-      this.widget.setDisabled("draw", false);
-    } catch {
-      localStorage.removeItem("wbot");
-    }
-  }
-  async openColors() {
-    document.querySelector(".flex.gap-2.px-3 > .btn-circle")?.click();
-    await wait(1);
-    document.querySelector(".btn.btn-primary.btn-lg.relative.z-30")?.click();
-    await wait(1);
-    const unfoldColors = document.querySelector("button.bottom-0");
-    if (unfoldColors?.innerHTML === '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5"><path d="M480-120 300-300l58-58 122 122 122-122 58 58-180 180ZM358-598l-58-58 180-180 180 180-58 58-122-122-122 122Z"></path></svg><!---->') {
-      unfoldColors.click();
-      await wait(1);
-    }
-  }
-  updatePositionsWithMarker() {
-    return this.widget.runWithStatusAsync("Aligning", async () => {
-      document.querySelector(".flex.items-center .btn.btn-circle.btn-sm:nth-child(3)")?.click();
-      this.startPosition = await this.widget.runWithStatusAsync("Place marker", async () => new Promise((resolve) => this.markerPixelPositionResolvers.push(resolve)), undefined, "\uD83D\uDDB1️");
-      this.startScreenPosition = this.getMarkerScreenPosition();
-      const markerPosition2Promise = new Promise((resolve) => {
-        this.markerPixelPositionResolvers.push(resolve);
-      });
-      await this.clickMapAtPosition({
-        x: window.innerWidth - 1,
-        y: window.innerHeight - 1
-      });
-      const markerPosition2 = await markerPosition2Promise;
-      const markerScreenPosition2 = this.getMarkerScreenPosition();
-      this.pixelSize = (markerScreenPosition2.x - this.startScreenPosition.x) / (markerPosition2.globalX - this.startPosition.globalX);
-      this.startScreenPosition.x -= this.pixelSize / 2;
-    });
-  }
-  updateTasks() {
-    return this.widget.runWithStatusAsync("Map reading", async () => {
-      if (!this.startPosition || !this.startScreenPosition)
-        throw new NoMarkerError(this);
-      if (!this.image)
-        throw new NoImageError(this);
-      this.tasks = [];
-      const maps = new Map;
-      for (const { x, y } of strategyPositionIterator(this.image.pixels.length, this.image.pixels[0].length, this.strategy)) {
-        const color = this.image.pixels[y][x];
-        const position = this.startPosition.clone();
-        position.x += x;
-        position.y += y;
-        let map = maps.get(position.tileX + "/" + position.tileY);
-        if (!map) {
-          map = await Pixels.fromURL(`https://backend.wplace.live/files/s0/tiles/${position.tileX}/${position.tileY}.png`, this.colors);
-          maps.set(position.tileX + "/" + position.tileY, map);
-        }
-        const colorOnMap = map.pixels[position.y][position.x];
-        if (color.buttonId !== colorOnMap.buttonId)
-          this.tasks.push({
-            ...position.toScreenPosition(this.startScreenPosition, this.startPosition, this.pixelSize),
-            buttonId: color.buttonId
-          });
-      }
-    });
-  }
-  async clickMapAtPosition(screenPosition) {
-    await this.waitForUnfocus();
-    document.querySelector(".maplibregl-canvas").dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      clientX: screenPosition.x,
-      clientY: screenPosition.y,
-      button: 0
-    }));
-    await wait(1);
+  toJSON() {
+    return {
+      version: SAVE_VERSION,
+      widget: this.widget.toJSON()
+    };
   }
   updateColors() {
-    return this.widget.runWithStatusAsync("Colors update", async () => {
+    return this.widget.run("Colors update", async () => {
       await this.openColors();
       this.colors = [
         ...document.querySelectorAll("button.btn.relative.w-full")
@@ -777,8 +976,78 @@ class WPlaceBot {
       });
     });
   }
+  moveMap(delta) {
+    const canvas = document.querySelector(".maplibregl-canvas");
+    const startX = window.innerWidth / 2;
+    const startY = window.innerHeight / 2;
+    const endX = startX - delta.x;
+    const endY = startY - delta.y;
+    function fire(type, x, y) {
+      canvas.dispatchEvent(new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+        buttons: 1
+      }));
+    }
+    fire("mousedown", startX, startY);
+    fire("mousemove", endX, endY);
+    fire("mouseup", endX, endY);
+  }
+  async openColors() {
+    document.querySelector(".flex.gap-2.px-3 > .btn-circle")?.click();
+    await wait(1);
+    document.querySelector(".btn.btn-primary.btn-lg.relative.z-30")?.click();
+    await wait(1);
+    const unfoldColors = document.querySelector("button.bottom-0");
+    if (unfoldColors?.innerHTML === '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5"><path d="M480-120 300-300l58-58 122 122 122-122 58 58-180 180ZM358-598l-58-58 180-180 180 180-58 58-122-122-122 122Z"></path></svg><!---->') {
+      unfoldColors.click();
+      await wait(1);
+    }
+  }
+  async clickAndGetPixelWorldPosition(screenPosition) {
+    await this.waitForUnfocus();
+    const positionPromise = withTimeout(() => new Promise((resolve) => {
+      this.markerPixelPositionResolvers.push(resolve);
+    }), 1000);
+    document.querySelector(".maplibregl-canvas").dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      clientX: screenPosition.x,
+      clientY: screenPosition.y,
+      button: 0
+    }));
+    return positionPromise;
+  }
+  async drawTask(task) {
+    document.getElementById(task.buttonId).click();
+    document.documentElement.dispatchEvent(new MouseEvent("mousemove", {
+      bubbles: true,
+      clientX: task.x,
+      clientY: task.y,
+      shiftKey: true
+    }));
+    document.documentElement.dispatchEvent(new KeyboardEvent("keydown", {
+      key: " ",
+      code: "Space",
+      keyCode: 32,
+      which: 32,
+      bubbles: true,
+      cancelable: true
+    }));
+    document.documentElement.dispatchEvent(new KeyboardEvent("keyup", {
+      key: " ",
+      code: "Space",
+      keyCode: 32,
+      which: 32,
+      bubbles: true,
+      cancelable: true
+    }));
+    await wait(1);
+  }
   waitForUnfocus() {
-    return this.widget.runWithStatusAsync("Unfocus window!", () => new Promise((resolve) => {
+    return this.widget.run("UNFOCUS WINDOW", () => new Promise((resolve) => {
       if (!document.hasFocus())
         resolve();
       window.addEventListener("blur", () => {
@@ -794,44 +1063,51 @@ class WPlaceBot {
     globalThis.fetch = async (...arguments_) => {
       const response = await originalFetch(...arguments_);
       const url = typeof arguments_[0] === "string" ? arguments_[0] : arguments_[0].url;
-      const responseClone = response.clone();
-      setTimeout(async () => {
+      setTimeout(() => {
         const pixelMatch = pixelRegExp.exec(url);
         if (pixelMatch) {
           for (let index = 0;index < this.markerPixelPositionResolvers.length; index++)
-            this.markerPixelPositionResolvers[index](new WorldPosition(+pixelMatch[1], +pixelMatch[2], +pixelMatch[3], +pixelMatch[4]));
+            this.markerPixelPositionResolvers[index](new WorldPosition(this, +pixelMatch[1], +pixelMatch[2], +pixelMatch[3], +pixelMatch[4]));
           this.markerPixelPositionResolvers.length = 0;
-          const data = await responseClone.json();
-          for (let index = 0;index < this.markerPixelDataResolvers.length; index++)
-            this.markerPixelDataResolvers[index](data);
-          this.markerPixelDataResolvers.length = 0;
           return;
         }
       }, 0);
       return response;
     };
   }
-  getMarkerScreenPosition() {
-    const marker = document.querySelector(".maplibregl-marker.z-20");
-    if (!marker)
-      throw new NoMarkerError(this);
-    const rect = marker.getBoundingClientRect();
-    return {
-      x: rect.width / 2 + rect.left,
-      y: rect.bottom - 7
-    };
-  }
-  onMove() {
-    if (!this.image || !this.startPosition)
+  estimateSize() {
+    if (this.estimatingSize)
       return;
-    this.startPosition = undefined;
-    this.startScreenPosition = undefined;
-    this.pixelSize = 0;
-    this.image = undefined;
-    this.tasks.length = 0;
-    this.overlay.update();
-    this.widget.updateText();
-    this.widget.setDisabled("draw", true);
+    this.anchorWorldPosition = undefined;
+    this.estimatingSize = true;
+    return this.widget.run("Adjusting", async () => {
+      await this.waitForUnfocus();
+      await this.closeAll();
+      const $star = document.querySelector(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center");
+      this.anchorWorldPosition = await this.clickAndGetPixelWorldPosition($star ? this.anchorScreenPosition : { x: 12, y: 12 });
+      if (!$star) {
+        document.querySelector("button.btn-soft:nth-child(2)").click();
+        while (!document.querySelector(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center"))
+          await wait(100);
+      }
+      const markerScreenPosition2 = {
+        x: this.anchorScreenPosition.x + 1e4,
+        y: this.anchorScreenPosition.y
+      };
+      const markerPosition2 = await this.clickAndGetPixelWorldPosition(markerScreenPosition2);
+      this.pixelSize = (markerScreenPosition2.x - this.anchorScreenPosition.x) / (markerPosition2.globalX - this.anchorWorldPosition.globalX);
+      this.widget.updateImages();
+    }, () => {
+      this.estimatingSize = false;
+    });
+  }
+  async closeAll() {
+    for (const button of document.querySelectorAll("button")) {
+      if (button.innerHTML === "✕" || button.innerHTML === `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-4"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"></path></svg><!---->`) {
+        button.click();
+        await wait(1);
+      }
+    }
   }
 }
 
@@ -844,81 +1120,151 @@ var style_default = `:root {
   --main: #0069ff;
   --text-invert: #ffffff;
   --text: #394e6a;
+  --resize: 2px;
 }
 
-.wbot-widget {
+/** Widget */
+.wwidget {
   background-color: var(--background);
   color: var(--text);
   left: 0;
   position: fixed;
   top: 0;
   width: 256px;
-  z-index: 9998;
+  z-index: 10;
 }
-.wbot-widget .content > * {
-  align-items: center;
-  display: flex;
-  height: 24px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  width: 100%;
-}
-.wbot-widget button,
-.wbot-widget input {
-  align-items: center;
-  cursor: pointer;
-  display: flex;
-  height: 24px;
-  justify-content: center;
-  padding: 0 4px;
-  width: 100%;
-}
-.wbot-widget button:hover,
-.wbot-widget input:hover {
-  background-color: var(--hover);
-  transition: background-color 0.5s;
-}
-.wbot-widget button:disabled,
-.wbot-widget input:disabled {
-  background-color: var(--disabled);
-  cursor: no-drop;
-}
-.wbot-widget .p {
-  padding: 0 8px;
-}
-.wbot-widget .move {
+.wwidget .move {
   background-color: var(--main);
   color: var(--text-invert);
   cursor: all-scroll;
   width: 100%;
 }
-.wbot-widget .move .minimize {
+.wwidget .move .minimize {
   margin-left: auto;
   width: 24px;
+  display: block;
 }
-.wbot-widget .move .minimize:hover {
+.wwidget .move .minimize:hover {
   background-color: var(--main-hover);
 }
-.wbot-widget .scale {
-  width: 80px;
+.wwidget .images {
+  height: auto;
+  flex-direction: column;
+  max-height: 300px;
+  overflow-y: auto;
 }
-.wbot-widget .strategy {
+.wwidget .images .image {
+  display: flex;
+  align-items: center;
+  height: 64px;
+  width: 100%;
+}
+.wwidget .images .image img {
+  height: 64px;
+  margin: 0 auto;
+  cursor: pointer;
+}
+.wwidget .images .image button {
+  height: 64px;
+  width: 32px;
+  font-size: 24px;
+  font-weight: bolder;
+}
+
+/** Image */
+.wimage {
+  left: 0;
+  position: fixed;
+  top: 0;
+  z-index: 9;
+  box-shadow: inset var(--main) 0 0 0 1px;
+  cursor: all-scroll;
+}
+.wimage .wsettings {
+  background-color: var(--background);
+  color: var(--text);
+  display: none;
+  position: absolute;
+  width: 100%;
+}
+.wimage:hover .wsettings {
+  display: block;
+}
+
+/* Settings */
+.wsettings > * {
+  align-items: center;
+  display: flex;
+  height: 24px;
+  justify-content: center;
+  overflow: hidden;
   text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+.wsettings button, .wsettings input {
+  cursor: pointer;
+  transition: background-color 0.5s;
+} 
+.wsettings button:hover, .wsettings input:hover {
+  background-color: var(--hover);
+} 
+.wsettings button:disabled, .wsettings input:disabled {
+  background-color: var(--disabled);
+  cursor: no-drop;
+}
+
+.wsettings .progress {
+  position: relative;
+}
+.wsettings .progress div {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  background-color: var(--main);
+  transform-origin: left;
+}
+.wsettings .progress span {
+  z-index: 0;
 }
 
 
+/* Utility */
+.wp {
+  padding: 0 8px;
+}
 .hidden {
   display: none;
 }
-
-.wbot-overlay {
-  border: 1px solid var(--main);
-  left: 0;
-  pointer-events: none;
-  position: fixed;
+.resize {
+  height: calc(100% - var(--resize) - var(--resize));
+  width: calc(100% - var(--resize) - var(--resize));
+  position: absolute;
+}
+.resize.n {
+  cursor: n-resize;
   top: 0;
-  z-index: 9998;
+  left: var(--resize);
+  height: var(--resize);
+}
+.resize.e {
+  cursor: e-resize;
+  top: var(--resize);
+  right: 0;
+  width: var(--resize);
+}
+.resize.s {
+  cursor: s-resize;
+  left: var(--resize);
+  bottom: 0;
+  height: var(--resize);
+}
+.resize.w {
+  cursor: w-resize;
+  top: var(--resize);
+  left: 0;
+  width: var(--resize);
 }`;
 
 // src/index.ts

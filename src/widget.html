@@ -1,25 +1,15 @@
 <div class="move">
-  <button class="minimize">🗕</button>
+  <button class="minimize">-</button>
 </div>
-<div class="content">
-  <button class="select-image">Add image</button>
+<div class="wsettings">
+  <div class="wp wstatus"></div>
+  <div class="progress"><div></div><span></span></div>
   <button class="draw" disabled>Draw</button>
   <select class="strategy">
-    <option value="RANDOM" selected>Random</option>
-    <option value="DOWN">Down</option>
-    <option value="UP">Up</option>
-    <option value="LEFT">Left</option>
-    <option value="RIGHT">Right</option>
-    <option value="SPIRAL_FROM_CENTER">Spiral from center</option>
-    <option value="SPIRAL_TO_CENTER">Spiral to center</option>
+    <option value="SEQUENTIAL" selected>Sequential</option>
+    <option value="ALL">All</option>
+    <option value="PERCENTAGE">Percentage</option>
   </select>
-  <label class="p">Scale:&nbsp;<input class="scale" type="number" />%</label>
-  <label class="p"
-    >Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"
-  /></label>
-  <div class="colors"></div>
-  <div class="eta p">ETA:&nbsp;<span class="value"></span></div>
-  <div class="progress p">Progress:&nbsp;<span class="value"></span></div>
-  <progress max="100"></progress>
-  <div class="wstatus p"></div>
+  <div class="images"></div>
+  <button class="add-image" disabled>Add image</button>
 </div>

@@ -1,15 +1,16 @@
+import { Base } from '@softsky/utils'
+
 import { WPlaceBot } from './bot'
-import { NoMarkerError } from './errors'
+// @ts-ignore
+import html from './image.html' with { type: 'text' }
 import { Pixels } from './pixels'
-import { Position } from './types'
-import { SPACE_EVENT, strategyPositionIterator, wait } from './utilities'
-import { WorldPosition } from './world-position'
+import { Position, WorldPosition } from './world-position'
 
 export type DrawTask = Position & {
   buttonId: string
 }
 
-export enum Strategy {
+export enum ImageStrategy {
   RANDOM = 'RANDOM',
   DOWN = 'DOWN',
   UP = 'UP',
@@ -19,7 +20,7 @@ export enum Strategy {
   SPIRAL_TO_CENTER = 'SPIRAL_TO_CENTER',
 }
 
-export class BotImage {
+export class BotImage extends Base {
   public static async fromJSON(
     bot: WPlaceBot,
     data: ReturnType<BotImage['toJSON']>,
@@ -34,23 +35,114 @@ export class BotImage {
     )
   }
 
-  public readonly element = document.createElement('canvas')
-  public readonly context = this.element.getContext('2d')!
+  public readonly element = document.createElement('div')
+  public readonly canvas
+  public readonly context
 
   /** Pixels left to draw */
   public tasks: DrawTask[] = []
 
+  /** Moving/resizing image */
+  protected moveInfo?: {
+    globalX?: number
+    globalY?: number
+    width?: number
+    height?: number
+    clientX: number
+    clientY: number
+  }
+
   public constructor(
-    public bot: WPlaceBot,
+    protected bot: WPlaceBot,
     public position: WorldPosition,
     public pixels: Pixels,
-    public strategy = Strategy.RANDOM,
+    public strategy = ImageStrategy.RANDOM,
     public opacity = 50,
     public drawTransparentPixels = false,
   ) {
+    super()
     document.body.append(this.element)
-    this.element.classList.add('wbot-overlay')
+    this.element.innerHTML = html as string
+    this.element.classList.add('wimage')
+    this.canvas = this.element.querySelector('canvas')!
+    this.context = this.canvas.getContext('2d')!
+
+    // Strategy
+    const $strategy =
+      this.element.querySelector<HTMLSelectElement>('.strategy')!
+    $strategy.addEventListener('change', () => {
+      this.strategy = $strategy.value as ImageStrategy
+      this.bot.save()
+    })
+
+    // Opacity
+    const $opacity = this.element.querySelector<HTMLInputElement>('.opacity')!
+    $opacity.addEventListener('input', () => {
+      this.opacity = $opacity.valueAsNumber
+      this.update()
+      this.bot.save()
+    })
+
+    // Reset
+    this.element
+      .querySelector<HTMLButtonElement>('.reset-size')!
+      .addEventListener('click', () => {
+        this.pixels.width = this.pixels.image.naturalWidth
+        this.pixels.update()
+        this.update()
+        this.bot.save()
+      })
+
+    // drawTransparent
+    const $drawTransparent =
+      this.element.querySelector<HTMLInputElement>('.draw-transparent')!
+    $drawTransparent.addEventListener('click', () => {
+      this.drawTransparentPixels = $drawTransparent.checked
+      this.bot.save()
+    })
+
+    // Move
+    this.canvas.addEventListener('mousedown', (event) => {
+      this.moveInfo = {
+        globalX: this.position.globalX,
+        globalY: this.position.globalY,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      }
+    })
+    this.registerEvent(document, 'mouseup', () => {
+      this.moveInfo = undefined
+    })
+    this.registerEvent(document, 'mousemove', (event) => {
+      if (this.moveInfo)
+        this.move((event as MouseEvent).clientX, (event as MouseEvent).clientY)
+    })
+
+    // Resize
+    for (const $resize of this.element.querySelectorAll<HTMLDivElement>(
+      '.resize',
+    )) {
+      $resize.addEventListener('mousedown', (event) => {
+        this.moveInfo = {
+          clientX: event.clientX,
+          clientY: event.clientY,
+        }
+        if ($resize.classList.contains('n')) {
+          this.moveInfo.height = this.pixels.height
+          this.moveInfo.globalY = this.position.globalY
+        }
+        if ($resize.classList.contains('e'))
+          this.moveInfo.width = this.pixels.width
+        if ($resize.classList.contains('s'))
+          this.moveInfo.height = this.pixels.height
+        if ($resize.classList.contains('w')) {
+          this.moveInfo.width = this.pixels.width
+          this.moveInfo.globalX = this.position.globalX
+        }
+      })
+    }
     this.update()
+    void this.updateTasks()
   }
 
   public toJSON() {
@@ -64,85 +156,43 @@ export class BotImage {
   }
 
   /** Calculates everything we need to do. Very expensive task! */
-  public updateTasks() {
-    return this.bot.widget.runWithStatusAsync('Map reading', async () => {
-      if (!this.bot.anchorWorldPosition || !this.bot.anchorScreenPosition)
-        throw new NoMarkerError(this.bot)
-      this.tasks.length = 0
-      const position = this.position.clone()
-      for (const { x, y } of strategyPositionIterator(
-        this.pixels.pixels.length,
-        this.pixels.pixels[0]!.length,
-        this.strategy,
-      )) {
-        const color = this.pixels.pixels[y]![x]!
-        position.globalX = this.position.globalX + x
-        position.globalY = this.position.globalY + y
-        const mapColor = await position.getMapColor()
-        if (color.buttonId !== mapColor.buttonId)
-          this.tasks.push({
-            ...position.toScreenPosition(),
-            buttonId: color.buttonId,
-          })
+  public async updateTasks() {
+    this.tasks.length = 0
+    const position = this.position.clone()
+    for (const { x, y } of this.strategyPositionIterator()) {
+      const color = this.pixels.pixels[y]![x]!
+      position.globalX = this.position.globalX + x
+      position.globalY = this.position.globalY + y
+      const mapColor = await position.getMapColor()
+      if (
+        color.buttonId !== mapColor.buttonId &&
+        (this.drawTransparentPixels || color.a !== 0)
+      ) {
+        const { x, y } = position.toScreenPosition()
+        this.tasks.push({
+          x,
+          y,
+          buttonId: color.buttonId,
+        })
       }
-    })
-  }
-
-  /** Start drawing */
-  public async draw() {
-    this.bot.widget.status = ''
-    const prevent = (event: MouseEvent) => {
-      if (!event.shiftKey) event.stopPropagation()
     }
-    globalThis.addEventListener('mousemove', prevent, true)
-    return this.bot.widget.runWithStatusAsync(
-      'Drawing',
-      async () => {
-        this.bot.widget.setDisabled('draw', true)
-        await this.bot.updateColors()
-        await this.updateTasks()
-        let index = 0
-        for (
-          ;
-          index < this.tasks.length && !document.querySelector('ol');
-          index++
-        ) {
-          const task = this.tasks[index]!
-          ;(document.getElementById(task.buttonId) as HTMLButtonElement).click()
-          document.documentElement.dispatchEvent(
-            new MouseEvent('mousemove', {
-              bubbles: true,
-              clientX: task.x,
-              clientY: task.y,
-              shiftKey: true,
-            }),
-          )
-          document.documentElement.dispatchEvent(
-            new KeyboardEvent('keydown', SPACE_EVENT),
-          )
-          document.documentElement.dispatchEvent(
-            new KeyboardEvent('keyup', SPACE_EVENT),
-          )
-          await wait(1)
-        }
-        this.tasks.splice(0, index)
-        this.bot.widget.updateText()
-        this.bot.save()
-      },
-      () => {
-        globalThis.removeEventListener('mousemove', prevent, true)
-        this.bot.widget.setDisabled('draw', false)
-      },
-    )
+    this.update()
   }
 
   /** Update canvas */
   public update() {
-    if (this.bot.pixelSize === 0 || !this.bot.anchorScreenPosition) return
-    this.element.style.transform = `translate(${this.bot.anchorScreenPosition.x}px, ${this.bot.anchorScreenPosition.y}px)`
-    this.element.width = this.bot.pixelSize * this.pixels.pixels[0]!.length
-    this.element.height = this.bot.pixelSize * this.pixels.pixels.length
-    this.context.clearRect(0, 0, this.element.width, this.element.height)
+    const halfPixel = this.bot.pixelSize / 2
+    try {
+      // Might throw if no anchor. Then we just hide all images
+      const { x, y } = this.position.toScreenPosition()
+      this.element.style.transform = `translate(${x - halfPixel}px, ${y - halfPixel}px)`
+      this.element.classList.remove('hidden')
+    } catch {
+      this.element.classList.add('hidden')
+    }
+    this.canvas.width = this.bot.pixelSize * this.pixels.pixels[0]!.length
+    this.canvas.height = this.bot.pixelSize * this.pixels.pixels.length
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height)
     for (let y = 0; y < this.pixels.pixels.length; y++) {
       const row = this.pixels.pixels[y]!
       for (let x = 0; x < row.length; x++) {
@@ -155,6 +205,145 @@ export class BotImage {
           this.bot.pixelSize,
           this.bot.pixelSize,
         )
+      }
+    }
+    this.element.querySelector<HTMLSpanElement>(
+      '.reset-size span',
+    )!.textContent = this.pixels.width.toString()
+    this.element.querySelector<HTMLSelectElement>('.strategy')!.value =
+      this.strategy
+    this.element.querySelector<HTMLInputElement>('.opacity')!.valueAsNumber =
+      this.opacity
+    this.element.querySelector<HTMLInputElement>('.draw-transparent')!.checked =
+      this.drawTransparentPixels
+    const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0]!.length
+    const doneTasks = maxTasks - this.tasks.length
+    const percent = ((doneTasks / maxTasks) * 100) | 0
+    this.element.querySelector<HTMLSpanElement>('.progress span')!.textContent =
+      `${doneTasks}/${maxTasks} ${percent}% ETA: ${(this.tasks.length / 120) | 0}:${((this.tasks.length % 120) / 2) | 0}`
+    this.element.querySelector<HTMLDivElement>(
+      '.progress div',
+    )!.style.transform = `scaleX(${percent}%)`
+  }
+
+  /** Removes image. Don't forget to remove from array inside widget. */
+  public destroy() {
+    super.destroy()
+    this.element.remove()
+  }
+
+  /** Resize/move image */
+  protected move(clientX: number, clientY: number) {
+    if (!this.moveInfo) return
+    const deltaX = Math.round(
+      (clientX - this.moveInfo.clientX) / this.bot.pixelSize,
+    )
+    const deltaY = Math.round(
+      (clientY - this.moveInfo.clientY) / this.bot.pixelSize,
+    )
+    if (this.moveInfo.globalX !== undefined) {
+      this.position.globalX = deltaX + this.moveInfo.globalX
+      if (this.moveInfo.width !== undefined)
+        this.pixels.width = Math.max(1, this.moveInfo.width - deltaX)
+    } else if (this.moveInfo.width !== undefined)
+      this.pixels.width = Math.max(1, deltaX + this.moveInfo.width)
+    if (this.moveInfo.globalY !== undefined) {
+      this.position.globalY = deltaY + this.moveInfo.globalY
+      if (this.moveInfo.height !== undefined)
+        this.pixels.height = Math.max(1, this.moveInfo.height - deltaY)
+    } else if (this.moveInfo.height !== undefined)
+      this.pixels.height = Math.max(1, deltaY + this.moveInfo.height)
+    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined)
+      this.pixels.update()
+    this.update()
+    this.bot.save()
+  }
+
+  /** Create iterator that generates positions based on strategy */
+  protected *strategyPositionIterator(): Generator<Position> {
+    const width = this.pixels.pixels[0]!.length
+    const height = this.pixels.pixels.length
+    switch (this.strategy) {
+      case ImageStrategy.DOWN: {
+        for (let y = 0; y < height; y++)
+          for (let x = 0; x < width; x++) yield { x, y }
+        break
+      }
+      case ImageStrategy.UP: {
+        for (let y = height - 1; y >= 0; y--)
+          for (let x = 0; x < width; x++) yield { x, y }
+        break
+      }
+      case ImageStrategy.LEFT: {
+        for (let x = 0; x < width; x++)
+          for (let y = 0; y < height; y++) yield { x, y }
+        break
+      }
+      case ImageStrategy.RIGHT: {
+        for (let x = width - 1; x >= 0; x--)
+          for (let y = 0; y < height; y++) yield { x, y }
+        break
+      }
+      case ImageStrategy.RANDOM: {
+        const positions: Position[] = []
+        for (let y = 0; y < height; y++)
+          for (let x = 0; x < width; x++) positions.push({ x, y })
+        for (let index = positions.length - 1; index >= 0; index--) {
+          const index_ = Math.floor(Math.random() * (index + 1))
+          const temporary = positions[index]!
+          positions[index] = positions[index_]!
+          positions[index_] = temporary
+        }
+        yield* positions
+        break
+      }
+
+      case ImageStrategy.SPIRAL_FROM_CENTER:
+      case ImageStrategy.SPIRAL_TO_CENTER: {
+        const visited = new Set<string>()
+        const total = width * height
+        let x = Math.floor(width / 2)
+        let y = Math.floor(height / 2)
+        const directories = [
+          [1, 0],
+          [0, 1],
+          [-1, 0],
+          [0, -1],
+        ]
+        let directionIndex = 0
+        let steps = 1
+        const inBounds = (x: number, y: number) =>
+          x >= 0 && x < width && y >= 0 && y < height
+        const emit = function* () {
+          let count = 0
+          while (count < total) {
+            for (let twice = 0; twice < 2; twice++) {
+              for (let index = 0; index < steps; index++) {
+                if (inBounds(x, y)) {
+                  const key = `${x},${y}`
+                  if (!visited.has(key)) {
+                    visited.add(key)
+                    yield { x, y }
+                    count++
+                    if (count >= total) return
+                  }
+                }
+                x += directories[directionIndex]![0]!
+                y += directories[directionIndex]![1]!
+              }
+              directionIndex = (directionIndex + 1) % 4
+            }
+            steps++
+          }
+        }
+
+        if (this.strategy === ImageStrategy.SPIRAL_FROM_CENTER) yield* emit()
+        else {
+          const collected = [...emit()]
+          for (let index = collected.length - 1; index >= 0; index--)
+            yield collected[index]!
+        }
+        break
       }
     }
   }

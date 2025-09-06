@@ -3,6 +3,9 @@
   "workspaces": {
     "": {
       "name": "screeps",
+      "dependencies": {
+        "@softsky/utils": "^2.7.3",
+      },
       "devDependencies": {
         "@softsky/configs": "^1.3.4",
       },
@@ -100,6 +103,8 @@
     "@pkgr/core": ["@pkgr/core@0.2.9", "", {}, "sha512-QNqXyfVS2wm9hweSYD2O7F0G06uurj9kZ96TRQE5Y9hU7+tgdZwIkbAKc5Ocy1HxEY2kuDQa6cQ1WRs/O5LFKA=="],
 
     "@softsky/configs": ["@softsky/configs@1.3.4", "", { "dependencies": { "@eslint/js": "^9.30.0", "eslint": "^9.30.0", "eslint-config-prettier": "^10.1.5", "eslint-import-resolver-typescript": "^4.4.4", "eslint-plugin-import-x": "^4.16.1", "eslint-plugin-jsx-a11y": "^6.10.2", "eslint-plugin-prettier": "^5.5.1", "eslint-plugin-unicorn": "^59.0.1", "eslint-plugin-unused-imports": "^4.1.4", "prettier": "^3.6.2", "sass": "^1.89.2", "stylelint": "^16.21.0", "stylelint-config-hudochenkov": "^12.0.0", "stylelint-config-prettier-scss": "^1.0.0", "stylelint-config-standard-scss": "^15.0.1", "stylelint-declaration-block-no-ignored-properties": "^2.8.0", "stylelint-high-performance-animation": "^1.11.0", "stylelint-order": "^7.0.0", "stylelint-prettier": "^5.0.3", "stylelint-scss": "^6.12.1", "typescript": "^5.8.3", "typescript-eslint": "^8.35.1" } }, "sha512-3PcPWehMhC6RR57ondsDxUWxp+YaVh1pSR0fkO096Cv1ArJbUlcdOeTTeeKbKFMVHh2YjpTKNEskc0iIzBT+8Q=="],
+
+    "@softsky/utils": ["@softsky/utils@2.7.3", "", {}, "sha512-iVhXEsPZctl2K4wTg26eY22yatLGkztiwOQcXsKs86X8YpMS+mCahOdZYxJyFS8DS+Gu4Af20y4NrQ6O1yav1A=="],
 
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.0", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-VyyPYFlOMNylG45GoAe0xDoLwWuowvf92F9kySqzYh8vmYm7D2u4iUJKa1tOUpS70Ku13ASrOkS4ScXFsTaCNQ=="],
 

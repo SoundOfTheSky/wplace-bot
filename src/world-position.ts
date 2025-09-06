@@ -1,11 +1,36 @@
 import { WPlaceBot } from './bot'
-import { NoMarkerError } from './errors'
+import { UnfocusRequiredError } from './errors'
 import { Pixels } from './pixels'
-import { Position } from './types'
+
+export type Position = {
+  x: number
+  y: number
+}
 
 export const WORLD_TILE_SIZE = 1000
 export class WorldPosition {
+  public static fromJSON(
+    bot: WPlaceBot,
+    data: ReturnType<WorldPosition['toJSON']>,
+  ) {
+    return new WorldPosition(bot, ...data)
+  }
+
+  public static fromScreenPosition(bot: WPlaceBot, position: Position) {
+    if (!bot.anchorWorldPosition) throw new UnfocusRequiredError(bot)
+    return new WorldPosition(
+      bot,
+      (bot.anchorWorldPosition.globalX +
+        (position.x - bot.anchorScreenPosition.x) / bot.pixelSize) |
+        0,
+      (bot.anchorWorldPosition.globalY +
+        (position.y - bot.anchorScreenPosition.y) / bot.pixelSize) |
+        0,
+    )
+  }
+
   public globalX = 0
+
   public globalY = 0
 
   public get tileX(): number {
@@ -52,42 +77,39 @@ export class WorldPosition {
     }
   }
 
-  public static fromJSON(
-    bot: WPlaceBot,
-    data: ReturnType<WorldPosition['toJSON']>,
-  ) {
-    return new WorldPosition(bot, ...data)
-  }
-
   public toScreenPosition(): Position {
-    if (!this.bot.anchorWorldPosition || !this.bot.anchorScreenPosition)
-      throw new NoMarkerError(this.bot)
-    const halfPixel = this.bot.pixelSize / 2
+    if (!this.bot.anchorWorldPosition) throw new UnfocusRequiredError(this.bot)
     return {
       x:
         (this.globalX - this.bot.anchorWorldPosition.globalX) *
           this.bot.pixelSize +
-        this.bot.anchorScreenPosition.x +
-        halfPixel,
+        this.bot.anchorScreenPosition.x,
       y:
         (this.globalY - this.bot.anchorWorldPosition.globalY) *
           this.bot.pixelSize +
-        this.bot.anchorScreenPosition.y +
-        halfPixel,
+        this.bot.anchorScreenPosition.y,
     }
   }
 
   public async getMapColor() {
     const key = this.tileX + '/' + this.tileY
-    let map = this.bot.maps.get(key)
+    let map = this.bot.mapsCache.get(key)
     if (!map) {
       map = await Pixels.fromJSON(this.bot, {
-        scalePixelDelta: 0,
-        url: `https://backend.wplace.live/files/s0/tiles/${this.tileX}/${this.tileY}.png`,
+        url: `https://backend.wplace.live/files/s0/tiles/${key}.png`,
       })
-      this.bot.maps.set(key, map)
+      this.bot.mapsCache.set(key, map)
     }
     return map.pixels[this.y]![this.x]!
+  }
+
+  public scrollScreenTo() {
+    const { x, y } = this.toScreenPosition()
+    console.log(x, y)
+    this.bot.moveMap({
+      x: -x,
+      y: -y,
+    })
   }
 
   public clone() {
