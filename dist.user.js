@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      3.1.3
+// @version      3.1.2
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -639,7 +639,6 @@ class WPlaceBot {
         }
       }, 500);
     });
-    await wait(500);
     let moving = false;
     const canvas = document.querySelector(".maplibregl-canvas");
     canvas.addEventListener("wheel", () => {
@@ -785,19 +784,10 @@ class WPlaceBot {
   }
   registerFetchInterceptor() {
     const originalFetch = globalThis.fetch;
-    const fuckingHateThisWebsite = new Map;
-    setInterval(() => {
-      fuckingHateThisWebsite.clear();
-    }, 1000);
     const pixelRegExp = /https:\/\/backend.wplace.live\/s\d+\/pixel\/(\d+)\/(\d+)\?x=(\d+)&y=(\d+)/;
     globalThis.fetch = async (...arguments_) => {
+      const response = await originalFetch(...arguments_);
       const url = typeof arguments_[0] === "string" ? arguments_[0] : arguments_[0].url;
-      let response = await fuckingHateThisWebsite.get(url)?.then((x) => x.clone());
-      if (!response) {
-        const request = originalFetch(...arguments_);
-        fuckingHateThisWebsite.set(url, request);
-        response = await request;
-      }
       const responseClone = response.clone();
       setTimeout(async () => {
         const pixelMatch = pixelRegExp.exec(url);

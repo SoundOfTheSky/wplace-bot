@@ -230,7 +230,6 @@ export class WPlaceBot {
         }
       }, 500)
     })
-    await wait(500)
     let moving = false
     const canvas =
       document.querySelector<HTMLCanvasElement>('.maplibregl-canvas')!
@@ -450,26 +449,14 @@ export class WPlaceBot {
   /** Start listening to fetch requests */
   protected registerFetchInterceptor() {
     const originalFetch = globalThis.fetch
-    /** Don't let website fucking kill itself */
-    const fuckingHateThisWebsite = new Map<string, Promise<Response>>()
-    setInterval(() => {
-      fuckingHateThisWebsite.clear()
-    }, 1000)
     const pixelRegExp =
       /https:\/\/backend.wplace.live\/s\d+\/pixel\/(\d+)\/(\d+)\?x=(\d+)&y=(\d+)/
     globalThis.fetch = async (...arguments_) => {
+      const response = await originalFetch(...arguments_)
       const url =
         typeof arguments_[0] === 'string'
           ? arguments_[0]
           : (arguments_[0] as Request).url
-      let response = await fuckingHateThisWebsite
-        .get(url)
-        ?.then((x) => x.clone())
-      if (!response) {
-        const request = originalFetch(...arguments_)
-        fuckingHateThisWebsite.set(url, request)
-        response = await request
-      }
       const responseClone = response.clone()
       setTimeout(async () => {
         const pixelMatch = pixelRegExp.exec(url)
