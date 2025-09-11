@@ -8,10 +8,24 @@ export class WPlaceBotError extends Error {
   }
 }
 
-export class NoMarkerError extends WPlaceBotError {
-  public name = 'NoMarkerError'
+export class NotInitializedError extends WPlaceBotError {
+  public name = 'NotInitializedError'
   public constructor(bot: WPlaceBot) {
-    super('❌ Place marker on the map', bot)
+    super('❌ Not initialized', bot)
+  }
+}
+
+export class StarsAreTooCloseError extends WPlaceBotError {
+  public name = 'StarsAreTooCloseError'
+  public constructor(bot: WPlaceBot) {
+    super('❌ Stars are too close', bot)
+  }
+}
+
+export class ZoomTooFarError extends WPlaceBotError {
+  public name = 'ZoomTooFarError'
+  public constructor(bot: WPlaceBot) {
+    super('❌ Zoom is too far', bot)
   }
 }
 
@@ -19,19 +33,5 @@ export class NoImageError extends WPlaceBotError {
   public name = 'NoImageError'
   public constructor(bot: WPlaceBot) {
     super('❌ No image is selected', bot)
-  }
-}
-
-export class NoColorsError extends WPlaceBotError {
-  public name = 'NoColorsError'
-  public constructor(bot: WPlaceBot) {
-    super('❌ Can not read colors panel', bot)
-  }
-}
-
-export class ApiError extends WPlaceBotError {
-  public name = 'ApiError'
-  public constructor(bot: WPlaceBot) {
-    super('❌ Can not connect to server', bot)
   }
 }

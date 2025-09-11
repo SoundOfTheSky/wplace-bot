@@ -1,26 +1,42 @@
+import { swap } from '@softsky/utils'
+
+import { Base } from './base'
 import { WPlaceBot } from './bot'
-import { NoImageError, WPlaceBotError } from './errors'
-import { Strategy } from './types'
-// @ts-ignore
+import { WPlaceBotError } from './errors'
+import { BotImage } from './image'
+import { Pixels } from './pixels'
 import html from './widget.html' with { type: 'text' }
+import { WorldPosition } from './world-position'
+
+export enum BotStrategy {
+  ALL = 'ALL',
+  PERCENTAGE = 'PERCENTAGE',
+  SEQUENTIAL = 'SEQUENTIAL',
+}
 
 /** Widget UI with buttons */
-export class Widget {
+export class Widget extends Base {
+  public readonly element = document.createElement('div')
+
   public x = 64
 
   public y = 64
 
   public get status(): string {
-    return this.element.querySelector('.wstatus')!.innerHTML
+    return this.$status.innerHTML
   }
 
   public set status(value: string) {
-    this.element.querySelector('.wstatus')!.innerHTML = value
+    this.$status.innerHTML = value
   }
 
-  public element = document.createElement('div')
+  /** Strategy how to distribute draw calls between images */
+  public strategy = BotStrategy.SEQUENTIAL
 
-  /** Moving/resizing overlay */
+  /** Images on canvas */
+  public images: BotImage[] = []
+
+  /** Moving widget */
   protected moveInfo?: {
     x: number
     y: number
@@ -28,56 +44,149 @@ export class Widget {
     originalY: number
   }
 
+  protected readonly $settings!: HTMLDivElement
+  protected readonly $status!: HTMLDivElement
+  protected readonly $minimize!: HTMLButtonElement
+  protected readonly $move!: HTMLDivElement
+  protected readonly $draw!: HTMLButtonElement
+  protected readonly $addImage!: HTMLButtonElement
+  protected readonly $strategy!: HTMLInputElement
+  protected readonly $progressLine!: HTMLDivElement
+  protected readonly $progressText!: HTMLSpanElement
+  protected readonly $images!: HTMLDivElement
+
   public constructor(protected bot: WPlaceBot) {
-    this.element.classList.add('wbot-widget', 'hidden')
+    super()
+    this.element.classList.add('wwidget')
+    this.element.innerHTML = html as unknown as string
     document.body.append(this.element)
-    this.element.innerHTML = html as string
+
+    this.populateElementsWithSelector(this.element, {
+      $settings: '.wsettings',
+      $status: '.wstatus',
+      $minimize: '.minimize',
+      $move: '.move',
+      $draw: '.draw',
+      $addImage: '.add-image',
+      $strategy: '.strategy',
+      $progressLine: '.progress div',
+      $progressText: '.progress span',
+      $images: '.images',
+    })
+
     // Move/minimize
-    this.element
-      .querySelector<HTMLButtonElement>('.minimize')!
-      .addEventListener('click', () => {
-        this.minimize()
-      })
-    const $move = this.element.querySelector<HTMLDivElement>('.move')!
-    $move.addEventListener('mousedown', (event) => {
+    this.$minimize.addEventListener('click', () => {
+      this.minimize()
+    })
+    this.$move.addEventListener('mousedown', (event) => {
       this.moveStart(event.clientX, event.clientY)
     })
-    document.addEventListener('mouseup', () => {
+    this.registerEvent(document, 'mouseup', () => {
       this.moveStop()
     })
-    document.addEventListener('mousemove', (event) => {
-      if (this.moveInfo) this.move(event.clientX, event.clientY)
+    this.registerEvent(document, 'mousemove', (event) => {
+      if (this.moveInfo)
+        this.move((event as MouseEvent).clientX, (event as MouseEvent).clientY)
       this.element.style.transform = `translate(${this.x}px, ${this.y}px)`
     })
     this.element.style.transform = `translate(${this.x}px, ${this.y}px)`
 
     // Button actions
-    this.element
-      .querySelector('.select-image')!
-      .addEventListener('click', () => this.bot.selectImage())
-    this.element
-      .querySelector('.draw')!
-      .addEventListener('click', () => this.bot.draw())
-    this.element
-      .querySelector('.count-users')!
-      .addEventListener('click', () => this.bot.countUsers())
-    const $scale = this.element.querySelector<HTMLInputElement>('.scale')!
-    $scale.addEventListener('change', () => {
-      if (!this.bot.image) return
-      this.bot.image.scale = $scale.valueAsNumber
-      this.bot.image.update()
-      this.bot.overlay.update()
+    this.$draw.addEventListener('click', () => this.bot.draw())
+    this.$addImage.addEventListener('click', () => this.addImage())
+    this.$strategy.addEventListener('change', () => {
+      this.strategy = this.$strategy.value as BotStrategy
     })
-    const $opacity = this.element.querySelector<HTMLInputElement>('.opacity')!
-    $opacity.addEventListener('input', () => {
-      this.bot.overlay.opacity = $opacity.valueAsNumber
-      this.bot.overlay.update()
-    })
-    const $strategy = this.element.querySelector<HTMLInputElement>('.strategy')!
-    $strategy.addEventListener('change', () => {
-      this.bot.strategy = $strategy.value as Strategy
-    })
-    this.updateText()
+
+    this.update()
+  }
+
+  /** Add image handler */
+  public addImage() {
+    this.setDisabled('add-image', true)
+    return this.run(
+      'Adding image',
+      async () => {
+        await this.bot.updateColors()
+        const image = new BotImage(
+          this.bot,
+          WorldPosition.fromScreenPosition(this.bot, {
+            x: 256,
+            y: 32,
+          }),
+          await Pixels.fromSelectImage(this.bot),
+        )
+        this.images.push(image)
+        await image.updateTasks()
+        this.bot.save()
+      },
+      () => {
+        this.setDisabled('add-image', false)
+      },
+    )
+  }
+
+  /** Update widget position and contents */
+  public update() {
+    this.$strategy.value = this.strategy
+    // Progress
+    let maxTasks = 0
+    let totalTasks = 0
+    for (let index = 0; index < this.images.length; index++) {
+      const image = this.images[index]!
+      maxTasks += image.pixels.pixels.length * image.pixels.pixels[0]!.length
+      totalTasks += image.tasks.length
+    }
+    const doneTasks = maxTasks - totalTasks
+    const percent = ((doneTasks / maxTasks) * 100) | 0
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${(totalTasks / 120) | 0}h`
+    this.$progressLine.style.transform = `scaleX(${percent}%)`
+
+    // Images
+    this.$images.innerHTML = ''
+    for (let index = 0; index < this.images.length; index++) {
+      const image = this.images[index]!
+      const $image = document.createElement('div')
+      this.$images.append($image)
+      $image.className = 'image'
+      $image.innerHTML = `<img src="${image.pixels.image.src}">
+  <button class="up" title="Move up" ${index === 0 ? 'disabled' : ''}>▴</button>
+  <button class="down" title="Move down" ${index === this.images.length - 1 ? 'disabled' : ''}>▾</button>
+  <button class="delete" title="Move delete">X</button>`
+      $image
+        .querySelector<HTMLButtonElement>('img')!
+        .addEventListener('click', () => {
+          image.position.scrollScreenTo()
+        })
+      $image
+        .querySelector<HTMLButtonElement>('.up')!
+        .addEventListener('click', () => {
+          swap(this.images, index, index - 1)
+          this.update()
+          this.bot.save()
+        })
+      $image
+        .querySelector<HTMLButtonElement>('.down')!
+        .addEventListener('click', () => {
+          swap(this.images, index, index + 1)
+          this.update()
+          this.bot.save()
+        })
+      $image
+        .querySelector<HTMLButtonElement>('.delete')!
+        .addEventListener('click', () => {
+          this.images.splice(index, 1)
+          image.destroy()
+          this.update()
+          this.bot.save()
+        })
+    }
+  }
+
+  /** Update images position and contents */
+  public updateImages() {
+    for (let index = 0; index < this.images.length; index++)
+      this.images[index]!.update()
   }
 
   /** Disable/enable element by class name */
@@ -86,49 +195,8 @@ export class Widget {
       disabled
   }
 
-  /** Draw colors to buy */
-  public updateColorsToBuy() {
-    if (!this.bot.image) throw new NoImageError(this.bot)
-    let sum = 0
-    for (let index = 0; index < this.bot.image.colorsToBuy.length; index++)
-      sum += this.bot.image.colorsToBuy[index]![1]
-    const $colors = this.element.querySelector('.colors')!
-    $colors.innerHTML = ''
-    for (let index = 0; index < this.bot.image.colorsToBuy.length; index++) {
-      const [color, amount] = this.bot.image.colorsToBuy[index]!
-      const $div = document.createElement('button')
-      $colors.append($div)
-      $div.style.backgroundColor = `rgb(${color.r} ${color.g} ${color.b})`
-      $div.style.width = (amount / sum) * 100 + '%'
-      $div.addEventListener('click', async () => {
-        await this.bot.openColors()
-        document.getElementById(color.buttonId)?.click()
-      })
-    }
-  }
-
-  /** Update values in widget */
-  public updateText() {
-    if (this.bot.image) this.updateColorsToBuy()
-    this.element.querySelector<HTMLInputElement>('.strategy')!.value =
-      this.bot.strategy
-    const maxTasks = this.bot.image
-      ? this.bot.image.pixels.length * this.bot.image.pixels[0]!.length
-      : 0
-    this.element.querySelector<HTMLInputElement>('.scale')!.valueAsNumber =
-      this.bot.image?.scale ?? 100
-    const doneTasks = maxTasks - this.bot.tasks.length
-    const percent = ((doneTasks / maxTasks) * 100) | 0
-    this.element.querySelector<HTMLSpanElement>('.eta .value')!.textContent =
-      `${(this.bot.tasks.length / 120) | 0}h ${((this.bot.tasks.length % 120) / 2) | 0}m`
-    this.element.querySelector<HTMLSpanElement>(
-      '.progress .value',
-    )!.textContent = `${percent}% ${doneTasks}/${maxTasks}`
-    this.element.querySelector<HTMLProgressElement>('progress')!.value = percent
-  }
-
   /** Show status of running task */
-  public async runWithStatusAsync<T>(
+  public async run<T>(
     status: string,
     run: () => Promise<T>,
     fin?: () => unknown,
@@ -138,7 +206,7 @@ export class Widget {
     this.status = `${emoji} ${status}`
     try {
       const result = await run()
-      this.status = originalStatus || `✅ ${status}`
+      this.status = originalStatus
       return result
     } catch (error) {
       if (!(error instanceof WPlaceBotError)) {
@@ -151,10 +219,21 @@ export class Widget {
     }
   }
 
-  protected minimize() {
-    this.element.querySelector('.content')!.classList.toggle('hidden')
+  public toJSON() {
+    return {
+      x: this.x,
+      y: this.y,
+      images: this.images.map((x) => x.toJSON()),
+      strategy: this.strategy,
+    }
   }
 
+  /** Hides content */
+  protected minimize() {
+    this.$settings.classList.toggle('hidden')
+  }
+
+  /** movestart handler */
   protected moveStart(x: number, y: number) {
     this.moveInfo = {
       x: this.x,
@@ -164,10 +243,12 @@ export class Widget {
     }
   }
 
+  /** movestop handler */
   protected moveStop() {
     this.moveInfo = undefined
   }
 
+  /** move handler */
   protected move(x: number, y: number) {
     if (!this.moveInfo) return
     this.x = this.moveInfo.x + x - this.moveInfo.originalX
