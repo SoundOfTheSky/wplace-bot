@@ -1,7 +1,5 @@
-import { Base } from '@softsky/utils'
-
+import { Base } from './base'
 import { WPlaceBot } from './bot'
-// @ts-ignore
 import html from './image.html' with { type: 'text' }
 import { Pixels } from './pixels'
 import { Position, WorldPosition } from './world-position'
@@ -36,8 +34,6 @@ export class BotImage extends Base {
   }
 
   public readonly element = document.createElement('div')
-  public readonly canvas
-  public readonly context
 
   /** Pixels left to draw */
   public tasks: DrawTask[] = []
@@ -52,6 +48,16 @@ export class BotImage extends Base {
     clientY: number
   }
 
+  protected readonly $strategy!: HTMLSelectElement
+  protected readonly $opacity!: HTMLInputElement
+  protected readonly $drawTransparent!: HTMLInputElement
+  protected readonly $resetSize!: HTMLButtonElement
+  protected readonly $resetSizeSpan!: HTMLSpanElement
+  protected readonly $progressLine!: HTMLDivElement
+  protected readonly $progressText!: HTMLSpanElement
+  public readonly $canvas!: HTMLCanvasElement
+  public readonly context!: CanvasRenderingContext2D
+
   public constructor(
     protected bot: WPlaceBot,
     public position: WorldPosition,
@@ -61,53 +67,57 @@ export class BotImage extends Base {
     public drawTransparentPixels = false,
   ) {
     super()
-    document.body.append(this.element)
-    this.element.innerHTML = html as string
+    this.element.innerHTML = html as unknown as string
     this.element.classList.add('wimage')
-    this.canvas = this.element.querySelector('canvas')!
-    this.context = this.canvas.getContext('2d')!
+    document.body.append(this.element)
+
+    this.populateElementsWithSelector(this.element, {
+      $strategy: '.strategy',
+      $opacity: '.opacity',
+      $drawTransparent: '.draw-transparent',
+      $resetSize: '.reset-size',
+      $progressLine: '.progress div',
+      $progressText: '.progress span',
+      $canvas: 'canvas',
+    })
+    this.$resetSizeSpan =
+      this.$resetSize.querySelector<HTMLSpanElement>('span')!
+    this.context = this.$canvas.getContext('2d')!
 
     // Strategy
-    const $strategy =
-      this.element.querySelector<HTMLSelectElement>('.strategy')!
-    $strategy.addEventListener('change', () => {
-      this.strategy = $strategy.value as ImageStrategy
+    this.$strategy.addEventListener('change', () => {
+      this.strategy = this.$strategy.value as ImageStrategy
       this.bot.save()
     })
 
     // Opacity
-    const $opacity = this.element.querySelector<HTMLInputElement>('.opacity')!
-    $opacity.addEventListener('input', () => {
-      this.opacity = $opacity.valueAsNumber
+    this.$opacity.addEventListener('input', () => {
+      this.opacity = this.$opacity.valueAsNumber
       this.update()
       this.bot.save()
     })
 
     // Reset
-    this.element
-      .querySelector<HTMLButtonElement>('.reset-size')!
-      .addEventListener('click', () => {
-        this.pixels.width = this.pixels.image.naturalWidth
-        this.pixels.update()
-        this.update()
-        this.bot.save()
-      })
+    this.$resetSize.addEventListener('click', () => {
+      this.pixels.width = this.pixels.image.naturalWidth
+      this.pixels.update()
+      this.update()
+      this.bot.save()
+    })
 
     // drawTransparent
-    const $drawTransparent =
-      this.element.querySelector<HTMLInputElement>('.draw-transparent')!
-    $drawTransparent.addEventListener('click', () => {
-      this.drawTransparentPixels = $drawTransparent.checked
+    this.$drawTransparent.addEventListener('click', () => {
+      this.drawTransparentPixels = this.$drawTransparent.checked
       this.bot.save()
     })
 
     // Move
-    this.canvas.addEventListener('mousedown', (event) => {
+    this.registerEvent(this.$canvas, 'mousedown', (event) => {
       this.moveInfo = {
         globalX: this.position.globalX,
         globalY: this.position.globalY,
-        clientX: event.clientX,
-        clientY: event.clientY,
+        clientX: (event as MouseEvent).clientX,
+        clientY: (event as MouseEvent).clientY,
       }
     })
     this.registerEvent(document, 'mouseup', () => {
@@ -142,7 +152,6 @@ export class BotImage extends Base {
       })
     }
     this.update()
-    void this.updateTasks()
   }
 
   public toJSON() {
@@ -165,18 +174,19 @@ export class BotImage extends Base {
       position.globalY = this.position.globalY + y
       const mapColor = await position.getMapColor()
       if (
-        color.buttonId !== mapColor.buttonId &&
-        (this.drawTransparentPixels || color.a !== 0)
+        color !== mapColor &&
+        (this.drawTransparentPixels || color !== 'color-0')
       ) {
         const { x, y } = position.toScreenPosition()
         this.tasks.push({
           x,
           y,
-          buttonId: color.buttonId,
+          buttonId: color,
         })
       }
     }
     this.update()
+    this.bot.widget.update()
   }
 
   /** Update canvas */
@@ -190,40 +200,29 @@ export class BotImage extends Base {
     } catch {
       this.element.classList.add('hidden')
     }
-    this.canvas.width = this.bot.pixelSize * this.pixels.pixels[0]!.length
-    this.canvas.height = this.bot.pixelSize * this.pixels.pixels.length
-    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height)
-    for (let y = 0; y < this.pixels.pixels.length; y++) {
-      const row = this.pixels.pixels[y]!
-      for (let x = 0; x < row.length; x++) {
-        const pixel = row[x]!
-        this.context.fillStyle = `rgb(${pixel.r} ${pixel.g} ${pixel.b})`
-        this.context.globalAlpha = (pixel.a / 255) * (this.opacity / 100)
-        this.context.fillRect(
-          x * this.bot.pixelSize,
-          y * this.bot.pixelSize,
-          this.bot.pixelSize,
-          this.bot.pixelSize,
-        )
-      }
-    }
-    this.element.querySelector<HTMLSpanElement>(
-      '.reset-size span',
-    )!.textContent = this.pixels.width.toString()
-    this.element.querySelector<HTMLSelectElement>('.strategy')!.value =
-      this.strategy
-    this.element.querySelector<HTMLInputElement>('.opacity')!.valueAsNumber =
-      this.opacity
-    this.element.querySelector<HTMLInputElement>('.draw-transparent')!.checked =
-      this.drawTransparentPixels
+
+    this.$canvas.width = this.bot.pixelSize * this.pixels.width
+    this.$canvas.height = this.bot.pixelSize * this.pixels.height
+    this.context.globalAlpha = this.opacity / 100
+    this.context.imageSmoothingEnabled = false
+    this.context.imageSmoothingQuality = 'low'
+    this.context.drawImage(
+      this.pixels.canvas,
+      0,
+      0,
+      this.$canvas.width,
+      this.$canvas.height,
+    )
+
+    this.$resetSizeSpan.textContent = this.pixels.width.toString()
+    this.$strategy.value = this.strategy
+    this.$opacity.valueAsNumber = this.opacity
+    this.$drawTransparent.checked = this.drawTransparentPixels
     const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0]!.length
     const doneTasks = maxTasks - this.tasks.length
     const percent = ((doneTasks / maxTasks) * 100) | 0
-    this.element.querySelector<HTMLSpanElement>('.progress span')!.textContent =
-      `${doneTasks}/${maxTasks} ${percent}% ETA: ${(this.tasks.length / 120) | 0}:${((this.tasks.length % 120) / 2) | 0}`
-    this.element.querySelector<HTMLDivElement>(
-      '.progress div',
-    )!.style.transform = `scaleX(${percent}%)`
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${(this.tasks.length / 120) | 0}h`
+    this.$progressLine.style.transform = `scaleX(${percent}%)`
   }
 
   /** Removes image. Don't forget to remove from array inside widget. */

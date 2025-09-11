@@ -42,11 +42,15 @@ export class Pixels {
     return new Pixels(bot, image, data.width)
   }
 
+  public canvas = document.createElement('canvas')
+
+  public context = this.canvas.getContext('2d')!
+
   /** Pixels of image. Use update() after changing variables */
-  public pixels!: Color[][]
+  public pixels!: string[][]
 
   /** Colors that are recommended to buy with amount of pixels affected. Sorted. */
-  public readonly colorsToBuy: [Color, number][] = []
+  public readonly colorsToBuy: [string, number][] = []
 
   public readonly resolution: number
 
@@ -70,27 +74,38 @@ export class Pixels {
 
   /** Update pixels of image. Heavy operation! */
   public update() {
-    const canvas = document.createElement('canvas')
-    const context = canvas.getContext('2d')!
-    const colorsToBuy = new Map<Color, number>()
-    canvas.width = this.width
-    canvas.height = this.height
-    context.drawImage(this.image, 0, 0, canvas.width, canvas.height)
-    this.pixels = Array.from(
-      { length: canvas.height },
-      () => new Array(canvas.width) as Color[],
+    this.canvas.width = this.width
+    this.canvas.height = this.height
+    const colorsToBuy = new Map<string, number>()
+    this.context.imageSmoothingEnabled = false
+    this.context.imageSmoothingQuality = 'low'
+    this.context.drawImage(
+      this.image,
+      0,
+      0,
+      this.canvas.width,
+      this.canvas.height,
     )
-    const data = context.getImageData(0, 0, canvas.width, canvas.height).data
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        const index = (y * canvas.width + x) * 4
+    this.pixels = Array.from(
+      { length: this.canvas.height },
+      () => new Array(this.canvas.width) as string[],
+    )
+    const data = this.context.getImageData(
+      0,
+      0,
+      this.canvas.width,
+      this.canvas.height,
+    ).data
+    for (let y = 0; y < this.canvas.height; y++) {
+      for (let x = 0; x < this.canvas.width; x++) {
+        const index = (y * this.canvas.width + x) * 4
         const r = data[index]!
         const g = data[index + 1]!
         const b = data[index + 2]!
         const a = data[index + 3]!
         // Find best Wplace color
         if (a < 100) {
-          this.pixels[y]![x] = this.bot.colors.at(-1)!
+          this.pixels[y]![x] = this.bot.colors.at(-1)!.buttonId
           continue
         }
         let minDelta = Infinity
@@ -110,9 +125,12 @@ export class Pixels {
             minReal = color
           }
         }
-        this.pixels[y]![x] = min!
+        this.pixels[y]![x] = min!.buttonId
         if (minReal!.buttonId !== min!.buttonId)
-          colorsToBuy.set(minReal!, (colorsToBuy.get(minReal!) ?? 0) + 1)
+          colorsToBuy.set(
+            minReal!.buttonId,
+            (colorsToBuy.get(minReal!.buttonId) ?? 0) + 1,
+          )
       }
     }
     this.colorsToBuy.splice(

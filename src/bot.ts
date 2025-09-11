@@ -1,6 +1,6 @@
 import { wait, withTimeout } from '@softsky/utils'
 
-import { NoFavLocation } from './errors'
+import { StarsAreTooCloseError, ZoomTooFarError } from './errors'
 import { BotImage, DrawTask } from './image'
 import { Color, Pixels } from './pixels'
 import { BotStrategy, Widget } from './widget'
@@ -18,35 +18,22 @@ export class WPlaceBot {
   /** WPlace colors. Update with updateColors() */
   public colors: Color[] = []
 
-  /** Position of image to draw */
-  public anchorWorldPosition?: WorldPosition
-
   /** Estimated pixel size */
   public pixelSize = 1
 
   /** Cache of parsed images of world map */
   public mapsCache = new Map<string, Pixels>()
 
-  /** Anchor screen position of anchor world position */
-  public get anchorScreenPosition(): Position {
-    const $favLocation = document.querySelector<HTMLDivElement>(
-      '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
-    )
-    if (!$favLocation) throw new NoFavLocation(this)
-    const [x, y] = $favLocation.style.transform
-      .slice(32, -29)
-      .split(', ')
-      .map((x) => Number.parseInt(x)) as [number, number]
-    return { x, y }
-  }
+  /** World positions of anchors */
+  public anchorsWorldPosition = new Array(2) as WorldPosition[]
+
+  /** Screen positions of anchors*/
+  public anchorsScreenPosition = new Array(2) as Position[]
 
   /** Used to wait for pixel data on marker set */
   protected markerPixelPositionResolvers: ((
     position: WorldPosition,
   ) => unknown)[] = []
-
-  /** Used to not run multiple estimation tasks at the same time */
-  protected estimatingSize = false
 
   /** Used to defer save */
   protected saveTimeout?: ReturnType<typeof setTimeout>
@@ -66,24 +53,33 @@ export class WPlaceBot {
         save = undefined
       }
 
+      // Preinit save
       if (save) {
         this.widget.x = save.widget.x
         this.widget.y = save.widget.y
         this.widget.strategy = save.widget.strategy
       }
-      while (
-        // Canvas
-        !document.querySelector('.maplibregl-canvas') ||
-        // Number of pixels
-        !document.querySelector(
-          '.btn.btn-primary.btn-lg.relative.z-30 canvas',
-        ) ||
-        // Avatar
-        !document.querySelector('.avatar.center-absolute.absolute')
+
+      await this.waitForElement('login', '.avatar.center-absolute.absolute')
+      await this.waitForElement(
+        'pixel count',
+        '.btn.btn-primary.btn-lg.relative.z-30 canvas',
       )
-        await wait(500)
+      const $canvasContainer = await this.waitForElement(
+        'canvas',
+        '.maplibregl-canvas-container',
+      )
+      new MutationObserver(this.onAnchorsMutation.bind(this)).observe(
+        $canvasContainer,
+        {
+          attributes: true,
+          attributeFilter: ['style'],
+          subtree: true,
+          childList: true,
+        },
+      )
       await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
-      await this.estimateSize()
+      await this.loadAnchors()
       await this.updateColors()
 
       // Load images
@@ -96,18 +92,8 @@ export class WPlaceBot {
           this.widget.images.push(image)
           image.update()
         }
-      this.widget.update()
-
-      const $canvas =
-        document.querySelector<HTMLCanvasElement>('.maplibregl-canvas')!
-      // Update images
-      setInterval(() => {
-        this.widget.updateImages()
-      }, 50)
-      // Require to reestimate size on wheel. Sadly.
-      $canvas.addEventListener('wheel', () => {
-        void this.estimateSize()
-      })
+      for (let index = 0; index < this.widget.images.length; index++)
+        await this.widget.images[index]!.updateTasks()
       // Unblock buttons
       this.widget.setDisabled('draw', false)
       this.widget.setDisabled('add-image', false)
@@ -116,12 +102,16 @@ export class WPlaceBot {
 
   /** Start drawing */
   public draw() {
+    if (this.pixelSize < 3) throw new ZoomTooFarError(this)
     this.widget.status = ''
-    const prevent = (event: MouseEvent) => {
+    const prevent = (event: MouseEvent | WheelEvent) => {
       if (!event.shiftKey) event.stopPropagation()
     }
+    const $canvas =
+      document.querySelector<HTMLDivElement>('.maplibregl-canvas')!
     // Stop mouse messing with drawing by capturing event
     globalThis.addEventListener('mousemove', prevent, true)
+    $canvas.addEventListener('wheel', prevent, true)
     return this.widget.run(
       'Drawing',
       async () => {
@@ -198,11 +188,11 @@ export class WPlaceBot {
             }
           }
         }
-        this.widget.updateImages()
         this.widget.update()
       },
       () => {
         globalThis.removeEventListener('mousemove', prevent, true)
+        $canvas.removeEventListener('wheel', prevent, true)
         this.widget.setDisabled('draw', false)
       },
     )
@@ -390,6 +380,7 @@ export class WPlaceBot {
     const originalFetch = globalThis.fetch
     const pixelRegExp =
       /https:\/\/backend.wplace.live\/s\d+\/pixel\/(\d+)\/(\d+)\?x=(\d+)&y=(\d+)/
+    // @ts-ignore
     globalThis.fetch = async (...arguments_) => {
       const response = await originalFetch(...arguments_)
       const url =
@@ -422,53 +413,36 @@ export class WPlaceBot {
   }
 
   /** Estimate size and position of map */
-  protected estimateSize() {
-    if (this.estimatingSize) return
-    this.anchorWorldPosition = undefined
-    this.estimatingSize = true
-    return this.widget.run(
-      'Adjusting',
-      async () => {
-        await this.waitForUnfocus()
-        await this.closeAll()
-        const $star = document.querySelector(
-          '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
-        )
-        // Click star or random position for new star
-        this.anchorWorldPosition = await this.clickAndGetPixelWorldPosition(
-          $star ? this.anchorScreenPosition : { x: 12, y: 12 },
-        )
-        // If no star, create one
-        if (!$star) {
+  protected loadAnchors() {
+    return this.widget.run('Loading positions', async () => {
+      await this.waitForUnfocus()
+      await this.closeAll()
+      const stars = this.getStars()
+      for (let index = 0; index < 2; index++) {
+        let star = stars[index]
+        // Select star's position or create one to put star into
+        const position = star
+          ? star[1]
+          : index === 0
+            ? { x: -20_000, y: -20_000 }
+            : { x: 20_000, y: 20_000 }
+        this.anchorsWorldPosition[index] =
+          await this.clickAndGetPixelWorldPosition(position)
+        // Add star if none found
+        if (!star) {
           // Click "Favorite"
           document
             .querySelector<HTMLButtonElement>('button.btn-soft:nth-child(2)')!
             .click()
-          // Wait for favorite marker to appear
-          while (
-            !document.querySelector(
-              '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
-            )
-          )
+          // Wait for star marker to appear
+          while (!star) {
+            star = this.getStars()[index]
             await wait(100)
+          }
         }
-        // Click second position to compute distance and pixel size
-        const markerScreenPosition2 = {
-          x: this.anchorScreenPosition.x + 10_000,
-          y: this.anchorScreenPosition.y,
-        }
-        const markerPosition2 = await this.clickAndGetPixelWorldPosition(
-          markerScreenPosition2,
-        )
-        this.pixelSize =
-          (markerScreenPosition2.x - this.anchorScreenPosition.x) /
-          (markerPosition2.globalX - this.anchorWorldPosition.globalX)
-        this.widget.updateImages()
-      },
-      () => {
-        this.estimatingSize = false
-      },
-    )
+      }
+      this.onAnchorsMutation()
+    })
   }
 
   /** Closes all popups */
@@ -483,5 +457,73 @@ export class WPlaceBot {
         await wait(1)
       }
     }
+  }
+
+  /** Wait for element to show up in document */
+  protected waitForElement<T extends Element>(
+    name: string,
+    selector: string,
+  ): Promise<T> {
+    return this.widget.run(`Waiting for ${name}`, () => {
+      return new Promise<T>((resolve) => {
+        // If element already exists, resolve immediately
+        const existing = document.querySelector<T>(selector)
+        if (existing) {
+          resolve(existing)
+          return
+        }
+        // Watch for new elements
+        const observer = new MutationObserver(() => {
+          const element = document.querySelector<T>(selector)
+          if (element) {
+            observer.disconnect()
+            resolve(element)
+          }
+        })
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+        })
+      })
+    })
+  }
+
+  /** Handle anchors changes */
+  protected onAnchorsMutation() {
+    const stars = this.getStars()
+    const p1 = this.anchorsWorldPosition[0]
+    const p2 = this.anchorsWorldPosition[1]
+    if (!stars[0] || !stars[1] || !p1 || !p2) return
+    const worldDistance = p2.globalX - p1.globalX
+    if (worldDistance < 500) throw new StarsAreTooCloseError(this)
+    this.anchorsScreenPosition[0] = stars[0][1]
+    this.anchorsScreenPosition[1] = stars[1][1]
+    const s1 = this.anchorsScreenPosition[0]
+    const s2 = this.anchorsScreenPosition[1]
+    this.pixelSize = (s2.x - s1.x) / worldDistance
+    this.widget.updateImages()
+  }
+
+  /** Extracts screen position of star */
+  protected extractScreenPositionFromStar($star: HTMLDivElement) {
+    const [x, y] = $star.style.transform
+      .slice(32, -29)
+      .split(', ')
+      .map((x) => Number.parseInt(x)) as [number, number]
+    return { x, y }
+  }
+
+  /** Get stars that can be used as anchors */
+  protected getStars() {
+    const $stars = [
+      ...document.querySelectorAll<HTMLDivElement>(
+        '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
+      ),
+    ]
+    const stars = $stars.map(
+      ($star) => [$star, this.extractScreenPositionFromStar($star)] as const,
+    )
+    stars.sort((a, b) => a[1].x - b[1].x)
+    return [stars[0], stars.at(-1)] as const
   }
 }

@@ -1,5 +1,5 @@
 import { WPlaceBot } from './bot'
-import { UnfocusRequiredError } from './errors'
+import { NotInitializedError } from './errors'
 import { Pixels } from './pixels'
 
 export type Position = {
@@ -17,15 +17,13 @@ export class WorldPosition {
   }
 
   public static fromScreenPosition(bot: WPlaceBot, position: Position) {
-    if (!bot.anchorWorldPosition) throw new UnfocusRequiredError(bot)
+    const p = bot.anchorsWorldPosition[0]
+    const s = bot.anchorsScreenPosition[0]
+    if (!p || !s) throw new NotInitializedError(bot)
     return new WorldPosition(
       bot,
-      (bot.anchorWorldPosition.globalX +
-        (position.x - bot.anchorScreenPosition.x) / bot.pixelSize) |
-        0,
-      (bot.anchorWorldPosition.globalY +
-        (position.y - bot.anchorScreenPosition.y) / bot.pixelSize) |
-        0,
+      (p.globalX + (position.x - s.x) / bot.pixelSize) | 0,
+      (p.globalY + (position.y - s.y) / bot.pixelSize) | 0,
     )
   }
 
@@ -78,16 +76,12 @@ export class WorldPosition {
   }
 
   public toScreenPosition(): Position {
-    if (!this.bot.anchorWorldPosition) throw new UnfocusRequiredError(this.bot)
+    const p = this.bot.anchorsWorldPosition[0]
+    const s = this.bot.anchorsScreenPosition[0]
+    if (!p || !s) throw new NotInitializedError(this.bot)
     return {
-      x:
-        (this.globalX - this.bot.anchorWorldPosition.globalX) *
-          this.bot.pixelSize +
-        this.bot.anchorScreenPosition.x,
-      y:
-        (this.globalY - this.bot.anchorWorldPosition.globalY) *
-          this.bot.pixelSize +
-        this.bot.anchorScreenPosition.y,
+      x: (this.globalX - p.globalX) * this.bot.pixelSize + s.x,
+      y: (this.globalY - p.globalY) * this.bot.pixelSize + s.y,
     }
   }
 
@@ -105,10 +99,9 @@ export class WorldPosition {
 
   public scrollScreenTo() {
     const { x, y } = this.toScreenPosition()
-    console.log(x, y)
     this.bot.moveMap({
-      x: -x,
-      y: -y,
+      x: x - window.innerWidth / 3,
+      y: y - window.innerHeight / 3,
     })
   }
 

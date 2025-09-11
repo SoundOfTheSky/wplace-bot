@@ -29,7 +29,6 @@ function removeFromArray(array, value) {
     array.splice(index, 1);
   return index;
 }
-
 // node_modules/@softsky/utils/dist/objects.js
 class Base {
   static lastId = 0;
@@ -129,7 +128,48 @@ function promisifyEventSource(target, resolveEvents, rejectEvents = ["error"], s
       target[subName]?.(rejectEvents[index], reject);
   });
 }
-
+// node_modules/@softsky/utils/dist/signals.js
+var effectsMap = new WeakMap;
+// node_modules/@softsky/utils/dist/time.js
+class SpeedCalculator {
+  size;
+  historyTime;
+  sum = 0;
+  history = [];
+  statsCached;
+  startTime = Date.now();
+  constructor(size, historyTime = 15000) {
+    this.size = size;
+    this.historyTime = historyTime;
+  }
+  push(chunk) {
+    if (chunk < 0)
+      throw new Error("Negative chunk size");
+    const { time, historyTime } = this.getTime();
+    this.history.push({ time, chunk });
+    if (this.history[0] && this.history[0].time + historyTime < time)
+      this.history.shift();
+    this.sum += chunk;
+    delete this.statsCached;
+  }
+  get stats() {
+    if (!this.statsCached) {
+      const speed = this.history.reduce((sum, entry) => sum + entry.chunk, 0) / this.getTime().historyTime * 1000;
+      this.statsCached = this.size === undefined ? { speed } : {
+        speed,
+        percent: this.sum / this.size,
+        eta: ~~((this.size - this.sum) / speed) * 1000
+      };
+    }
+    return this.statsCached;
+  }
+  getTime() {
+    const time = Date.now();
+    const timeSinceStart = time - this.startTime;
+    const historyTime = Math.min(timeSinceStart, this.historyTime);
+    return { time, historyTime };
+  }
+}
 // src/errors.ts
 class WPlaceBotError extends Error {
   name = "WPlaceBotError";
@@ -139,20 +179,24 @@ class WPlaceBotError extends Error {
   }
 }
 
-class UnfocusRequiredError extends WPlaceBotError {
-  name = "UnfocusRequiredError";
+class NotInitializedError extends WPlaceBotError {
+  name = "NotInitializedError";
   constructor(bot) {
-    super("❌ UNFOCUS WINDOW", bot);
+    super("❌ Not initialized", bot);
   }
 }
 
-class NoFavLocation extends WPlaceBotError {
-  name = "NoFavLocation";
+class StarsAreTooCloseError extends WPlaceBotError {
+  name = "StarsAreTooCloseError";
   constructor(bot) {
-    super("❌ Don't remove star!", bot);
-    setTimeout(() => {
-      globalThis.location.reload();
-    }, 1000);
+    super("❌ Stars are too close", bot);
+  }
+}
+
+class ZoomTooFarError extends WPlaceBotError {
+  name = "ZoomTooFarError";
+  constructor(bot) {
+    super("❌ Zoom is too far", bot);
   }
 }
 
@@ -160,6 +204,27 @@ class NoImageError extends WPlaceBotError {
   name = "NoImageError";
   constructor(bot) {
     super("❌ No image is selected", bot);
+  }
+}
+
+// src/base.ts
+class Base2 {
+  runOnDestroy = [];
+  destroy() {
+    for (let index = 0;index < this.runOnDestroy.length; index++)
+      this.runOnDestroy[index]();
+  }
+  populateElementsWithSelector(element, selectors) {
+    for (const key in selectors) {
+      this[key] = element.querySelector(selectors[key]);
+    }
+  }
+  registerEvent(target, type, listener, options = {}) {
+    options.passive ??= true;
+    target.addEventListener(type, listener, options);
+    this.runOnDestroy.push(() => {
+      target.removeEventListener(type, listener);
+    });
   }
 }
 
@@ -216,6 +281,8 @@ class Pixels {
     await promisifyEventSource(image, ["load"], ["error"]);
     return new Pixels(bot, image, data.width);
   }
+  canvas = document.createElement("canvas");
+  context = this.canvas.getContext("2d");
   pixels;
   colorsToBuy = [];
   resolution;
@@ -233,23 +300,23 @@ class Pixels {
     this.update();
   }
   update() {
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
+    this.canvas.width = this.width;
+    this.canvas.height = this.height;
     const colorsToBuy = new Map;
-    canvas.width = this.width;
-    canvas.height = this.height;
-    context.drawImage(this.image, 0, 0, canvas.width, canvas.height);
-    this.pixels = Array.from({ length: canvas.height }, () => new Array(canvas.width));
-    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    for (let y = 0;y < canvas.height; y++) {
-      for (let x = 0;x < canvas.width; x++) {
-        const index = (y * canvas.width + x) * 4;
+    this.context.imageSmoothingEnabled = false;
+    this.context.imageSmoothingQuality = "low";
+    this.context.drawImage(this.image, 0, 0, this.canvas.width, this.canvas.height);
+    this.pixels = Array.from({ length: this.canvas.height }, () => new Array(this.canvas.width));
+    const data = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height).data;
+    for (let y = 0;y < this.canvas.height; y++) {
+      for (let x = 0;x < this.canvas.width; x++) {
+        const index = (y * this.canvas.width + x) * 4;
         const r = data[index];
         const g = data[index + 1];
         const b = data[index + 2];
         const a = data[index + 3];
         if (a < 100) {
-          this.pixels[y][x] = this.bot.colors.at(-1);
+          this.pixels[y][x] = this.bot.colors.at(-1).buttonId;
           continue;
         }
         let minDelta = Infinity;
@@ -268,9 +335,9 @@ class Pixels {
             minReal = color;
           }
         }
-        this.pixels[y][x] = min;
+        this.pixels[y][x] = min.buttonId;
         if (minReal.buttonId !== min.buttonId)
-          colorsToBuy.set(minReal, (colorsToBuy.get(minReal) ?? 0) + 1);
+          colorsToBuy.set(minReal.buttonId, (colorsToBuy.get(minReal.buttonId) ?? 0) + 1);
       }
     }
     this.colorsToBuy.splice(0, Infinity, ...[...colorsToBuy.entries()].sort(([, a], [, b]) => b - a));
@@ -297,9 +364,11 @@ class WorldPosition {
     return new WorldPosition(bot, ...data);
   }
   static fromScreenPosition(bot, position) {
-    if (!bot.anchorWorldPosition)
-      throw new UnfocusRequiredError(bot);
-    return new WorldPosition(bot, bot.anchorWorldPosition.globalX + (position.x - bot.anchorScreenPosition.x) / bot.pixelSize | 0, bot.anchorWorldPosition.globalY + (position.y - bot.anchorScreenPosition.y) / bot.pixelSize | 0);
+    const p = bot.anchorsWorldPosition[0];
+    const s = bot.anchorsScreenPosition[0];
+    if (!p || !s)
+      throw new NotInitializedError(bot);
+    return new WorldPosition(bot, p.globalX + (position.x - s.x) / bot.pixelSize | 0, p.globalY + (position.y - s.y) / bot.pixelSize | 0);
   }
   globalX = 0;
   globalY = 0;
@@ -338,11 +407,13 @@ class WorldPosition {
     }
   }
   toScreenPosition() {
-    if (!this.bot.anchorWorldPosition)
-      throw new UnfocusRequiredError(this.bot);
+    const p = this.bot.anchorsWorldPosition[0];
+    const s = this.bot.anchorsScreenPosition[0];
+    if (!p || !s)
+      throw new NotInitializedError(this.bot);
     return {
-      x: (this.globalX - this.bot.anchorWorldPosition.globalX) * this.bot.pixelSize + this.bot.anchorScreenPosition.x,
-      y: (this.globalY - this.bot.anchorWorldPosition.globalY) * this.bot.pixelSize + this.bot.anchorScreenPosition.y
+      x: (this.globalX - p.globalX) * this.bot.pixelSize + s.x,
+      y: (this.globalY - p.globalY) * this.bot.pixelSize + s.y
     };
   }
   async getMapColor() {
@@ -358,10 +429,9 @@ class WorldPosition {
   }
   scrollScreenTo() {
     const { x, y } = this.toScreenPosition();
-    console.log(x, y);
     this.bot.moveMap({
-      x: -x,
-      y: -y
+      x: x - window.innerWidth / 3,
+      y: y - window.innerHeight / 3
     });
   }
   clone() {
@@ -373,7 +443,7 @@ class WorldPosition {
 }
 
 // src/image.ts
-class BotImage extends Base {
+class BotImage extends Base2 {
   bot;
   position;
   pixels;
@@ -384,10 +454,17 @@ class BotImage extends Base {
     return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels);
   }
   element = document.createElement("div");
-  canvas;
-  context;
   tasks = [];
   moveInfo;
+  $strategy;
+  $opacity;
+  $drawTransparent;
+  $resetSize;
+  $resetSizeSpan;
+  $progressLine;
+  $progressText;
+  $canvas;
+  context;
   constructor(bot, position, pixels, strategy = "RANDOM" /* RANDOM */, opacity = 50, drawTransparentPixels = false) {
     super();
     this.bot = bot;
@@ -396,34 +473,40 @@ class BotImage extends Base {
     this.strategy = strategy;
     this.opacity = opacity;
     this.drawTransparentPixels = drawTransparentPixels;
-    document.body.append(this.element);
     this.element.innerHTML = image_default;
     this.element.classList.add("wimage");
-    this.canvas = this.element.querySelector("canvas");
-    this.context = this.canvas.getContext("2d");
-    const $strategy = this.element.querySelector(".strategy");
-    $strategy.addEventListener("change", () => {
-      this.strategy = $strategy.value;
+    document.body.append(this.element);
+    this.populateElementsWithSelector(this.element, {
+      $strategy: ".strategy",
+      $opacity: ".opacity",
+      $drawTransparent: ".draw-transparent",
+      $resetSize: ".reset-size",
+      $progressLine: ".progress div",
+      $progressText: ".progress span",
+      $canvas: "canvas"
+    });
+    this.$resetSizeSpan = this.$resetSize.querySelector("span");
+    this.context = this.$canvas.getContext("2d");
+    this.$strategy.addEventListener("change", () => {
+      this.strategy = this.$strategy.value;
       this.bot.save();
     });
-    const $opacity = this.element.querySelector(".opacity");
-    $opacity.addEventListener("input", () => {
-      this.opacity = $opacity.valueAsNumber;
+    this.$opacity.addEventListener("input", () => {
+      this.opacity = this.$opacity.valueAsNumber;
       this.update();
       this.bot.save();
     });
-    this.element.querySelector(".reset-size").addEventListener("click", () => {
+    this.$resetSize.addEventListener("click", () => {
       this.pixels.width = this.pixels.image.naturalWidth;
       this.pixels.update();
       this.update();
       this.bot.save();
     });
-    const $drawTransparent = this.element.querySelector(".draw-transparent");
-    $drawTransparent.addEventListener("click", () => {
-      this.drawTransparentPixels = $drawTransparent.checked;
+    this.$drawTransparent.addEventListener("click", () => {
+      this.drawTransparentPixels = this.$drawTransparent.checked;
       this.bot.save();
     });
-    this.canvas.addEventListener("mousedown", (event) => {
+    this.registerEvent(this.$canvas, "mousedown", (event) => {
       this.moveInfo = {
         globalX: this.position.globalX,
         globalY: this.position.globalY,
@@ -459,7 +542,6 @@ class BotImage extends Base {
       });
     }
     this.update();
-    this.updateTasks();
   }
   toJSON() {
     return {
@@ -478,16 +560,17 @@ class BotImage extends Base {
       position.globalX = this.position.globalX + x;
       position.globalY = this.position.globalY + y;
       const mapColor = await position.getMapColor();
-      if (color.buttonId !== mapColor.buttonId && (this.drawTransparentPixels || color.a !== 0)) {
+      if (color !== mapColor && (this.drawTransparentPixels || color !== "color-0")) {
         const { x: x2, y: y2 } = position.toScreenPosition();
         this.tasks.push({
           x: x2,
           y: y2,
-          buttonId: color.buttonId
+          buttonId: color
         });
       }
     }
     this.update();
+    this.bot.widget.update();
   }
   update() {
     const halfPixel = this.bot.pixelSize / 2;
@@ -498,27 +581,21 @@ class BotImage extends Base {
     } catch {
       this.element.classList.add("hidden");
     }
-    this.canvas.width = this.bot.pixelSize * this.pixels.pixels[0].length;
-    this.canvas.height = this.bot.pixelSize * this.pixels.pixels.length;
-    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    for (let y = 0;y < this.pixels.pixels.length; y++) {
-      const row = this.pixels.pixels[y];
-      for (let x = 0;x < row.length; x++) {
-        const pixel = row[x];
-        this.context.fillStyle = `rgb(${pixel.r} ${pixel.g} ${pixel.b})`;
-        this.context.globalAlpha = pixel.a / 255 * (this.opacity / 100);
-        this.context.fillRect(x * this.bot.pixelSize, y * this.bot.pixelSize, this.bot.pixelSize, this.bot.pixelSize);
-      }
-    }
-    this.element.querySelector(".reset-size span").textContent = this.pixels.width.toString();
-    this.element.querySelector(".strategy").value = this.strategy;
-    this.element.querySelector(".opacity").valueAsNumber = this.opacity;
-    this.element.querySelector(".draw-transparent").checked = this.drawTransparentPixels;
+    this.$canvas.width = this.bot.pixelSize * this.pixels.width;
+    this.$canvas.height = this.bot.pixelSize * this.pixels.height;
+    this.context.globalAlpha = this.opacity / 100;
+    this.context.imageSmoothingEnabled = false;
+    this.context.imageSmoothingQuality = "low";
+    this.context.drawImage(this.pixels.canvas, 0, 0, this.$canvas.width, this.$canvas.height);
+    this.$resetSizeSpan.textContent = this.pixels.width.toString();
+    this.$strategy.value = this.strategy;
+    this.$opacity.valueAsNumber = this.opacity;
+    this.$drawTransparent.checked = this.drawTransparentPixels;
     const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0].length;
     const doneTasks = maxTasks - this.tasks.length;
     const percent = doneTasks / maxTasks * 100 | 0;
-    this.element.querySelector(".progress span").textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${this.tasks.length / 120 | 0}:${this.tasks.length % 120 / 2 | 0}`;
-    this.element.querySelector(".progress div").style.transform = `scaleX(${percent}%)`;
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${this.tasks.length / 120 | 0}h`;
+    this.$progressLine.style.transform = `scaleX(${percent}%)`;
   }
   destroy() {
     super.destroy();
@@ -658,31 +735,52 @@ var widget_default = `<div class="move">
 `;
 
 // src/widget.ts
-class Widget extends Base {
+class Widget extends Base2 {
   bot;
   element = document.createElement("div");
   x = 64;
   y = 64;
   get status() {
-    return this.element.querySelector(".wstatus").innerHTML;
+    return this.$status.innerHTML;
   }
   set status(value) {
-    this.element.querySelector(".wstatus").innerHTML = value;
+    this.$status.innerHTML = value;
   }
   strategy = "SEQUENTIAL" /* SEQUENTIAL */;
   images = [];
   moveInfo;
+  $settings;
+  $status;
+  $minimize;
+  $move;
+  $draw;
+  $addImage;
+  $strategy;
+  $progressLine;
+  $progressText;
+  $images;
   constructor(bot) {
     super();
     this.bot = bot;
     this.element.classList.add("wwidget");
     this.element.innerHTML = widget_default;
     document.body.append(this.element);
-    this.element.querySelector(".minimize").addEventListener("click", () => {
+    this.populateElementsWithSelector(this.element, {
+      $settings: ".wsettings",
+      $status: ".wstatus",
+      $minimize: ".minimize",
+      $move: ".move",
+      $draw: ".draw",
+      $addImage: ".add-image",
+      $strategy: ".strategy",
+      $progressLine: ".progress div",
+      $progressText: ".progress span",
+      $images: ".images"
+    });
+    this.$minimize.addEventListener("click", () => {
       this.minimize();
     });
-    const $move = this.element.querySelector(".move");
-    $move.addEventListener("mousedown", (event) => {
+    this.$move.addEventListener("mousedown", (event) => {
       this.moveStart(event.clientX, event.clientY);
     });
     this.registerEvent(document, "mouseup", () => {
@@ -694,11 +792,10 @@ class Widget extends Base {
       this.element.style.transform = `translate(${this.x}px, ${this.y}px)`;
     });
     this.element.style.transform = `translate(${this.x}px, ${this.y}px)`;
-    this.element.querySelector(".draw").addEventListener("click", () => this.bot.draw());
-    this.element.querySelector(".add-image").addEventListener("click", () => this.addImage());
-    const $strategy = this.element.querySelector(".strategy");
-    $strategy.addEventListener("change", () => {
-      this.strategy = $strategy.value;
+    this.$draw.addEventListener("click", () => this.bot.draw());
+    this.$addImage.addEventListener("click", () => this.addImage());
+    this.$strategy.addEventListener("change", () => {
+      this.strategy = this.$strategy.value;
     });
     this.update();
   }
@@ -706,18 +803,19 @@ class Widget extends Base {
     this.setDisabled("add-image", true);
     return this.run("Adding image", async () => {
       await this.bot.updateColors();
-      this.images.push(new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
+      const image = new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
         x: 256,
         y: 32
-      }), await Pixels.fromSelectImage(this.bot)));
-      this.update();
+      }), await Pixels.fromSelectImage(this.bot));
+      this.images.push(image);
+      await image.updateTasks();
       this.bot.save();
     }, () => {
       this.setDisabled("add-image", false);
     });
   }
   update() {
-    this.element.querySelector(".strategy").value = this.strategy;
+    this.$strategy.value = this.strategy;
     let maxTasks = 0;
     let totalTasks = 0;
     for (let index = 0;index < this.images.length; index++) {
@@ -727,14 +825,13 @@ class Widget extends Base {
     }
     const doneTasks = maxTasks - totalTasks;
     const percent = doneTasks / maxTasks * 100 | 0;
-    this.element.querySelector(".progress span").textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${totalTasks / 120 | 0}:${totalTasks % 120 / 2 | 0}`;
-    this.element.querySelector(".progress div").style.transform = `scaleX(${percent}%)`;
-    const $images = this.element.querySelector(".images");
-    $images.innerHTML = "";
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${totalTasks / 120 | 0}h`;
+    this.$progressLine.style.transform = `scaleX(${percent}%)`;
+    this.$images.innerHTML = "";
     for (let index = 0;index < this.images.length; index++) {
       const image = this.images[index];
       const $image = document.createElement("div");
-      $images.append($image);
+      this.$images.append($image);
       $image.className = "image";
       $image.innerHTML = `<img src="${image.pixels.image.src}">
   <button class="up" title="Move up" ${index === 0 ? "disabled" : ""}>▴</button>
@@ -794,7 +891,7 @@ class Widget extends Base {
     };
   }
   minimize() {
-    this.element.querySelector(".wsettings").classList.toggle("hidden");
+    this.$settings.classList.toggle("hidden");
   }
   moveStart(x, y) {
     this.moveInfo = {
@@ -821,18 +918,11 @@ var SAVE_VERSION = 1;
 class WPlaceBot {
   widget = new Widget(this);
   colors = [];
-  anchorWorldPosition;
   pixelSize = 1;
   mapsCache = new Map;
-  get anchorScreenPosition() {
-    const $favLocation = document.querySelector(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center");
-    if (!$favLocation)
-      throw new NoFavLocation(this);
-    const [x, y] = $favLocation.style.transform.slice(32, -29).split(", ").map((x2) => Number.parseInt(x2));
-    return { x, y };
-  }
+  anchorsWorldPosition = new Array(2);
+  anchorsScreenPosition = new Array(2);
   markerPixelPositionResolvers = [];
-  estimatingSize = false;
   saveTimeout;
   constructor() {
     this.registerFetchInterceptor();
@@ -852,10 +942,17 @@ class WPlaceBot {
         this.widget.y = save.widget.y;
         this.widget.strategy = save.widget.strategy;
       }
-      while (!document.querySelector(".maplibregl-canvas") || !document.querySelector(".btn.btn-primary.btn-lg.relative.z-30 canvas") || !document.querySelector(".avatar.center-absolute.absolute"))
-        await wait(500);
+      await this.waitForElement("login", ".avatar.center-absolute.absolute");
+      await this.waitForElement("pixel count", ".btn.btn-primary.btn-lg.relative.z-30 canvas");
+      const $canvasContainer = await this.waitForElement("canvas", ".maplibregl-canvas-container");
+      new MutationObserver(this.onAnchorsMutation.bind(this)).observe($canvasContainer, {
+        attributes: true,
+        attributeFilter: ["style"],
+        subtree: true,
+        childList: true
+      });
       await wait(500);
-      await this.estimateSize();
+      await this.loadAnchors();
       await this.updateColors();
       if (save)
         for (let index = 0;index < save.widget.images.length; index++) {
@@ -863,25 +960,23 @@ class WPlaceBot {
           this.widget.images.push(image);
           image.update();
         }
-      this.widget.update();
-      const $canvas = document.querySelector(".maplibregl-canvas");
-      setInterval(() => {
-        this.widget.updateImages();
-      }, 50);
-      $canvas.addEventListener("wheel", () => {
-        this.estimateSize();
-      });
+      for (let index = 0;index < this.widget.images.length; index++)
+        await this.widget.images[index].updateTasks();
       this.widget.setDisabled("draw", false);
       this.widget.setDisabled("add-image", false);
     });
   }
   draw() {
+    if (this.pixelSize < 3)
+      throw new ZoomTooFarError(this);
     this.widget.status = "";
     const prevent = (event) => {
       if (!event.shiftKey)
         event.stopPropagation();
     };
+    const $canvas = document.querySelector(".maplibregl-canvas");
     globalThis.addEventListener("mousemove", prevent, true);
+    $canvas.addEventListener("wheel", prevent, true);
     return this.widget.run("Drawing", async () => {
       this.mapsCache.clear();
       this.widget.setDisabled("draw", true);
@@ -930,10 +1025,10 @@ class WPlaceBot {
           }
         }
       }
-      this.widget.updateImages();
       this.widget.update();
     }, () => {
       globalThis.removeEventListener("mousemove", prevent, true);
+      $canvas.removeEventListener("wheel", prevent, true);
       this.widget.setDisabled("draw", false);
     });
   }
@@ -1075,30 +1170,24 @@ class WPlaceBot {
       return response;
     };
   }
-  estimateSize() {
-    if (this.estimatingSize)
-      return;
-    this.anchorWorldPosition = undefined;
-    this.estimatingSize = true;
-    return this.widget.run("Adjusting", async () => {
+  loadAnchors() {
+    return this.widget.run("Loading positions", async () => {
       await this.waitForUnfocus();
       await this.closeAll();
-      const $star = document.querySelector(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center");
-      this.anchorWorldPosition = await this.clickAndGetPixelWorldPosition($star ? this.anchorScreenPosition : { x: 12, y: 12 });
-      if (!$star) {
-        document.querySelector("button.btn-soft:nth-child(2)").click();
-        while (!document.querySelector(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center"))
-          await wait(100);
+      const stars = this.getStars();
+      for (let index = 0;index < 2; index++) {
+        let star = stars[index];
+        const position = star ? star[1] : index === 0 ? { x: -20000, y: -20000 } : { x: 20000, y: 20000 };
+        this.anchorsWorldPosition[index] = await this.clickAndGetPixelWorldPosition(position);
+        if (!star) {
+          document.querySelector("button.btn-soft:nth-child(2)").click();
+          while (!star) {
+            star = this.getStars()[index];
+            await wait(100);
+          }
+        }
       }
-      const markerScreenPosition2 = {
-        x: this.anchorScreenPosition.x + 1e4,
-        y: this.anchorScreenPosition.y
-      };
-      const markerPosition2 = await this.clickAndGetPixelWorldPosition(markerScreenPosition2);
-      this.pixelSize = (markerScreenPosition2.x - this.anchorScreenPosition.x) / (markerPosition2.globalX - this.anchorWorldPosition.globalX);
-      this.widget.updateImages();
-    }, () => {
-      this.estimatingSize = false;
+      this.onAnchorsMutation();
     });
   }
   async closeAll() {
@@ -1108,6 +1197,56 @@ class WPlaceBot {
         await wait(1);
       }
     }
+  }
+  waitForElement(name, selector) {
+    return this.widget.run(`Waiting for ${name}`, () => {
+      return new Promise((resolve) => {
+        const existing = document.querySelector(selector);
+        if (existing) {
+          resolve(existing);
+          return;
+        }
+        const observer = new MutationObserver(() => {
+          const element = document.querySelector(selector);
+          if (element) {
+            observer.disconnect();
+            resolve(element);
+          }
+        });
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true
+        });
+      });
+    });
+  }
+  onAnchorsMutation() {
+    const stars = this.getStars();
+    const p1 = this.anchorsWorldPosition[0];
+    const p2 = this.anchorsWorldPosition[1];
+    if (!stars[0] || !stars[1] || !p1 || !p2)
+      return;
+    const worldDistance = p2.globalX - p1.globalX;
+    if (worldDistance < 500)
+      throw new StarsAreTooCloseError(this);
+    this.anchorsScreenPosition[0] = stars[0][1];
+    this.anchorsScreenPosition[1] = stars[1][1];
+    const s1 = this.anchorsScreenPosition[0];
+    const s2 = this.anchorsScreenPosition[1];
+    this.pixelSize = (s2.x - s1.x) / worldDistance;
+    this.widget.updateImages();
+  }
+  extractScreenPositionFromStar($star) {
+    const [x, y] = $star.style.transform.slice(32, -29).split(", ").map((x2) => Number.parseInt(x2));
+    return { x, y };
+  }
+  getStars() {
+    const $stars = [
+      ...document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")
+    ];
+    const stars = $stars.map(($star) => [$star, this.extractScreenPositionFromStar($star)]);
+    stars.sort((a, b) => a[1].x - b[1].x);
+    return [stars[0], stars.at(-1)];
   }
 }
 
@@ -1178,7 +1317,10 @@ var style_default = `:root {
   top: 0;
   z-index: 9;
   box-shadow: inset var(--main) 0 0 0 1px;
+}
+.wimage canvas {
   cursor: all-scroll;
+  image-rendering: pixelated;
 }
 .wimage .wsettings {
   background-color: var(--background);
@@ -1186,6 +1328,7 @@ var style_default = `:root {
   display: none;
   position: absolute;
   width: 100%;
+  min-width: 256px;
 }
 .wimage:hover .wsettings {
   display: block;
@@ -1215,6 +1358,9 @@ var style_default = `:root {
   cursor: no-drop;
 }
 
+.wsettings .opacity {
+  width: inherit;
+}
 .wsettings .progress {
   position: relative;
 }
@@ -1222,7 +1368,7 @@ var style_default = `:root {
   width: 100%;
   height: 100%;
   position: absolute;
-  background-color: var(--main);
+  background-color: var(--main-hover);
   transform-origin: left;
 }
 .wsettings .progress span {
@@ -1265,7 +1411,8 @@ var style_default = `:root {
   top: var(--resize);
   left: 0;
   width: var(--resize);
-}`;
+}
+`;
 
 // src/index.ts
 var style = document.createElement("style");

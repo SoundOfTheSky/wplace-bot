@@ -64,7 +64,10 @@
   top: 0;
   z-index: 9;
   box-shadow: inset var(--main) 0 0 0 1px;
+}
+.wimage canvas {
   cursor: all-scroll;
+  image-rendering: pixelated;
 }
 .wimage .wsettings {
   background-color: var(--background);
@@ -72,6 +75,7 @@
   display: none;
   position: absolute;
   width: 100%;
+  min-width: 256px;
 }
 .wimage:hover .wsettings {
   display: block;
@@ -101,6 +105,9 @@
   cursor: no-drop;
 }
 
+.wsettings .opacity {
+  width: inherit;
+}
 .wsettings .progress {
   position: relative;
 }
@@ -108,7 +115,7 @@
   width: 100%;
   height: 100%;
   position: absolute;
-  background-color: var(--main);
+  background-color: var(--main-hover);
   transform-origin: left;
 }
 .wsettings .progress span {

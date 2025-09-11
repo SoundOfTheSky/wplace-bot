@@ -3,10 +3,11 @@
 ## Features
 
 1. Auto draw (still need to click captcha manually)
-2. Image overlay
-3. Auto image convert/scale
-4. Suggests colors to buy
-5. Optional captcha bypass
+2. Multiple images
+3. Many strategies
+4. Auto image convert/scale
+5. Suggests colors to buy
+6. Optional captcha bypass
 
 ## Installation
 
@@ -21,14 +22,16 @@
 
 ![Instruction1](https://github.com/SoundOfTheSky/wplace-bot/raw/refs/heads/main/Instruction.png)
 
-P.S. Don't worry if overlay is bigger than your screen. It will still work.
+1. On error "Stars are too close" I recommend to delete your favorite locations
+2. On error during initialization try to zoom in first
+3. On error "Zoom is too far" just zoom in
 
 ## Captcha bypass
 
 I recommend using simple autoclicker like this
 
 1. Reload tab "CTRL+SHIFT+R", wait 10 seconds (Optional, but recommended)
-2. Click "Draw", wait 10-15 seconds
+2. Click "Draw", wait 15 seconds
 3. Click Captcha, wait 5s
 4. Click "Paint", wait 30 minutes
 5. Repeat
@@ -38,7 +41,6 @@ Also I'm using [Firefox Multi-Account Containers](https://addons.mozilla.org/en-
 ## Known issues
 
 1. Once your session on website ends, bot obviously stops
-2. Screen with high DPI are unsupported (for now)
 
 ## Contribution
 

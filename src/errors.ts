@@ -8,20 +8,24 @@ export class WPlaceBotError extends Error {
   }
 }
 
-export class UnfocusRequiredError extends WPlaceBotError {
-  public name = 'UnfocusRequiredError'
+export class NotInitializedError extends WPlaceBotError {
+  public name = 'NotInitializedError'
   public constructor(bot: WPlaceBot) {
-    super('❌ UNFOCUS WINDOW', bot)
+    super('❌ Not initialized', bot)
   }
 }
 
-export class NoFavLocation extends WPlaceBotError {
-  public name = 'NoFavLocation'
+export class StarsAreTooCloseError extends WPlaceBotError {
+  public name = 'StarsAreTooCloseError'
   public constructor(bot: WPlaceBot) {
-    super("❌ Don't remove star!", bot)
-    setTimeout(() => {
-      globalThis.location.reload()
-    }, 1000)
+    super('❌ Stars are too close', bot)
+  }
+}
+
+export class ZoomTooFarError extends WPlaceBotError {
+  public name = 'ZoomTooFarError'
+  public constructor(bot: WPlaceBot) {
+    super('❌ Zoom is too far', bot)
   }
 }
 

@@ -1,10 +1,10 @@
-import { Base, swap } from '@softsky/utils'
+import { swap } from '@softsky/utils'
 
+import { Base } from './base'
 import { WPlaceBot } from './bot'
 import { WPlaceBotError } from './errors'
 import { BotImage } from './image'
 import { Pixels } from './pixels'
-// @ts-ignore
 import html from './widget.html' with { type: 'text' }
 import { WorldPosition } from './world-position'
 
@@ -23,11 +23,11 @@ export class Widget extends Base {
   public y = 64
 
   public get status(): string {
-    return this.element.querySelector('.wstatus')!.innerHTML
+    return this.$status.innerHTML
   }
 
   public set status(value: string) {
-    this.element.querySelector('.wstatus')!.innerHTML = value
+    this.$status.innerHTML = value
   }
 
   /** Strategy how to distribute draw calls between images */
@@ -44,19 +44,41 @@ export class Widget extends Base {
     originalY: number
   }
 
+  protected readonly $settings!: HTMLDivElement
+  protected readonly $status!: HTMLDivElement
+  protected readonly $minimize!: HTMLButtonElement
+  protected readonly $move!: HTMLDivElement
+  protected readonly $draw!: HTMLButtonElement
+  protected readonly $addImage!: HTMLButtonElement
+  protected readonly $strategy!: HTMLInputElement
+  protected readonly $progressLine!: HTMLDivElement
+  protected readonly $progressText!: HTMLSpanElement
+  protected readonly $images!: HTMLDivElement
+
   public constructor(protected bot: WPlaceBot) {
     super()
     this.element.classList.add('wwidget')
-    this.element.innerHTML = html as string
+    this.element.innerHTML = html as unknown as string
     document.body.append(this.element)
+
+    this.populateElementsWithSelector(this.element, {
+      $settings: '.wsettings',
+      $status: '.wstatus',
+      $minimize: '.minimize',
+      $move: '.move',
+      $draw: '.draw',
+      $addImage: '.add-image',
+      $strategy: '.strategy',
+      $progressLine: '.progress div',
+      $progressText: '.progress span',
+      $images: '.images',
+    })
+
     // Move/minimize
-    this.element
-      .querySelector<HTMLButtonElement>('.minimize')!
-      .addEventListener('click', () => {
-        this.minimize()
-      })
-    const $move = this.element.querySelector<HTMLDivElement>('.move')!
-    $move.addEventListener('mousedown', (event) => {
+    this.$minimize.addEventListener('click', () => {
+      this.minimize()
+    })
+    this.$move.addEventListener('mousedown', (event) => {
       this.moveStart(event.clientX, event.clientY)
     })
     this.registerEvent(document, 'mouseup', () => {
@@ -70,15 +92,10 @@ export class Widget extends Base {
     this.element.style.transform = `translate(${this.x}px, ${this.y}px)`
 
     // Button actions
-    this.element
-      .querySelector('.draw')!
-      .addEventListener('click', () => this.bot.draw())
-    this.element
-      .querySelector('.add-image')!
-      .addEventListener('click', () => this.addImage())
-    const $strategy = this.element.querySelector<HTMLInputElement>('.strategy')!
-    $strategy.addEventListener('change', () => {
-      this.strategy = $strategy.value as BotStrategy
+    this.$draw.addEventListener('click', () => this.bot.draw())
+    this.$addImage.addEventListener('click', () => this.addImage())
+    this.$strategy.addEventListener('change', () => {
+      this.strategy = this.$strategy.value as BotStrategy
     })
 
     this.update()
@@ -91,17 +108,16 @@ export class Widget extends Base {
       'Adding image',
       async () => {
         await this.bot.updateColors()
-        this.images.push(
-          new BotImage(
-            this.bot,
-            WorldPosition.fromScreenPosition(this.bot, {
-              x: 256,
-              y: 32,
-            }),
-            await Pixels.fromSelectImage(this.bot),
-          ),
+        const image = new BotImage(
+          this.bot,
+          WorldPosition.fromScreenPosition(this.bot, {
+            x: 256,
+            y: 32,
+          }),
+          await Pixels.fromSelectImage(this.bot),
         )
-        this.update()
+        this.images.push(image)
+        await image.updateTasks()
         this.bot.save()
       },
       () => {
@@ -112,8 +128,7 @@ export class Widget extends Base {
 
   /** Update widget position and contents */
   public update() {
-    this.element.querySelector<HTMLInputElement>('.strategy')!.value =
-      this.strategy
+    this.$strategy.value = this.strategy
     // Progress
     let maxTasks = 0
     let totalTasks = 0
@@ -124,19 +139,15 @@ export class Widget extends Base {
     }
     const doneTasks = maxTasks - totalTasks
     const percent = ((doneTasks / maxTasks) * 100) | 0
-    this.element.querySelector<HTMLSpanElement>('.progress span')!.textContent =
-      `${doneTasks}/${maxTasks} ${percent}% ETA: ${(totalTasks / 120) | 0}:${((totalTasks % 120) / 2) | 0}`
-    this.element.querySelector<HTMLDivElement>(
-      '.progress div',
-    )!.style.transform = `scaleX(${percent}%)`
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${(totalTasks / 120) | 0}h`
+    this.$progressLine.style.transform = `scaleX(${percent}%)`
 
     // Images
-    const $images = this.element.querySelector<HTMLDivElement>('.images')!
-    $images.innerHTML = ''
+    this.$images.innerHTML = ''
     for (let index = 0; index < this.images.length; index++) {
       const image = this.images[index]!
       const $image = document.createElement('div')
-      $images.append($image)
+      this.$images.append($image)
       $image.className = 'image'
       $image.innerHTML = `<img src="${image.pixels.image.src}">
   <button class="up" title="Move up" ${index === 0 ? 'disabled' : ''}>▴</button>
@@ -219,7 +230,7 @@ export class Widget extends Base {
 
   /** Hides content */
   protected minimize() {
-    this.element.querySelector('.wsettings')!.classList.toggle('hidden')
+    this.$settings.classList.toggle('hidden')
   }
 
   /** movestart handler */
