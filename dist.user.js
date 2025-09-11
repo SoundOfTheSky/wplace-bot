@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      3.1.2
+// @version      3.1.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -608,8 +608,10 @@ class WPlaceBot {
     });
   }
   save() {
-    if (!this.image || !this.startPosition || !this.startScreenPosition)
+    if (!this.image || !this.startPosition || !this.startScreenPosition) {
+      localStorage.removeItem("wbot");
       return;
+    }
     localStorage.setItem("wbot", JSON.stringify({
       image: this.image,
       startScreenPosition: this.startScreenPosition,
@@ -628,7 +630,9 @@ class WPlaceBot {
     let save;
     try {
       save = JSON.parse(json);
-    } catch {}
+    } catch {
+      localStorage.removeItem("wbot");
+    }
     if (save?.location?.[0] === "{")
       localStorage.setItem("location", save.location);
     await new Promise((resolve) => {
@@ -675,7 +679,9 @@ class WPlaceBot {
       this.widget.updateColorsToBuy();
       this.overlay.update();
       this.widget.setDisabled("draw", false);
-    } catch {}
+    } catch {
+      localStorage.removeItem("wbot");
+    }
   }
   async openColors() {
     document.querySelector(".flex.gap-2.px-3 > .btn-circle")?.click();
