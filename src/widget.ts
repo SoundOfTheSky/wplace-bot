@@ -1,8 +1,8 @@
-import { swap } from '@softsky/utils'
+import { promisifyEventSource, swap } from '@softsky/utils'
 
 import { Base } from './base'
 import { WPlaceBot } from './bot'
-import { WPlaceBotError } from './errors'
+import { NoImageError, WPlaceBotError } from './errors'
 import { BotImage } from './image'
 import { Pixels } from './pixels'
 import html from './widget.html' with { type: 'text' }
@@ -108,16 +108,37 @@ export class Widget extends Base {
       'Adding image',
       async () => {
         await this.bot.updateColors()
-        const image = new BotImage(
-          this.bot,
-          WorldPosition.fromScreenPosition(this.bot, {
-            x: 256,
-            y: 32,
-          }),
-          await Pixels.fromSelectImage(this.bot),
-        )
-        this.images.push(image)
-        await image.updateTasks()
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = 'image/*,.wbot'
+        input.click()
+        await promisifyEventSource(input, ['change'], ['cancel', 'error'])
+        const file = input.files?.[0]
+        if (!file) throw new NoImageError(this.bot)
+        let botImage
+        if (file.name.endsWith('.wbot')) {
+          botImage = await BotImage.fromJSON(
+            this.bot,
+            JSON.parse(await file.text()) as ReturnType<BotImage['toJSON']>,
+          )
+        } else {
+          const reader = new FileReader()
+          reader.readAsDataURL(file)
+          await promisifyEventSource(reader, ['load'], ['error'])
+          const image = new Image()
+          image.src = reader.result as string
+          await promisifyEventSource(image, ['load'], ['error'])
+          botImage = new BotImage(
+            this.bot,
+            WorldPosition.fromScreenPosition(this.bot, {
+              x: 256,
+              y: 32,
+            }),
+            new Pixels(this.bot, image),
+          )
+        }
+        this.images.push(botImage)
+        await botImage.updateTasks()
         this.bot.save()
       },
       () => {

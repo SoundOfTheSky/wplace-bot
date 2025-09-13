@@ -65,6 +65,7 @@ export class BotImage extends Base {
   protected readonly $progressText!: HTMLSpanElement
   protected readonly $canvas!: HTMLCanvasElement
   protected readonly $colors!: HTMLDivElement
+  protected readonly $export!: HTMLDivElement
 
   public constructor(
     protected bot: WPlaceBot,
@@ -99,6 +100,7 @@ export class BotImage extends Base {
       $progressLine: '.progress div',
       $progressText: '.progress span',
       $colors: '.colors',
+      $export: '.export',
     })
     this.$resetSizeSpan =
       this.$resetSize.querySelector<HTMLSpanElement>('span')!
@@ -153,6 +155,9 @@ export class BotImage extends Base {
       this.update()
       this.bot.save()
     })
+
+    // Export
+    this.registerEvent(this.$export, 'click', this.export.bind(this))
 
     // Move
     this.registerEvent(this.$topbar, 'mousedown', this.moveStart.bind(this))
@@ -413,5 +418,22 @@ export class BotImage extends Base {
         document.getElementById(color.buttonId)?.click()
       })
     }
+  }
+
+  /** export image */
+  protected export() {
+    const a = document.createElement('a')
+    document.body.append(a)
+    a.href = URL.createObjectURL(
+      new Blob([JSON.stringify(this.toJSON())], { type: 'application/json' }),
+    )
+    a.download = `${this.pixels.width}x${this.pixels.height}.wbot`
+    a.click()
+    URL.revokeObjectURL(a.href)
+    a.href = this.pixels.canvas.toDataURL('image/webp', 1)
+    a.download = `${this.pixels.width}x${this.pixels.height}.webp`
+    a.click()
+    URL.revokeObjectURL(a.href)
+    a.remove()
   }
 }

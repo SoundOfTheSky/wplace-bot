@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.1.1
+// @version      4.1.2
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -230,6 +230,7 @@ class Base2 {
 
 // src/image.html
 var image_default = `<div class="wtopbar">
+  <button class="export">📤</button>
   <button class="lock">🔓</button>
 </div>
 <div class="wrapper">
@@ -330,23 +331,6 @@ class Pixels {
   width;
   brightness;
   exactColor;
-  static async fromSelectImage(bot, width, brightness, exactColor) {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.click();
-    await promisifyEventSource(input, ["change"], ["cancel", "error"]);
-    const file = input.files?.[0];
-    if (!file)
-      throw new NoImageError(bot);
-    const reader = new FileReader;
-    reader.readAsDataURL(file);
-    await promisifyEventSource(reader, ["load"], ["error"]);
-    const image = new Image;
-    image.src = reader.result;
-    await promisifyEventSource(image, ["load"], ["error"]);
-    return new Pixels(bot, image, width, brightness, exactColor);
-  }
   static async fromJSON(bot, data) {
     const image = new Image;
     image.src = data.url.startsWith("http") ? await fetch(data.url, { cache: "no-store" }).then((x) => x.blob()).then((X) => URL.createObjectURL(X)) : data.url;
@@ -558,6 +542,7 @@ class BotImage extends Base2 {
   $progressText;
   $canvas;
   $colors;
+  $export;
   constructor(bot, position, pixels, strategy = "RANDOM" /* RANDOM */, opacity = 50, drawTransparentPixels = false, lock = false) {
     super();
     this.bot = bot;
@@ -582,7 +567,8 @@ class BotImage extends Base2 {
       $resetSize: ".reset-size",
       $progressLine: ".progress div",
       $progressText: ".progress span",
-      $colors: ".colors"
+      $colors: ".colors",
+      $export: ".export"
     });
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
     this.$canvas = this.pixels.canvas;
@@ -623,6 +609,7 @@ class BotImage extends Base2 {
       this.update();
       this.bot.save();
     });
+    this.registerEvent(this.$export, "click", this.export.bind(this));
     this.registerEvent(this.$topbar, "mousedown", this.moveStart.bind(this));
     this.registerEvent(this.$canvas, "mousedown", this.moveStart.bind(this));
     this.registerEvent(document, "mouseup", this.moveStop.bind(this));
@@ -854,6 +841,19 @@ class BotImage extends Base2 {
       });
     }
   }
+  export() {
+    const a = document.createElement("a");
+    document.body.append(a);
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(this.toJSON())], { type: "application/json" }));
+    a.download = `${this.pixels.width}x${this.pixels.height}.wbot`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    a.href = this.pixels.canvas.toDataURL("image/webp", 1);
+    a.download = `${this.pixels.width}x${this.pixels.height}.webp`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }
 }
 
 // src/widget.html
@@ -943,12 +943,31 @@ class Widget extends Base2 {
     this.setDisabled("add-image", true);
     return this.run("Adding image", async () => {
       await this.bot.updateColors();
-      const image = new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
-        x: 256,
-        y: 32
-      }), await Pixels.fromSelectImage(this.bot));
-      this.images.push(image);
-      await image.updateTasks();
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*,.wbot";
+      input.click();
+      await promisifyEventSource(input, ["change"], ["cancel", "error"]);
+      const file = input.files?.[0];
+      if (!file)
+        throw new NoImageError(this.bot);
+      let botImage;
+      if (file.name.endsWith(".wbot")) {
+        botImage = await BotImage.fromJSON(this.bot, JSON.parse(await file.text()));
+      } else {
+        const reader = new FileReader;
+        reader.readAsDataURL(file);
+        await promisifyEventSource(reader, ["load"], ["error"]);
+        const image = new Image;
+        image.src = reader.result;
+        await promisifyEventSource(image, ["load"], ["error"]);
+        botImage = new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
+          x: 256,
+          y: 32
+        }), new Pixels(this.bot, image));
+      }
+      this.images.push(botImage);
+      await botImage.updateTasks();
       this.bot.save();
     }, () => {
       this.setDisabled("add-image", false);

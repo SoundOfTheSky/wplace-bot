@@ -1,7 +1,6 @@
 import { promisifyEventSource } from '@softsky/utils'
 
 import { WPlaceBot } from './bot'
-import { NoImageError } from './errors'
 
 export type Color = {
   color: [number, number, number]
@@ -121,29 +120,6 @@ function deltaE2000(
 }
 
 export class Pixels {
-  /** Open select image dialog and create */
-  public static async fromSelectImage(
-    bot: WPlaceBot,
-    width?: number,
-    brightness?: number,
-    exactColor?: boolean,
-  ) {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*'
-    input.click()
-    await promisifyEventSource(input, ['change'], ['cancel', 'error'])
-    const file = input.files?.[0]
-    if (!file) throw new NoImageError(bot)
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    await promisifyEventSource(reader, ['load'], ['error'])
-    const image = new Image()
-    image.src = reader.result as string
-    await promisifyEventSource(image, ['load'], ['error'])
-    return new Pixels(bot, image, width, brightness, exactColor)
-  }
-
   public static async fromJSON(
     bot: WPlaceBot,
     data: ReturnType<Pixels['toJSON']>,
@@ -303,14 +279,6 @@ export class Pixels {
     canvas.height = this.image.naturalHeight
     const context = canvas.getContext('2d')!
     context.drawImage(this.image, 0, 0)
-    // const url = canvas.toDataURL('image/webp', 1)
-    // const a = document.createElement('a')
-    // a.href = url
-    // a.download = 'a.webp'
-    // document.body.append(a)
-    // a.click()
-    // a.remove()
-    // URL.revokeObjectURL(url)
     return {
       url: canvas.toDataURL('image/webp', 1),
       width: this.width,
