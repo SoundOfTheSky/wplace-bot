@@ -285,7 +285,7 @@ export class Pixels {
         this.pixels[y]![x] = min.buttonId
 
         // Count colors to buy
-        if (minReal.buttonId === min.buttonId)
+        if (minReal.buttonId !== min.buttonId)
           colorsToBuy.set(minReal, (colorsToBuy.get(minReal) ?? 0) + 1)
       }
     }

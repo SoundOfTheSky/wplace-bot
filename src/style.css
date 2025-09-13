@@ -64,7 +64,7 @@
   width: 100%;
   min-width: 256px;
 }
-.wimage:hover .wsettings {
+.wimage .wrapper:hover .wsettings {
   display: block;
 }
 
@@ -92,7 +92,7 @@
   cursor: no-drop;
 }
 
-.wsettings label input {
+.wsettings label input:not([type='checkbox']) {
   width: inherit;
 }
 .wsettings .progress {
@@ -108,9 +108,12 @@
 .wsettings .progress span {
   z-index: 0;
 }
+.wsettings .colors button {
+  height: 100%;
+}
 
 /* Move */
-.wmove {
+.wtopbar {
   position: absolute;
   top: -24px;
   left: 0;
@@ -118,13 +121,14 @@
   color: var(--text-invert);
   cursor: all-scroll;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: end;
 }
-.wmove .minimize {
-  margin-left: auto;
-  width: 24px;
-  display: block;
+.wtopbar button {
+  min-width: 24px;
 }
-.wmove .minimize:hover {
+.wtopbar button:hover {
   background-color: var(--main-hover);
 }
 
@@ -165,5 +169,8 @@
 }
 .hidden {
   display: none;
+}
+.no-pointer-events {
+  pointer-events: none;
 }
 

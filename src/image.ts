@@ -32,6 +32,7 @@ export class BotImage extends Base {
       data.strategy,
       data.opacity,
       data.drawTransparentPixels,
+      data.lock,
     )
   }
 
@@ -50,10 +51,11 @@ export class BotImage extends Base {
     clientY: number
   }
 
+  protected readonly $wrapper!: HTMLDivElement
   protected readonly $settings!: HTMLDivElement
   protected readonly $strategy!: HTMLSelectElement
-  protected readonly $move!: HTMLDivElement
-  protected readonly $minimize!: HTMLButtonElement
+  protected readonly $topbar!: HTMLDivElement
+  protected readonly $lock!: HTMLButtonElement
   protected readonly $opacity!: HTMLInputElement
   protected readonly $brightness!: HTMLInputElement
   protected readonly $drawTransparent!: HTMLInputElement
@@ -62,36 +64,46 @@ export class BotImage extends Base {
   protected readonly $progressLine!: HTMLDivElement
   protected readonly $progressText!: HTMLSpanElement
   protected readonly $canvas!: HTMLCanvasElement
+  protected readonly $colors!: HTMLDivElement
 
   public constructor(
     protected bot: WPlaceBot,
+    /** Top-left corner of image */
     public position: WorldPosition,
+    /** Parsed imageto draw */
     public pixels: Pixels,
+    /** Order of pixels to draw */
     public strategy = ImageStrategy.RANDOM,
+    /** Opacity of overlay */
     public opacity = 50,
+    /** Should we erase pixels there transparency should be */
     public drawTransparentPixels = false,
+    /** Stop accidental image edit */
+    public lock = false,
   ) {
     super()
     this.element.innerHTML = html as unknown as string
     this.element.classList.add('wimage')
-    this.element.prepend(this.pixels.canvas)
     document.body.append(this.element)
 
     this.populateElementsWithSelector(this.element, {
+      $wrapper: '.wrapper',
       $strategy: '.strategy',
       $opacity: '.opacity',
       $settings: '.wsettings',
-      $minimize: '.minimize',
-      $move: '.wmove',
+      $lock: '.lock',
+      $topbar: '.wtopbar',
       $brightness: '.brightness',
       $drawTransparent: '.draw-transparent',
       $resetSize: '.reset-size',
       $progressLine: '.progress div',
       $progressText: '.progress span',
+      $colors: '.colors',
     })
     this.$resetSizeSpan =
       this.$resetSize.querySelector<HTMLSpanElement>('span')!
     this.$canvas = this.pixels.canvas
+    this.$wrapper.prepend(this.pixels.canvas)
 
     // Strategy
     this.registerEvent(this.$strategy, 'change', () => {
@@ -114,6 +126,7 @@ export class BotImage extends Base {
       timeout = setTimeout(() => {
         this.pixels.brightness = this.$brightness.valueAsNumber
         this.pixels.update()
+        this.updateColorsToBuy()
         this.update()
         this.bot.save()
       }, 1000)
@@ -123,6 +136,7 @@ export class BotImage extends Base {
     this.registerEvent(this.$resetSize, 'click', () => {
       this.pixels.width = this.pixels.image.naturalWidth
       this.pixels.update()
+      this.updateColorsToBuy()
       this.update()
       this.bot.save()
     })
@@ -133,11 +147,15 @@ export class BotImage extends Base {
       this.bot.save()
     })
 
-    // Minimize
-    this.registerEvent(this.$minimize, 'click', this.minimize.bind(this))
+    // click-through
+    this.registerEvent(this.$lock, 'click', () => {
+      this.lock = !this.lock
+      this.update()
+      this.bot.save()
+    })
 
     // Move
-    this.registerEvent(this.$move, 'mousedown', this.moveStart.bind(this))
+    this.registerEvent(this.$topbar, 'mousedown', this.moveStart.bind(this))
     this.registerEvent(this.$canvas, 'mousedown', this.moveStart.bind(this))
     this.registerEvent(document, 'mouseup', this.moveStop.bind(this))
     this.registerEvent(document, 'mousemove', this.move.bind(this))
@@ -148,6 +166,7 @@ export class BotImage extends Base {
     ))
       this.registerEvent($resize, 'mousedown', this.resizeStart.bind(this))
     this.update()
+    this.updateColorsToBuy()
   }
 
   public toJSON() {
@@ -157,6 +176,7 @@ export class BotImage extends Base {
       strategy: this.strategy,
       opacity: this.opacity,
       drawTransparentPixels: this.drawTransparentPixels,
+      lock: this.lock,
     }
   }
 
@@ -207,6 +227,8 @@ export class BotImage extends Base {
     const percent = ((doneTasks / maxTasks) * 100) | 0
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${(this.tasks.length / 120) | 0}h`
     this.$progressLine.style.transform = `scaleX(${percent}%)`
+    this.$wrapper.classList[this.lock ? 'add' : 'remove']('no-pointer-events')
+    this.$lock.textContent = this.lock ? '🔒' : '🔓'
   }
 
   /** Removes image. Don't forget to remove from array inside widget. */
@@ -304,12 +326,6 @@ export class BotImage extends Base {
     }
   }
 
-  /** Hides content */
-  protected minimize() {
-    this.$canvas.classList.toggle('hidden')
-    this.$settings.classList.toggle('hidden')
-  }
-
   protected moveStart(event: MouseEvent) {
     this.moveInfo = {
       globalX: this.position.globalX,
@@ -344,8 +360,13 @@ export class BotImage extends Base {
         this.pixels.height = Math.max(1, this.moveInfo.height - deltaY)
     } else if (this.moveInfo.height !== undefined)
       this.pixels.height = Math.max(1, deltaY + this.moveInfo.height)
-    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined)
+    if (
+      this.moveInfo.width !== undefined ||
+      this.moveInfo.height !== undefined
+    ) {
       this.pixels.update()
+      this.updateColorsToBuy()
+    }
     this.update()
     this.bot.save()
   }
@@ -372,19 +393,22 @@ export class BotImage extends Base {
 
   /** Draw colors to buy */
   protected updateColorsToBuy() {
+    if (this.pixels.colorsToBuy.length === 0) {
+      this.$colors.innerHTML = 'You have all colors!'
+      return
+    }
     let sum = 0
     for (let index = 0; index < this.pixels.colorsToBuy.length; index++)
       sum += this.pixels.colorsToBuy[index]![1]
-    const $colors = this.element.querySelector('.colors')!
-    $colors.innerHTML = ''
+    this.$colors.innerHTML = ''
     for (let index = 0; index < this.pixels.colorsToBuy.length; index++) {
       const [color, amount] = this.pixels.colorsToBuy[index]!
-      const $div = document.createElement('button')
-      $colors.append($div)
-      $div.style.backgroundColor = `oklab(${color.color[0] * 100}% ${color.color[1]} ${color.color[2]})`
-      $div.style.width = (amount / sum) * 100 + '%'
+      const $button = document.createElement('button')
+      this.$colors.append($button)
+      $button.style.backgroundColor = `oklab(${color.color[0] * 100}% ${color.color[1]} ${color.color[2]})`
+      $button.style.width = (amount / sum) * 100 + '%'
       // Do not use register event cause it will be disposed automatically
-      $div.addEventListener('click', async () => {
+      $button.addEventListener('click', async () => {
         await this.bot.updateColors()
         document.getElementById(color.buttonId)?.click()
       })

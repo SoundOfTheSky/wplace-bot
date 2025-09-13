@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.1.0
+// @version      4.1.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -229,30 +229,39 @@ class Base2 {
 }
 
 // src/image.html
-var image_default = `<div class="wmove">
-  <button class="minimize">-</button>
+var image_default = `<div class="wtopbar">
+  <button class="lock">🔓</button>
 </div>
-<div class="wsettings">
-  <div class="progress"><div></div><span></span></div>
-  <div class="colors"></div>
-  <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100" /></label>
-  <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
-  <select class="strategy">
-    <option value="RANDOM" selected>Random</option>
-    <option value="DOWN">Down</option>
-    <option value="UP">Up</option>
-    <option value="LEFT">Left</option>
-    <option value="RIGHT">Right</option>
-    <option value="SPIRAL_FROM_CENTER">Spiral out</option>
-    <option value="SPIRAL_TO_CENTER">Spiral in</option>
-  </select>
-  <button class="reset-size">Reset size [<span></span>px]</button>
-  <label><input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels</label>
+<div class="wrapper">
+  <div class="wsettings">
+    <div class="progress">
+      <div></div>
+      <span></span>
+    </div>
+    <div class="colors"></div>
+    <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>
+    <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
+    <label>
+      Strategy:&nbsp;<select class="strategy">
+        <option value="RANDOM" selected>Random</option>
+        <option value="DOWN">Down</option>
+        <option value="UP">Up</option>
+        <option value="LEFT">Left</option>
+        <option value="RIGHT">Right</option>
+        <option value="SPIRAL_FROM_CENTER">Spiral out</option>
+        <option value="SPIRAL_TO_CENTER">Spiral in</option>
+      </select>
+    </label>
+    <button class="reset-size">Reset size [<span></span>px]</button>
+    <label>
+      <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels
+    </label>
+  </div>
+  <div class="resize n"></div>
+  <div class="resize e"></div>
+  <div class="resize s"></div>
+  <div class="resize w"></div>
 </div>
-<div class="resize n"></div>
-<div class="resize e"></div>
-<div class="resize s"></div>
-<div class="resize w"></div>
 `;
 
 // src/pixels.ts
@@ -411,7 +420,7 @@ class Pixels {
         this.context.fillStyle = `oklab(${min.color[0] * 100}% ${min.color[1]} ${min.color[2]})`;
         this.context.fillRect(x, y, 1, 1);
         this.pixels[y][x] = min.buttonId;
-        if (minReal.buttonId === min.buttonId)
+        if (minReal.buttonId !== min.buttonId)
           colorsToBuy.set(minReal, (colorsToBuy.get(minReal) ?? 0) + 1);
       }
     }
@@ -528,16 +537,18 @@ class BotImage extends Base2 {
   strategy;
   opacity;
   drawTransparentPixels;
+  lock;
   static async fromJSON(bot, data) {
-    return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels);
+    return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels, data.lock);
   }
   element = document.createElement("div");
   tasks = [];
   moveInfo;
+  $wrapper;
   $settings;
   $strategy;
-  $move;
-  $minimize;
+  $topbar;
+  $lock;
   $opacity;
   $brightness;
   $drawTransparent;
@@ -546,7 +557,8 @@ class BotImage extends Base2 {
   $progressLine;
   $progressText;
   $canvas;
-  constructor(bot, position, pixels, strategy = "RANDOM" /* RANDOM */, opacity = 50, drawTransparentPixels = false) {
+  $colors;
+  constructor(bot, position, pixels, strategy = "RANDOM" /* RANDOM */, opacity = 50, drawTransparentPixels = false, lock = false) {
     super();
     this.bot = bot;
     this.position = position;
@@ -554,24 +566,27 @@ class BotImage extends Base2 {
     this.strategy = strategy;
     this.opacity = opacity;
     this.drawTransparentPixels = drawTransparentPixels;
+    this.lock = lock;
     this.element.innerHTML = image_default;
     this.element.classList.add("wimage");
-    this.element.prepend(this.pixels.canvas);
     document.body.append(this.element);
     this.populateElementsWithSelector(this.element, {
+      $wrapper: ".wrapper",
       $strategy: ".strategy",
       $opacity: ".opacity",
       $settings: ".wsettings",
-      $minimize: ".minimize",
-      $move: ".wmove",
+      $lock: ".lock",
+      $topbar: ".wtopbar",
       $brightness: ".brightness",
       $drawTransparent: ".draw-transparent",
       $resetSize: ".reset-size",
       $progressLine: ".progress div",
-      $progressText: ".progress span"
+      $progressText: ".progress span",
+      $colors: ".colors"
     });
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
     this.$canvas = this.pixels.canvas;
+    this.$wrapper.prepend(this.pixels.canvas);
     this.registerEvent(this.$strategy, "change", () => {
       this.strategy = this.$strategy.value;
       this.bot.save();
@@ -587,6 +602,7 @@ class BotImage extends Base2 {
       timeout2 = setTimeout(() => {
         this.pixels.brightness = this.$brightness.valueAsNumber;
         this.pixels.update();
+        this.updateColorsToBuy();
         this.update();
         this.bot.save();
       }, 1000);
@@ -594,6 +610,7 @@ class BotImage extends Base2 {
     this.registerEvent(this.$resetSize, "click", () => {
       this.pixels.width = this.pixels.image.naturalWidth;
       this.pixels.update();
+      this.updateColorsToBuy();
       this.update();
       this.bot.save();
     });
@@ -601,14 +618,19 @@ class BotImage extends Base2 {
       this.drawTransparentPixels = this.$drawTransparent.checked;
       this.bot.save();
     });
-    this.registerEvent(this.$minimize, "click", this.minimize.bind(this));
-    this.registerEvent(this.$move, "mousedown", this.moveStart.bind(this));
+    this.registerEvent(this.$lock, "click", () => {
+      this.lock = !this.lock;
+      this.update();
+      this.bot.save();
+    });
+    this.registerEvent(this.$topbar, "mousedown", this.moveStart.bind(this));
     this.registerEvent(this.$canvas, "mousedown", this.moveStart.bind(this));
     this.registerEvent(document, "mouseup", this.moveStop.bind(this));
     this.registerEvent(document, "mousemove", this.move.bind(this));
     for (const $resize of this.element.querySelectorAll(".resize"))
       this.registerEvent($resize, "mousedown", this.resizeStart.bind(this));
     this.update();
+    this.updateColorsToBuy();
   }
   toJSON() {
     return {
@@ -616,7 +638,8 @@ class BotImage extends Base2 {
       position: this.position.toJSON(),
       strategy: this.strategy,
       opacity: this.opacity,
-      drawTransparentPixels: this.drawTransparentPixels
+      drawTransparentPixels: this.drawTransparentPixels,
+      lock: this.lock
     };
   }
   async updateTasks() {
@@ -658,6 +681,8 @@ class BotImage extends Base2 {
     const percent = doneTasks / maxTasks * 100 | 0;
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${this.tasks.length / 120 | 0}h`;
     this.$progressLine.style.transform = `scaleX(${percent}%)`;
+    this.$wrapper.classList[this.lock ? "add" : "remove"]("no-pointer-events");
+    this.$lock.textContent = this.lock ? "\uD83D\uDD12" : "\uD83D\uDD13";
   }
   destroy() {
     super.destroy();
@@ -754,10 +779,6 @@ class BotImage extends Base2 {
       }
     }
   }
-  minimize() {
-    this.$canvas.classList.toggle("hidden");
-    this.$settings.classList.toggle("hidden");
-  }
   moveStart(event) {
     this.moveInfo = {
       globalX: this.position.globalX,
@@ -786,8 +807,10 @@ class BotImage extends Base2 {
         this.pixels.height = Math.max(1, this.moveInfo.height - deltaY);
     } else if (this.moveInfo.height !== undefined)
       this.pixels.height = Math.max(1, deltaY + this.moveInfo.height);
-    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined)
+    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined) {
       this.pixels.update();
+      this.updateColorsToBuy();
+    }
     this.update();
     this.bot.save();
   }
@@ -811,18 +834,21 @@ class BotImage extends Base2 {
     }
   }
   updateColorsToBuy() {
+    if (this.pixels.colorsToBuy.length === 0) {
+      this.$colors.innerHTML = "You have all colors!";
+      return;
+    }
     let sum = 0;
     for (let index = 0;index < this.pixels.colorsToBuy.length; index++)
       sum += this.pixels.colorsToBuy[index][1];
-    const $colors = this.element.querySelector(".colors");
-    $colors.innerHTML = "";
+    this.$colors.innerHTML = "";
     for (let index = 0;index < this.pixels.colorsToBuy.length; index++) {
       const [color, amount] = this.pixels.colorsToBuy[index];
-      const $div = document.createElement("button");
-      $colors.append($div);
-      $div.style.backgroundColor = `oklab(${color.color[0] * 100}% ${color.color[1]} ${color.color[2]})`;
-      $div.style.width = amount / sum * 100 + "%";
-      $div.addEventListener("click", async () => {
+      const $button = document.createElement("button");
+      this.$colors.append($button);
+      $button.style.backgroundColor = `oklab(${color.color[0] * 100}% ${color.color[1]} ${color.color[2]})`;
+      $button.style.width = amount / sum * 100 + "%";
+      $button.addEventListener("click", async () => {
         await this.bot.updateColors();
         document.getElementById(color.buttonId)?.click();
       });
@@ -831,18 +857,18 @@ class BotImage extends Base2 {
 }
 
 // src/widget.html
-var widget_default = `<div class="wmove">
+var widget_default = `<div class="wtopbar">
   <button class="minimize">-</button>
 </div>
 <div class="wsettings">
   <div class="wp wstatus"></div>
   <div class="progress"><div></div><span></span></div>
   <button class="draw" disabled>Draw</button>
-  <select class="strategy">
+  <label>Strategy:&nbsp;<select class="strategy">
     <option value="SEQUENTIAL" selected>Sequential</option>
     <option value="ALL">All</option>
     <option value="PERCENTAGE">Percentage</option>
-  </select>
+  </select></label>
   <div class="images"></div>
   <button class="add-image" disabled>Add image</button>
 </div>
@@ -866,7 +892,7 @@ class Widget extends Base2 {
   $settings;
   $status;
   $minimize;
-  $move;
+  $topbar;
   $draw;
   $addImage;
   $strategy;
@@ -883,7 +909,7 @@ class Widget extends Base2 {
       $settings: ".wsettings",
       $status: ".wstatus",
       $minimize: ".minimize",
-      $move: ".wmove",
+      $topbar: ".wtopbar",
       $draw: ".draw",
       $addImage: ".add-image",
       $strategy: ".strategy",
@@ -894,7 +920,7 @@ class Widget extends Base2 {
     this.$minimize.addEventListener("click", () => {
       this.minimize();
     });
-    this.$move.addEventListener("mousedown", (event) => {
+    this.$topbar.addEventListener("mousedown", (event) => {
       this.moveStart(event.clientX, event.clientY);
     });
     this.registerEvent(document, "mouseup", () => {
@@ -1426,7 +1452,7 @@ var style_default = `:root {
   width: 100%;
   min-width: 256px;
 }
-.wimage:hover .wsettings {
+.wimage .wrapper:hover .wsettings {
   display: block;
 }
 
@@ -1454,7 +1480,7 @@ var style_default = `:root {
   cursor: no-drop;
 }
 
-.wsettings label input {
+.wsettings label input:not([type='checkbox']) {
   width: inherit;
 }
 .wsettings .progress {
@@ -1470,9 +1496,12 @@ var style_default = `:root {
 .wsettings .progress span {
   z-index: 0;
 }
+.wsettings .colors button {
+  height: 100%;
+}
 
 /* Move */
-.wmove {
+.wtopbar {
   position: absolute;
   top: -24px;
   left: 0;
@@ -1480,13 +1509,14 @@ var style_default = `:root {
   color: var(--text-invert);
   cursor: all-scroll;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: end;
 }
-.wmove .minimize {
-  margin-left: auto;
-  width: 24px;
-  display: block;
+.wtopbar button {
+  min-width: 24px;
 }
-.wmove .minimize:hover {
+.wtopbar button:hover {
   background-color: var(--main-hover);
 }
 
@@ -1527,6 +1557,9 @@ var style_default = `:root {
 }
 .hidden {
   display: none;
+}
+.no-pointer-events {
+  pointer-events: none;
 }
 
 `;

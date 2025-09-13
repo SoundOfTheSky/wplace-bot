@@ -22,15 +22,15 @@
 
 ![Instruction1](https://github.com/SoundOfTheSky/wplace-bot/raw/refs/heads/main/Instruction.png)
 
-1. On error "Stars are too close" I recommend to delete your favorite locations
-2. On error during initialization try to zoom in first
-3. On error "Zoom is too far" just zoom in
+1. On error "Stars are too close" delete your favorite locations. You can restore them later.
+2. On error during initialization try to zoom in first.
+3. On error "Zoom is too far" just zoom in.
 
 ## Captcha bypass
 
 I recommend using simple autoclicker like this
 
-1. Reload tab "CTRL+SHIFT+R", wait 10 seconds (Optional, but recommended)
+1. Reload tab "CTRL+SHIFT", wait 10 seconds (Optional, but recommended)
 2. Click "Draw", wait 15 seconds
 3. Click Captcha, wait 5s
 4. Click "Paint", wait 30 minutes
@@ -40,12 +40,14 @@ Also I'm using [Firefox Multi-Account Containers](https://addons.mozilla.org/en-
 
 ## Known issues
 
-1. Once your session on website ends, bot obviously stops
+1. Once your session on website ends, bot obviously stops.
+2. You have to zoom in before drawing.
+3. Your favorite locations may break the bot. Delete them. You can restore them later. It happens because the bot requires 2 favorite location far away from each other to precisely align images on the map.
 
 ## Contribution
 
 1. Install [Bun](https://bun.sh/)
 2. Install dependencies `bun i`
-3. Up version in `sciprt.txt`
+3. Up version in `script.txt`
 4. Lint `bun run lint`
 5. Build `bun start`

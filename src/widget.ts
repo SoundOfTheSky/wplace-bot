@@ -47,7 +47,7 @@ export class Widget extends Base {
   protected readonly $settings!: HTMLDivElement
   protected readonly $status!: HTMLDivElement
   protected readonly $minimize!: HTMLButtonElement
-  protected readonly $move!: HTMLDivElement
+  protected readonly $topbar!: HTMLDivElement
   protected readonly $draw!: HTMLButtonElement
   protected readonly $addImage!: HTMLButtonElement
   protected readonly $strategy!: HTMLInputElement
@@ -65,7 +65,7 @@ export class Widget extends Base {
       $settings: '.wsettings',
       $status: '.wstatus',
       $minimize: '.minimize',
-      $move: '.wmove',
+      $topbar: '.wtopbar',
       $draw: '.draw',
       $addImage: '.add-image',
       $strategy: '.strategy',
@@ -78,7 +78,7 @@ export class Widget extends Base {
     this.$minimize.addEventListener('click', () => {
       this.minimize()
     })
-    this.$move.addEventListener('mousedown', (event) => {
+    this.$topbar.addEventListener('mousedown', (event) => {
       this.moveStart(event.clientX, event.clientY)
     })
     this.registerEvent(document, 'mouseup', () => {
