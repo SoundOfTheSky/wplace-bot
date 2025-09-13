@@ -24,16 +24,17 @@ export class Base {
    * Register autocleared event handler.
    * If using classes methods don't forget to `bind(this)`
    */
-  protected registerEvent(
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+  protected registerEvent<T extends Event>(
     target: EventTarget,
     type: string,
-    listener: (event: Event) => void,
+    listener: (event: T) => void,
     options: AddEventListenerOptions = {},
   ): void {
     options.passive ??= true
-    target.addEventListener(type, listener, options)
+    target.addEventListener(type, listener as EventListener, options)
     this.runOnDestroy.push(() => {
-      target.removeEventListener(type, listener)
+      target.removeEventListener(type, listener as EventListener)
     })
   }
 }

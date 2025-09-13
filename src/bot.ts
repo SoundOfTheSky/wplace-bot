@@ -2,7 +2,7 @@ import { wait, withTimeout } from '@softsky/utils'
 
 import { StarsAreTooCloseError, ZoomTooFarError } from './errors'
 import { BotImage, DrawTask } from './image'
-import { Color, Pixels } from './pixels'
+import { Color, Pixels, rgbToOklab } from './pixels'
 import { BotStrategy, Widget } from './widget'
 import { Position, WorldPosition } from './world-position'
 
@@ -102,7 +102,7 @@ export class WPlaceBot {
 
   /** Start drawing */
   public draw() {
-    if (this.pixelSize < 3) throw new ZoomTooFarError(this)
+    if (this.pixelSize < 2) throw new ZoomTooFarError(this)
     this.widget.status = ''
     const prevent = (event: MouseEvent | WheelEvent) => {
       if (!event.shiftKey) event.stopPropagation()
@@ -225,22 +225,16 @@ export class WPlaceBot {
       ).map((button, index, array) => {
         if (index === array.length - 1)
           return {
-            r: 255,
-            g: 255,
-            b: 255,
-            a: 0,
+            color: [Number.NaN, Number.NaN, Number.NaN],
             available: true,
-            buttonId: button.id,
+            buttonId: 'color-0',
           } satisfies Color
         const rgb = button.style.background
           .slice(4, -1)
           .split(', ')
-          .map((x) => +x)
+          .map((x) => +x) as [number, number, number]
         return {
-          r: rgb[0]!,
-          g: rgb[1]!,
-          b: rgb[2]!,
-          a: 255,
+          color: rgbToOklab(...rgb),
           available: button.children.length === 0,
           buttonId: button.id,
         } satisfies Color
@@ -322,11 +316,12 @@ export class WPlaceBot {
   /** Draw one task */
   protected async drawTask(task: DrawTask) {
     ;(document.getElementById(task.buttonId) as HTMLButtonElement).click()
+    const position = task.position.toScreenPosition()
     document.documentElement.dispatchEvent(
       new MouseEvent('mousemove', {
         bubbles: true,
-        clientX: task.x,
-        clientY: task.y,
+        clientX: position.x,
+        clientY: position.y,
         shiftKey: true,
       }),
     )

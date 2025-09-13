@@ -4,8 +4,10 @@ import html from './image.html' with { type: 'text' }
 import { Pixels } from './pixels'
 import { Position, WorldPosition } from './world-position'
 
-export type DrawTask = Position & {
+export type DrawTask = {
+  position: WorldPosition
   buttonId: string
+  mapColor: string
 }
 
 export enum ImageStrategy {
@@ -48,15 +50,18 @@ export class BotImage extends Base {
     clientY: number
   }
 
+  protected readonly $settings!: HTMLDivElement
   protected readonly $strategy!: HTMLSelectElement
+  protected readonly $move!: HTMLDivElement
+  protected readonly $minimize!: HTMLButtonElement
   protected readonly $opacity!: HTMLInputElement
+  protected readonly $brightness!: HTMLInputElement
   protected readonly $drawTransparent!: HTMLInputElement
   protected readonly $resetSize!: HTMLButtonElement
   protected readonly $resetSizeSpan!: HTMLSpanElement
   protected readonly $progressLine!: HTMLDivElement
   protected readonly $progressText!: HTMLSpanElement
-  public readonly $canvas!: HTMLCanvasElement
-  public readonly context!: CanvasRenderingContext2D
+  protected readonly $canvas!: HTMLCanvasElement
 
   public constructor(
     protected bot: WPlaceBot,
@@ -69,36 +74,53 @@ export class BotImage extends Base {
     super()
     this.element.innerHTML = html as unknown as string
     this.element.classList.add('wimage')
+    this.element.prepend(this.pixels.canvas)
     document.body.append(this.element)
 
     this.populateElementsWithSelector(this.element, {
       $strategy: '.strategy',
       $opacity: '.opacity',
+      $settings: '.wsettings',
+      $minimize: '.minimize',
+      $move: '.wmove',
+      $brightness: '.brightness',
       $drawTransparent: '.draw-transparent',
       $resetSize: '.reset-size',
       $progressLine: '.progress div',
       $progressText: '.progress span',
-      $canvas: 'canvas',
     })
     this.$resetSizeSpan =
       this.$resetSize.querySelector<HTMLSpanElement>('span')!
-    this.context = this.$canvas.getContext('2d')!
+    this.$canvas = this.pixels.canvas
 
     // Strategy
-    this.$strategy.addEventListener('change', () => {
+    this.registerEvent(this.$strategy, 'change', () => {
       this.strategy = this.$strategy.value as ImageStrategy
       this.bot.save()
     })
 
     // Opacity
-    this.$opacity.addEventListener('input', () => {
+    this.registerEvent(this.$opacity, 'input', () => {
       this.opacity = this.$opacity.valueAsNumber
       this.update()
       this.bot.save()
     })
 
+    // Brightness
+    let timeout: ReturnType<typeof setTimeout> | undefined
+
+    this.registerEvent(this.$brightness, 'change', () => {
+      clearTimeout(timeout)
+      timeout = setTimeout(() => {
+        this.pixels.brightness = this.$brightness.valueAsNumber
+        this.pixels.update()
+        this.update()
+        this.bot.save()
+      }, 1000)
+    })
+
     // Reset
-    this.$resetSize.addEventListener('click', () => {
+    this.registerEvent(this.$resetSize, 'click', () => {
       this.pixels.width = this.pixels.image.naturalWidth
       this.pixels.update()
       this.update()
@@ -106,51 +128,25 @@ export class BotImage extends Base {
     })
 
     // drawTransparent
-    this.$drawTransparent.addEventListener('click', () => {
+    this.registerEvent(this.$drawTransparent, 'click', () => {
       this.drawTransparentPixels = this.$drawTransparent.checked
       this.bot.save()
     })
 
+    // Minimize
+    this.registerEvent(this.$minimize, 'click', this.minimize.bind(this))
+
     // Move
-    this.registerEvent(this.$canvas, 'mousedown', (event) => {
-      this.moveInfo = {
-        globalX: this.position.globalX,
-        globalY: this.position.globalY,
-        clientX: (event as MouseEvent).clientX,
-        clientY: (event as MouseEvent).clientY,
-      }
-    })
-    this.registerEvent(document, 'mouseup', () => {
-      this.moveInfo = undefined
-    })
-    this.registerEvent(document, 'mousemove', (event) => {
-      if (this.moveInfo)
-        this.move((event as MouseEvent).clientX, (event as MouseEvent).clientY)
-    })
+    this.registerEvent(this.$move, 'mousedown', this.moveStart.bind(this))
+    this.registerEvent(this.$canvas, 'mousedown', this.moveStart.bind(this))
+    this.registerEvent(document, 'mouseup', this.moveStop.bind(this))
+    this.registerEvent(document, 'mousemove', this.move.bind(this))
 
     // Resize
     for (const $resize of this.element.querySelectorAll<HTMLDivElement>(
       '.resize',
-    )) {
-      $resize.addEventListener('mousedown', (event) => {
-        this.moveInfo = {
-          clientX: event.clientX,
-          clientY: event.clientY,
-        }
-        if ($resize.classList.contains('n')) {
-          this.moveInfo.height = this.pixels.height
-          this.moveInfo.globalY = this.position.globalY
-        }
-        if ($resize.classList.contains('e'))
-          this.moveInfo.width = this.pixels.width
-        if ($resize.classList.contains('s'))
-          this.moveInfo.height = this.pixels.height
-        if ($resize.classList.contains('w')) {
-          this.moveInfo.width = this.pixels.width
-          this.moveInfo.globalX = this.position.globalX
-        }
-      })
-    }
+    ))
+      this.registerEvent($resize, 'mousedown', this.resizeStart.bind(this))
     this.update()
   }
 
@@ -176,45 +172,33 @@ export class BotImage extends Base {
       if (
         color !== mapColor &&
         (this.drawTransparentPixels || color !== 'color-0')
-      ) {
-        const { x, y } = position.toScreenPosition()
+      )
         this.tasks.push({
-          x,
-          y,
+          position: position.clone(),
           buttonId: color,
+          mapColor,
         })
-      }
     }
     this.update()
     this.bot.widget.update()
   }
 
-  /** Update canvas */
+  /** Update image (NOT PIXELS) */
   public update() {
     const halfPixel = this.bot.pixelSize / 2
     try {
       // Might throw if no anchor. Then we just hide all images
       const { x, y } = this.position.toScreenPosition()
       this.element.style.transform = `translate(${x - halfPixel}px, ${y - halfPixel}px)`
+      this.element.style.width = `${this.bot.pixelSize * this.pixels.width}px`
+      this.$canvas.style.opacity = `${this.opacity}%`
       this.element.classList.remove('hidden')
     } catch {
       this.element.classList.add('hidden')
     }
 
-    this.$canvas.width = this.bot.pixelSize * this.pixels.width
-    this.$canvas.height = this.bot.pixelSize * this.pixels.height
-    this.context.globalAlpha = this.opacity / 100
-    this.context.imageSmoothingEnabled = false
-    this.context.imageSmoothingQuality = 'low'
-    this.context.drawImage(
-      this.pixels.canvas,
-      0,
-      0,
-      this.$canvas.width,
-      this.$canvas.height,
-    )
-
     this.$resetSizeSpan.textContent = this.pixels.width.toString()
+    this.$brightness.valueAsNumber = this.pixels.brightness
     this.$strategy.value = this.strategy
     this.$opacity.valueAsNumber = this.opacity
     this.$drawTransparent.checked = this.drawTransparentPixels
@@ -229,33 +213,6 @@ export class BotImage extends Base {
   public destroy() {
     super.destroy()
     this.element.remove()
-  }
-
-  /** Resize/move image */
-  protected move(clientX: number, clientY: number) {
-    if (!this.moveInfo) return
-    const deltaX = Math.round(
-      (clientX - this.moveInfo.clientX) / this.bot.pixelSize,
-    )
-    const deltaY = Math.round(
-      (clientY - this.moveInfo.clientY) / this.bot.pixelSize,
-    )
-    if (this.moveInfo.globalX !== undefined) {
-      this.position.globalX = deltaX + this.moveInfo.globalX
-      if (this.moveInfo.width !== undefined)
-        this.pixels.width = Math.max(1, this.moveInfo.width - deltaX)
-    } else if (this.moveInfo.width !== undefined)
-      this.pixels.width = Math.max(1, deltaX + this.moveInfo.width)
-    if (this.moveInfo.globalY !== undefined) {
-      this.position.globalY = deltaY + this.moveInfo.globalY
-      if (this.moveInfo.height !== undefined)
-        this.pixels.height = Math.max(1, this.moveInfo.height - deltaY)
-    } else if (this.moveInfo.height !== undefined)
-      this.pixels.height = Math.max(1, deltaY + this.moveInfo.height)
-    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined)
-      this.pixels.update()
-    this.update()
-    this.bot.save()
   }
 
   /** Create iterator that generates positions based on strategy */
@@ -344,6 +301,93 @@ export class BotImage extends Base {
         }
         break
       }
+    }
+  }
+
+  /** Hides content */
+  protected minimize() {
+    this.$canvas.classList.toggle('hidden')
+    this.$settings.classList.toggle('hidden')
+  }
+
+  protected moveStart(event: MouseEvent) {
+    this.moveInfo = {
+      globalX: this.position.globalX,
+      globalY: this.position.globalY,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    }
+  }
+
+  protected moveStop() {
+    this.moveInfo = undefined
+  }
+
+  /** Resize/move image */
+  protected move(event: MouseEvent) {
+    if (!this.moveInfo) return
+    const deltaX = Math.round(
+      (event.clientX - this.moveInfo.clientX) / this.bot.pixelSize,
+    )
+    const deltaY = Math.round(
+      (event.clientY - this.moveInfo.clientY) / this.bot.pixelSize,
+    )
+    if (this.moveInfo.globalX !== undefined) {
+      this.position.globalX = deltaX + this.moveInfo.globalX
+      if (this.moveInfo.width !== undefined)
+        this.pixels.width = Math.max(1, this.moveInfo.width - deltaX)
+    } else if (this.moveInfo.width !== undefined)
+      this.pixels.width = Math.max(1, deltaX + this.moveInfo.width)
+    if (this.moveInfo.globalY !== undefined) {
+      this.position.globalY = deltaY + this.moveInfo.globalY
+      if (this.moveInfo.height !== undefined)
+        this.pixels.height = Math.max(1, this.moveInfo.height - deltaY)
+    } else if (this.moveInfo.height !== undefined)
+      this.pixels.height = Math.max(1, deltaY + this.moveInfo.height)
+    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined)
+      this.pixels.update()
+    this.update()
+    this.bot.save()
+  }
+
+  /** Resize start */
+  protected resizeStart(event: MouseEvent) {
+    this.moveInfo = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    }
+    const $resize = event.target! as HTMLDivElement
+    if ($resize.classList.contains('n')) {
+      this.moveInfo.height = this.pixels.height
+      this.moveInfo.globalY = this.position.globalY
+    }
+    if ($resize.classList.contains('e')) this.moveInfo.width = this.pixels.width
+    if ($resize.classList.contains('s'))
+      this.moveInfo.height = this.pixels.height
+    if ($resize.classList.contains('w')) {
+      this.moveInfo.width = this.pixels.width
+      this.moveInfo.globalX = this.position.globalX
+    }
+  }
+
+  /** Draw colors to buy */
+  protected updateColorsToBuy() {
+    let sum = 0
+    for (let index = 0; index < this.pixels.colorsToBuy.length; index++)
+      sum += this.pixels.colorsToBuy[index]![1]
+    const $colors = this.element.querySelector('.colors')!
+    $colors.innerHTML = ''
+    for (let index = 0; index < this.pixels.colorsToBuy.length; index++) {
+      const [color, amount] = this.pixels.colorsToBuy[index]!
+      const $div = document.createElement('button')
+      $colors.append($div)
+      $div.style.backgroundColor = `oklab(${color.color[0] * 100}% ${color.color[1]} ${color.color[2]})`
+      $div.style.width = (amount / sum) * 100 + '%'
+      // Do not use register event cause it will be disposed automatically
+      $div.addEventListener('click', async () => {
+        await this.bot.updateColors()
+        document.getElementById(color.buttonId)?.click()
+      })
     }
   }
 }

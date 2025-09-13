@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.0.0
+// @version      4.1.0
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -229,11 +229,14 @@ class Base2 {
 }
 
 // src/image.html
-var image_default = `<canvas></canvas>
+var image_default = `<div class="wmove">
+  <button class="minimize">-</button>
+</div>
 <div class="wsettings">
   <div class="progress"><div></div><span></span></div>
   <div class="colors"></div>
   <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100" /></label>
+  <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
   <select class="strategy">
     <option value="RANDOM" selected>Random</option>
     <option value="DOWN">Down</option>
@@ -253,11 +256,72 @@ var image_default = `<canvas></canvas>
 `;
 
 // src/pixels.ts
+function srgbNonlinearTransformInv(c) {
+  return c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92;
+}
+function rgbToOklab(r, g, b) {
+  const lr = srgbNonlinearTransformInv(r / 255);
+  const lg = srgbNonlinearTransformInv(g / 255);
+  const lb = srgbNonlinearTransformInv(b / 255);
+  const lp = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+  const mp = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+  const sp = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+  const l = 0.2104542553 * lp + 0.793617785 * mp - 0.0040720468 * sp;
+  const aa = 1.9779984951 * lp - 2.428592205 * mp + 0.4505937099 * sp;
+  const bb = 0.0259040371 * lp + 0.7827717662 * mp - 0.808675766 * sp;
+  return [l, aa, bb];
+}
+function deltaE2000(lab1, lab2, brightness) {
+  const [L1, a1, b1] = lab1;
+  const [L2, a2, b2] = lab2;
+  const rad2deg = (rad) => rad * 180 / Math.PI;
+  const deg2rad = (deg) => deg * Math.PI / 180;
+  const kL = 1, kC = 1, kH = 1;
+  const C1 = Math.sqrt(a1 ** 2 + b1 ** 2);
+  const C2 = Math.sqrt(a2 ** 2 + b2 ** 2);
+  const avgC = (C1 + C2) / 2;
+  const G = 0.5 * (1 - Math.sqrt(avgC ** 7 / (avgC ** 7 + 25 ** 7)));
+  const a1p = a1 * (1 + G);
+  const a2p = a2 * (1 + G);
+  const C1p = Math.sqrt(a1p ** 2 + b1 ** 2);
+  const C2p = Math.sqrt(a2p ** 2 + b2 ** 2);
+  const h1p = b1 === 0 && a1p === 0 ? 0 : rad2deg(Math.atan2(b1, a1p)) % 360;
+  const h2p = b2 === 0 && a2p === 0 ? 0 : rad2deg(Math.atan2(b2, a2p)) % 360;
+  const Lp = L2 - L1;
+  const Cp = C2p - C1p;
+  let hp = 0;
+  if (C1p * C2p !== 0) {
+    hp = h2p - h1p;
+    if (hp > 180) {
+      hp -= 360;
+    } else if (hp < -180) {
+      hp += 360;
+    }
+  }
+  const Hp = 2 * Math.sqrt(C1p * C2p) * Math.sin(deg2rad(hp) / 2);
+  const avgLp = (L1 + L2) / 2;
+  const avgCp = (C1p + C2p) / 2;
+  let avghp = (h1p + h2p) / 2;
+  if (Math.abs(h1p - h2p) > 180) {
+    avghp += 180;
+  }
+  const T = 1 - 0.17 * Math.cos(deg2rad(avghp - 30)) + 0.24 * Math.cos(deg2rad(2 * avghp)) + 0.32 * Math.cos(deg2rad(3 * avghp + 6)) - 0.2 * Math.cos(deg2rad(4 * avghp - 63));
+  const SL = 1 + 0.015 * (avgLp - 50) ** 2 / Math.sqrt(20 + (avgLp - 50) ** 2);
+  const SC = 1 + 0.045 * avgCp;
+  const SH = 1 + 0.015 * avgCp * T;
+  const θ = 30 * Math.exp((-((avghp - 275) / 25)) ** 2);
+  const RC = 2 * Math.sqrt(avgCp ** 7 / (avgCp ** 7 + 25 ** 7));
+  const RT = -RC * Math.sin(deg2rad(2 * θ));
+  return Math.sqrt((Lp / (kL * SL)) ** 2 + (Cp / (kC * SC)) ** 2 + (Hp / (kH * SH)) ** 2 + RT * (Cp / (kC * SC)) * (Hp / (kH * SH))) - Lp * brightness;
+}
+
 class Pixels {
   bot;
   image;
   width;
-  static async fromSelectImage(bot, width) {
+  brightness;
+  exactColor;
+  static async fromSelectImage(bot, width, brightness, exactColor) {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
@@ -272,14 +336,13 @@ class Pixels {
     const image = new Image;
     image.src = reader.result;
     await promisifyEventSource(image, ["load"], ["error"]);
-    return new Pixels(bot, image, width);
+    return new Pixels(bot, image, width, brightness, exactColor);
   }
   static async fromJSON(bot, data) {
     const image = new Image;
-    image.crossOrigin = "anonymous";
-    image.src = data.url;
+    image.src = data.url.startsWith("http") ? await fetch(data.url, { cache: "no-store" }).then((x) => x.blob()).then((X) => URL.createObjectURL(X)) : data.url;
     await promisifyEventSource(image, ["load"], ["error"]);
-    return new Pixels(bot, image, data.width);
+    return new Pixels(bot, image, data.width, data.brightness, data.exactColor);
   }
   canvas = document.createElement("canvas");
   context = this.canvas.getContext("2d");
@@ -292,10 +355,12 @@ class Pixels {
   set height(value) {
     this.width = value * this.resolution | 0;
   }
-  constructor(bot, image, width = image.naturalWidth) {
+  constructor(bot, image, width = image.naturalWidth, brightness = 0, exactColor = false) {
     this.bot = bot;
     this.image = image;
     this.width = width;
+    this.brightness = brightness;
+    this.exactColor = exactColor;
     this.resolution = this.image.naturalWidth / this.image.naturalHeight;
     this.update();
   }
@@ -303,6 +368,11 @@ class Pixels {
     this.canvas.width = this.width;
     this.canvas.height = this.height;
     const colorsToBuy = new Map;
+    const colorCache = new Map;
+    for (let index = 0;index < this.bot.colors.length; index++) {
+      const color = this.bot.colors[index];
+      colorCache.set(`${color.color[0].toFixed(4)},${color.color[1].toFixed(4)},${color.color[2].toFixed(4)}`, [color, color]);
+    }
     this.context.imageSmoothingEnabled = false;
     this.context.imageSmoothingQuality = "low";
     this.context.drawImage(this.image, 0, 0, this.canvas.width, this.canvas.height);
@@ -311,33 +381,38 @@ class Pixels {
     for (let y = 0;y < this.canvas.height; y++) {
       for (let x = 0;x < this.canvas.width; x++) {
         const index = (y * this.canvas.width + x) * 4;
-        const r = data[index];
-        const g = data[index + 1];
-        const b = data[index + 2];
-        const a = data[index + 3];
-        if (a < 100) {
-          this.pixels[y][x] = this.bot.colors.at(-1).buttonId;
+        if (data[index + 3] < 100) {
+          this.pixels[y][x] = "color-0";
           continue;
         }
-        let minDelta = Infinity;
+        const originalColor = rgbToOklab(...data.slice(index, index + 3));
+        const key = `${originalColor[0].toFixed(4)},${originalColor[1].toFixed(4)},${originalColor[2].toFixed(4)}`;
         let min;
-        let minDeltaReal = Infinity;
         let minReal;
-        for (let index2 = 0;index2 < this.bot.colors.length; index2++) {
-          const color = this.bot.colors[index2];
-          const delta = (color.r - r) ** 2 + (color.g - g) ** 2 + (color.b - b) ** 2;
-          if (color.available && delta < minDelta) {
-            minDelta = delta;
-            min = color;
+        if (colorCache.has(key))
+          [min, minReal] = colorCache.get(key);
+        else {
+          let minDelta = Infinity;
+          let minDeltaReal = Infinity;
+          for (let colorIndex = 0;colorIndex < this.bot.colors.length; colorIndex++) {
+            const color = this.bot.colors[colorIndex];
+            const delta = deltaE2000(originalColor, color.color, this.brightness);
+            if (color.available && delta < minDelta) {
+              minDelta = delta;
+              min = color;
+            }
+            if (delta < minDeltaReal) {
+              minDeltaReal = delta;
+              minReal = color;
+            }
           }
-          if (delta < minDeltaReal) {
-            minDeltaReal = delta;
-            minReal = color;
-          }
+          colorCache.set(key, [min, minReal]);
         }
+        this.context.fillStyle = `oklab(${min.color[0] * 100}% ${min.color[1]} ${min.color[2]})`;
+        this.context.fillRect(x, y, 1, 1);
         this.pixels[y][x] = min.buttonId;
-        if (minReal.buttonId !== min.buttonId)
-          colorsToBuy.set(minReal.buttonId, (colorsToBuy.get(minReal.buttonId) ?? 0) + 1);
+        if (minReal.buttonId === min.buttonId)
+          colorsToBuy.set(minReal, (colorsToBuy.get(minReal) ?? 0) + 1);
       }
     }
     this.colorsToBuy.splice(0, Infinity, ...[...colorsToBuy.entries()].sort(([, a], [, b]) => b - a));
@@ -350,7 +425,9 @@ class Pixels {
     context.drawImage(this.image, 0, 0);
     return {
       url: canvas.toDataURL("image/webp", 1),
-      width: this.width
+      width: this.width,
+      brightness: this.brightness,
+      exactColor: this.exactColor
     };
   }
 }
@@ -421,7 +498,8 @@ class WorldPosition {
     let map = this.bot.mapsCache.get(key);
     if (!map) {
       map = await Pixels.fromJSON(this.bot, {
-        url: `https://backend.wplace.live/files/s0/tiles/${key}.png`
+        url: `https://backend.wplace.live/files/s0/tiles/${key}.png`,
+        exactColor: true
       });
       this.bot.mapsCache.set(key, map);
     }
@@ -456,15 +534,18 @@ class BotImage extends Base2 {
   element = document.createElement("div");
   tasks = [];
   moveInfo;
+  $settings;
   $strategy;
+  $move;
+  $minimize;
   $opacity;
+  $brightness;
   $drawTransparent;
   $resetSize;
   $resetSizeSpan;
   $progressLine;
   $progressText;
   $canvas;
-  context;
   constructor(bot, position, pixels, strategy = "RANDOM" /* RANDOM */, opacity = 50, drawTransparentPixels = false) {
     super();
     this.bot = bot;
@@ -475,72 +556,58 @@ class BotImage extends Base2 {
     this.drawTransparentPixels = drawTransparentPixels;
     this.element.innerHTML = image_default;
     this.element.classList.add("wimage");
+    this.element.prepend(this.pixels.canvas);
     document.body.append(this.element);
     this.populateElementsWithSelector(this.element, {
       $strategy: ".strategy",
       $opacity: ".opacity",
+      $settings: ".wsettings",
+      $minimize: ".minimize",
+      $move: ".wmove",
+      $brightness: ".brightness",
       $drawTransparent: ".draw-transparent",
       $resetSize: ".reset-size",
       $progressLine: ".progress div",
-      $progressText: ".progress span",
-      $canvas: "canvas"
+      $progressText: ".progress span"
     });
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
-    this.context = this.$canvas.getContext("2d");
-    this.$strategy.addEventListener("change", () => {
+    this.$canvas = this.pixels.canvas;
+    this.registerEvent(this.$strategy, "change", () => {
       this.strategy = this.$strategy.value;
       this.bot.save();
     });
-    this.$opacity.addEventListener("input", () => {
+    this.registerEvent(this.$opacity, "input", () => {
       this.opacity = this.$opacity.valueAsNumber;
       this.update();
       this.bot.save();
     });
-    this.$resetSize.addEventListener("click", () => {
+    let timeout2;
+    this.registerEvent(this.$brightness, "change", () => {
+      clearTimeout(timeout2);
+      timeout2 = setTimeout(() => {
+        this.pixels.brightness = this.$brightness.valueAsNumber;
+        this.pixels.update();
+        this.update();
+        this.bot.save();
+      }, 1000);
+    });
+    this.registerEvent(this.$resetSize, "click", () => {
       this.pixels.width = this.pixels.image.naturalWidth;
       this.pixels.update();
       this.update();
       this.bot.save();
     });
-    this.$drawTransparent.addEventListener("click", () => {
+    this.registerEvent(this.$drawTransparent, "click", () => {
       this.drawTransparentPixels = this.$drawTransparent.checked;
       this.bot.save();
     });
-    this.registerEvent(this.$canvas, "mousedown", (event) => {
-      this.moveInfo = {
-        globalX: this.position.globalX,
-        globalY: this.position.globalY,
-        clientX: event.clientX,
-        clientY: event.clientY
-      };
-    });
-    this.registerEvent(document, "mouseup", () => {
-      this.moveInfo = undefined;
-    });
-    this.registerEvent(document, "mousemove", (event) => {
-      if (this.moveInfo)
-        this.move(event.clientX, event.clientY);
-    });
-    for (const $resize of this.element.querySelectorAll(".resize")) {
-      $resize.addEventListener("mousedown", (event) => {
-        this.moveInfo = {
-          clientX: event.clientX,
-          clientY: event.clientY
-        };
-        if ($resize.classList.contains("n")) {
-          this.moveInfo.height = this.pixels.height;
-          this.moveInfo.globalY = this.position.globalY;
-        }
-        if ($resize.classList.contains("e"))
-          this.moveInfo.width = this.pixels.width;
-        if ($resize.classList.contains("s"))
-          this.moveInfo.height = this.pixels.height;
-        if ($resize.classList.contains("w")) {
-          this.moveInfo.width = this.pixels.width;
-          this.moveInfo.globalX = this.position.globalX;
-        }
-      });
-    }
+    this.registerEvent(this.$minimize, "click", this.minimize.bind(this));
+    this.registerEvent(this.$move, "mousedown", this.moveStart.bind(this));
+    this.registerEvent(this.$canvas, "mousedown", this.moveStart.bind(this));
+    this.registerEvent(document, "mouseup", this.moveStop.bind(this));
+    this.registerEvent(document, "mousemove", this.move.bind(this));
+    for (const $resize of this.element.querySelectorAll(".resize"))
+      this.registerEvent($resize, "mousedown", this.resizeStart.bind(this));
     this.update();
   }
   toJSON() {
@@ -560,14 +627,12 @@ class BotImage extends Base2 {
       position.globalX = this.position.globalX + x;
       position.globalY = this.position.globalY + y;
       const mapColor = await position.getMapColor();
-      if (color !== mapColor && (this.drawTransparentPixels || color !== "color-0")) {
-        const { x: x2, y: y2 } = position.toScreenPosition();
+      if (color !== mapColor && (this.drawTransparentPixels || color !== "color-0"))
         this.tasks.push({
-          x: x2,
-          y: y2,
-          buttonId: color
+          position: position.clone(),
+          buttonId: color,
+          mapColor
         });
-      }
     }
     this.update();
     this.bot.widget.update();
@@ -577,17 +642,14 @@ class BotImage extends Base2 {
     try {
       const { x, y } = this.position.toScreenPosition();
       this.element.style.transform = `translate(${x - halfPixel}px, ${y - halfPixel}px)`;
+      this.element.style.width = `${this.bot.pixelSize * this.pixels.width}px`;
+      this.$canvas.style.opacity = `${this.opacity}%`;
       this.element.classList.remove("hidden");
     } catch {
       this.element.classList.add("hidden");
     }
-    this.$canvas.width = this.bot.pixelSize * this.pixels.width;
-    this.$canvas.height = this.bot.pixelSize * this.pixels.height;
-    this.context.globalAlpha = this.opacity / 100;
-    this.context.imageSmoothingEnabled = false;
-    this.context.imageSmoothingQuality = "low";
-    this.context.drawImage(this.pixels.canvas, 0, 0, this.$canvas.width, this.$canvas.height);
     this.$resetSizeSpan.textContent = this.pixels.width.toString();
+    this.$brightness.valueAsNumber = this.pixels.brightness;
     this.$strategy.value = this.strategy;
     this.$opacity.valueAsNumber = this.opacity;
     this.$drawTransparent.checked = this.drawTransparentPixels;
@@ -600,28 +662,6 @@ class BotImage extends Base2 {
   destroy() {
     super.destroy();
     this.element.remove();
-  }
-  move(clientX, clientY) {
-    if (!this.moveInfo)
-      return;
-    const deltaX = Math.round((clientX - this.moveInfo.clientX) / this.bot.pixelSize);
-    const deltaY = Math.round((clientY - this.moveInfo.clientY) / this.bot.pixelSize);
-    if (this.moveInfo.globalX !== undefined) {
-      this.position.globalX = deltaX + this.moveInfo.globalX;
-      if (this.moveInfo.width !== undefined)
-        this.pixels.width = Math.max(1, this.moveInfo.width - deltaX);
-    } else if (this.moveInfo.width !== undefined)
-      this.pixels.width = Math.max(1, deltaX + this.moveInfo.width);
-    if (this.moveInfo.globalY !== undefined) {
-      this.position.globalY = deltaY + this.moveInfo.globalY;
-      if (this.moveInfo.height !== undefined)
-        this.pixels.height = Math.max(1, this.moveInfo.height - deltaY);
-    } else if (this.moveInfo.height !== undefined)
-      this.pixels.height = Math.max(1, deltaY + this.moveInfo.height);
-    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined)
-      this.pixels.update();
-    this.update();
-    this.bot.save();
   }
   *strategyPositionIterator() {
     const width = this.pixels.pixels[0].length;
@@ -714,10 +754,84 @@ class BotImage extends Base2 {
       }
     }
   }
+  minimize() {
+    this.$canvas.classList.toggle("hidden");
+    this.$settings.classList.toggle("hidden");
+  }
+  moveStart(event) {
+    this.moveInfo = {
+      globalX: this.position.globalX,
+      globalY: this.position.globalY,
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+  }
+  moveStop() {
+    this.moveInfo = undefined;
+  }
+  move(event) {
+    if (!this.moveInfo)
+      return;
+    const deltaX = Math.round((event.clientX - this.moveInfo.clientX) / this.bot.pixelSize);
+    const deltaY = Math.round((event.clientY - this.moveInfo.clientY) / this.bot.pixelSize);
+    if (this.moveInfo.globalX !== undefined) {
+      this.position.globalX = deltaX + this.moveInfo.globalX;
+      if (this.moveInfo.width !== undefined)
+        this.pixels.width = Math.max(1, this.moveInfo.width - deltaX);
+    } else if (this.moveInfo.width !== undefined)
+      this.pixels.width = Math.max(1, deltaX + this.moveInfo.width);
+    if (this.moveInfo.globalY !== undefined) {
+      this.position.globalY = deltaY + this.moveInfo.globalY;
+      if (this.moveInfo.height !== undefined)
+        this.pixels.height = Math.max(1, this.moveInfo.height - deltaY);
+    } else if (this.moveInfo.height !== undefined)
+      this.pixels.height = Math.max(1, deltaY + this.moveInfo.height);
+    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined)
+      this.pixels.update();
+    this.update();
+    this.bot.save();
+  }
+  resizeStart(event) {
+    this.moveInfo = {
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    const $resize = event.target;
+    if ($resize.classList.contains("n")) {
+      this.moveInfo.height = this.pixels.height;
+      this.moveInfo.globalY = this.position.globalY;
+    }
+    if ($resize.classList.contains("e"))
+      this.moveInfo.width = this.pixels.width;
+    if ($resize.classList.contains("s"))
+      this.moveInfo.height = this.pixels.height;
+    if ($resize.classList.contains("w")) {
+      this.moveInfo.width = this.pixels.width;
+      this.moveInfo.globalX = this.position.globalX;
+    }
+  }
+  updateColorsToBuy() {
+    let sum = 0;
+    for (let index = 0;index < this.pixels.colorsToBuy.length; index++)
+      sum += this.pixels.colorsToBuy[index][1];
+    const $colors = this.element.querySelector(".colors");
+    $colors.innerHTML = "";
+    for (let index = 0;index < this.pixels.colorsToBuy.length; index++) {
+      const [color, amount] = this.pixels.colorsToBuy[index];
+      const $div = document.createElement("button");
+      $colors.append($div);
+      $div.style.backgroundColor = `oklab(${color.color[0] * 100}% ${color.color[1]} ${color.color[2]})`;
+      $div.style.width = amount / sum * 100 + "%";
+      $div.addEventListener("click", async () => {
+        await this.bot.updateColors();
+        document.getElementById(color.buttonId)?.click();
+      });
+    }
+  }
 }
 
 // src/widget.html
-var widget_default = `<div class="move">
+var widget_default = `<div class="wmove">
   <button class="minimize">-</button>
 </div>
 <div class="wsettings">
@@ -769,7 +883,7 @@ class Widget extends Base2 {
       $settings: ".wsettings",
       $status: ".wstatus",
       $minimize: ".minimize",
-      $move: ".move",
+      $move: ".wmove",
       $draw: ".draw",
       $addImage: ".add-image",
       $strategy: ".strategy",
@@ -967,7 +1081,7 @@ class WPlaceBot {
     });
   }
   draw() {
-    if (this.pixelSize < 3)
+    if (this.pixelSize < 2)
       throw new ZoomTooFarError(this);
     this.widget.status = "";
     const prevent = (event) => {
@@ -1052,19 +1166,13 @@ class WPlaceBot {
       ].map((button, index, array) => {
         if (index === array.length - 1)
           return {
-            r: 255,
-            g: 255,
-            b: 255,
-            a: 0,
+            color: [Number.NaN, Number.NaN, Number.NaN],
             available: true,
-            buttonId: button.id
+            buttonId: "color-0"
           };
         const rgb = button.style.background.slice(4, -1).split(", ").map((x) => +x);
         return {
-          r: rgb[0],
-          g: rgb[1],
-          b: rgb[2],
-          a: 255,
+          color: rgbToOklab(...rgb),
           available: button.children.length === 0,
           buttonId: button.id
         };
@@ -1117,10 +1225,11 @@ class WPlaceBot {
   }
   async drawTask(task) {
     document.getElementById(task.buttonId).click();
+    const position = task.position.toScreenPosition();
     document.documentElement.dispatchEvent(new MouseEvent("mousemove", {
       bubbles: true,
-      clientX: task.x,
-      clientY: task.y,
+      clientX: position.x,
+      clientY: position.y,
       shiftKey: true
     }));
     document.documentElement.dispatchEvent(new KeyboardEvent("keydown", {
@@ -1259,7 +1368,7 @@ var style_default = `:root {
   --main: #0069ff;
   --text-invert: #ffffff;
   --text: #394e6a;
-  --resize: 2px;
+  --resize: 4px;
 }
 
 /** Widget */
@@ -1271,20 +1380,6 @@ var style_default = `:root {
   top: 0;
   width: 256px;
   z-index: 10;
-}
-.wwidget .move {
-  background-color: var(--main);
-  color: var(--text-invert);
-  cursor: all-scroll;
-  width: 100%;
-}
-.wwidget .move .minimize {
-  margin-left: auto;
-  width: 24px;
-  display: block;
-}
-.wwidget .move .minimize:hover {
-  background-color: var(--main-hover);
 }
 .wwidget .images {
   height: auto;
@@ -1321,6 +1416,7 @@ var style_default = `:root {
 .wimage canvas {
   cursor: all-scroll;
   image-rendering: pixelated;
+  width: 100%;
 }
 .wimage .wsettings {
   background-color: var(--background);
@@ -1358,7 +1454,7 @@ var style_default = `:root {
   cursor: no-drop;
 }
 
-.wsettings .opacity {
+.wsettings label input {
   width: inherit;
 }
 .wsettings .progress {
@@ -1375,14 +1471,26 @@ var style_default = `:root {
   z-index: 0;
 }
 
+/* Move */
+.wmove {
+  position: absolute;
+  top: -24px;
+  left: 0;
+  background-color: var(--main);
+  color: var(--text-invert);
+  cursor: all-scroll;
+  width: 100%;
+}
+.wmove .minimize {
+  margin-left: auto;
+  width: 24px;
+  display: block;
+}
+.wmove .minimize:hover {
+  background-color: var(--main-hover);
+}
 
-/* Utility */
-.wp {
-  padding: 0 8px;
-}
-.hidden {
-  display: none;
-}
+/* Resize */
 .resize {
   height: calc(100% - var(--resize) - var(--resize));
   width: calc(100% - var(--resize) - var(--resize));
@@ -1412,10 +1520,19 @@ var style_default = `:root {
   left: 0;
   width: var(--resize);
 }
+
+/* Utility */
+.wp {
+  padding: 0 8px;
+}
+.hidden {
+  display: none;
+}
+
 `;
 
 // src/index.ts
 var style = document.createElement("style");
 style.textContent = style_default;
 document.head.append(style);
-new WPlaceBot;
+globalThis.wbot = new WPlaceBot;

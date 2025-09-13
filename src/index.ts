@@ -6,4 +6,5 @@ const style = document.createElement('style')
 style.textContent = css as string
 document.head.append(style)
 
-new WPlaceBot()
+// @ts-ignore
+globalThis.wbot = new WPlaceBot()

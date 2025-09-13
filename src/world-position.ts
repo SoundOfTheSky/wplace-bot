@@ -91,6 +91,7 @@ export class WorldPosition {
     if (!map) {
       map = await Pixels.fromJSON(this.bot, {
         url: `https://backend.wplace.live/files/s0/tiles/${key}.png`,
+        exactColor: true,
       })
       this.bot.mapsCache.set(key, map)
     }

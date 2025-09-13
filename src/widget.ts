@@ -65,7 +65,7 @@ export class Widget extends Base {
       $settings: '.wsettings',
       $status: '.wstatus',
       $minimize: '.minimize',
-      $move: '.move',
+      $move: '.wmove',
       $draw: '.draw',
       $addImage: '.add-image',
       $strategy: '.strategy',

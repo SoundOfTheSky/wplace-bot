@@ -6,7 +6,7 @@
   --main: #0069ff;
   --text-invert: #ffffff;
   --text: #394e6a;
-  --resize: 2px;
+  --resize: 4px;
 }
 
 /** Widget */
@@ -18,20 +18,6 @@
   top: 0;
   width: 256px;
   z-index: 10;
-}
-.wwidget .move {
-  background-color: var(--main);
-  color: var(--text-invert);
-  cursor: all-scroll;
-  width: 100%;
-}
-.wwidget .move .minimize {
-  margin-left: auto;
-  width: 24px;
-  display: block;
-}
-.wwidget .move .minimize:hover {
-  background-color: var(--main-hover);
 }
 .wwidget .images {
   height: auto;
@@ -68,6 +54,7 @@
 .wimage canvas {
   cursor: all-scroll;
   image-rendering: pixelated;
+  width: 100%;
 }
 .wimage .wsettings {
   background-color: var(--background);
@@ -105,7 +92,7 @@
   cursor: no-drop;
 }
 
-.wsettings .opacity {
+.wsettings label input {
   width: inherit;
 }
 .wsettings .progress {
@@ -122,14 +109,26 @@
   z-index: 0;
 }
 
+/* Move */
+.wmove {
+  position: absolute;
+  top: -24px;
+  left: 0;
+  background-color: var(--main);
+  color: var(--text-invert);
+  cursor: all-scroll;
+  width: 100%;
+}
+.wmove .minimize {
+  margin-left: auto;
+  width: 24px;
+  display: block;
+}
+.wmove .minimize:hover {
+  background-color: var(--main-hover);
+}
 
-/* Utility */
-.wp {
-  padding: 0 8px;
-}
-.hidden {
-  display: none;
-}
+/* Resize */
 .resize {
   height: calc(100% - var(--resize) - var(--resize));
   width: calc(100% - var(--resize) - var(--resize));
@@ -159,3 +158,12 @@
   left: 0;
   width: var(--resize);
 }
+
+/* Utility */
+.wp {
+  padding: 0 8px;
+}
+.hidden {
+  display: none;
+}
+
