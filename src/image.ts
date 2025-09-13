@@ -332,12 +332,13 @@ export class BotImage extends Base {
   }
 
   protected moveStart(event: MouseEvent) {
-    this.moveInfo = {
-      globalX: this.position.globalX,
-      globalY: this.position.globalY,
-      clientX: event.clientX,
-      clientY: event.clientY,
-    }
+    if (!this.lock)
+      this.moveInfo = {
+        globalX: this.position.globalX,
+        globalY: this.position.globalY,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      }
   }
 
   protected moveStop() {

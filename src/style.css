@@ -50,6 +50,7 @@
   top: 0;
   z-index: 9;
   box-shadow: inset var(--main) 0 0 0 1px;
+  height: 1px;
 }
 .wimage canvas {
   cursor: all-scroll;

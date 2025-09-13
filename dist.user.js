@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.1.2
+// @version      4.1.3
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -767,12 +767,13 @@ class BotImage extends Base2 {
     }
   }
   moveStart(event) {
-    this.moveInfo = {
-      globalX: this.position.globalX,
-      globalY: this.position.globalY,
-      clientX: event.clientX,
-      clientY: event.clientY
-    };
+    if (!this.lock)
+      this.moveInfo = {
+        globalX: this.position.globalX,
+        globalY: this.position.globalY,
+        clientX: event.clientX,
+        clientY: event.clientY
+      };
   }
   moveStop() {
     this.moveInfo = undefined;
@@ -1457,6 +1458,7 @@ var style_default = `:root {
   top: 0;
   z-index: 9;
   box-shadow: inset var(--main) 0 0 0 1px;
+  height: 1px;
 }
 .wimage canvas {
   cursor: all-scroll;
