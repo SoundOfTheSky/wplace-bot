@@ -21,8 +21,8 @@
 }
 .wwidget .images {
   height: auto;
-  flex-direction: column;
-  max-height: 300px;
+  display: block;
+  max-height: 240px;
   overflow-y: auto;
 }
 .wwidget .images .image {
@@ -49,13 +49,12 @@
   position: fixed;
   top: 0;
   z-index: 9;
-  box-shadow: inset var(--main) 0 0 0 1px;
-  height: 1px;
 }
 .wimage canvas {
   cursor: all-scroll;
   image-rendering: pixelated;
   width: 100%;
+  box-shadow: inset var(--main) 0 0 0 1px;
 }
 .wimage .wsettings {
   background-color: var(--background);
@@ -173,5 +172,6 @@
 }
 .no-pointer-events {
   pointer-events: none;
+  height: 1px;
 }
 

@@ -5,6 +5,7 @@ import { WPlaceBot } from './bot'
 import { NoImageError, WPlaceBotError } from './errors'
 import { BotImage } from './image'
 import { Pixels } from './pixels'
+// @ts-ignore
 import html from './widget.html' with { type: 'text' }
 import { WorldPosition } from './world-position'
 

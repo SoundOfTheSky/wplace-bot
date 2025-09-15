@@ -1,5 +1,6 @@
 import { Base } from './base'
 import { WPlaceBot } from './bot'
+// @ts-ignore
 import html from './image.html' with { type: 'text' }
 import { Pixels } from './pixels'
 import { Position, WorldPosition } from './world-position'
