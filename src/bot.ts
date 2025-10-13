@@ -490,7 +490,6 @@ export class WPlaceBot {
             this.anchorsWorldPosition[0]!.globalX <
             500
         ) {
-          console.log('TOO CLOSE')
           index--
           stars[1] = undefined
           continue

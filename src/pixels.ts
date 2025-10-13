@@ -97,7 +97,7 @@ export class Pixels {
         // Key for caching
         const key = `${r},${g},${b}`
         if (this.exactColor) {
-          this.pixels[y]![x] = COLORS_RGB.indexOf(key)
+          this.pixels[y]![x] = a < 100 ? 0 : COLORS_RGB.indexOf(key)
           continue
         }
 

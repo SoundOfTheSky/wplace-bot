@@ -219,12 +219,11 @@ export class BotImage extends Base {
     const position = this.position.clone()
     const skipColors = new Set<number>()
     const colorsOrderMap = new Map<number, number>()
-    if (this.drawColorsInOrder)
-      for (let index = 0; index < this.colors.length; index++) {
-        const drawColor = this.colors[index]!
-        if (drawColor.disabled) skipColors.add(drawColor.realColor)
-        colorsOrderMap.set(drawColor.realColor, index)
-      }
+    for (let index = 0; index < this.colors.length; index++) {
+      const drawColor = this.colors[index]!
+      if (drawColor.disabled) skipColors.add(drawColor.realColor)
+      colorsOrderMap.set(drawColor.realColor, index)
+    }
     for (const { x, y } of this.strategyPositionIterator()) {
       const color = this.pixels.pixels[y]![x]!
       if (skipColors.has(color)) continue

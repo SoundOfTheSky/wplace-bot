@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.2.0
+// @version      4.2.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -484,7 +484,7 @@ class Pixels {
         const a = data[index + 3];
         const key = `${r},${g},${b}`;
         if (this.exactColor) {
-          this.pixels[y][x] = COLORS_RGB.indexOf(key);
+          this.pixels[y][x] = a < 100 ? 0 : COLORS_RGB.indexOf(key);
           continue;
         }
         let min;
@@ -780,13 +780,12 @@ class BotImage extends Base2 {
     const position = this.position.clone();
     const skipColors = new Set;
     const colorsOrderMap = new Map;
-    if (this.drawColorsInOrder)
-      for (let index = 0;index < this.colors.length; index++) {
-        const drawColor = this.colors[index];
-        if (drawColor.disabled)
-          skipColors.add(drawColor.realColor);
-        colorsOrderMap.set(drawColor.realColor, index);
-      }
+    for (let index = 0;index < this.colors.length; index++) {
+      const drawColor = this.colors[index];
+      if (drawColor.disabled)
+        skipColors.add(drawColor.realColor);
+      colorsOrderMap.set(drawColor.realColor, index);
+    }
     for (const { x, y } of this.strategyPositionIterator()) {
       const color = this.pixels.pixels[y][x];
       if (skipColors.has(color))
@@ -1598,7 +1597,6 @@ class WPlaceBot {
             throw error;
         }
         if (index === 1 && this.anchorsWorldPosition[1].globalX - this.anchorsWorldPosition[0].globalX < 500) {
-          console.log("TOO CLOSE");
           index--;
           stars[1] = undefined;
           continue;
