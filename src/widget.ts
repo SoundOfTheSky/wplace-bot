@@ -139,7 +139,8 @@ export class Widget extends Base {
           )
         }
         this.images.push(botImage)
-        await botImage.updateTasks()
+        await this.bot.readMap()
+        botImage.updateTasks()
         this.bot.save()
       },
       () => {
@@ -173,8 +174,7 @@ export class Widget extends Base {
       $image.className = 'image'
       $image.innerHTML = `<img src="${image.pixels.image.src}">
   <button class="up" title="Move up" ${index === 0 ? 'disabled' : ''}>▴</button>
-  <button class="down" title="Move down" ${index === this.images.length - 1 ? 'disabled' : ''}>▾</button>
-  <button class="delete" title="Move delete">X</button>`
+  <button class="down" title="Move down" ${index === this.images.length - 1 ? 'disabled' : ''}>▾</button>`
       $image
         .querySelector<HTMLButtonElement>('img')!
         .addEventListener('click', () => {
@@ -194,14 +194,6 @@ export class Widget extends Base {
           this.update()
           this.bot.save()
         })
-      $image
-        .querySelector<HTMLButtonElement>('.delete')!
-        .addEventListener('click', () => {
-          this.images.splice(index, 1)
-          image.destroy()
-          this.update()
-          this.bot.save()
-        })
     }
   }
 
@@ -209,6 +201,12 @@ export class Widget extends Base {
   public updateImages() {
     for (let index = 0; index < this.images.length; index++)
       this.images[index]!.update()
+  }
+
+  /** Update tasks of all images */
+  public updateTasks() {
+    for (let index = 0; index < this.images.length; index++)
+      this.images[index]!.updateTasks()
   }
 
   /** Disable/enable element by class name */

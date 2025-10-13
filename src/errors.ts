@@ -22,13 +22,6 @@ export class StarsAreTooCloseError extends WPlaceBotError {
   }
 }
 
-export class ZoomTooFarError extends WPlaceBotError {
-  public name = 'ZoomTooFarError'
-  public constructor(bot: WPlaceBot) {
-    super('❌ Zoom is too far', bot)
-  }
-}
-
 export class NoImageError extends WPlaceBotError {
   public name = 'NoImageError'
   public constructor(bot: WPlaceBot) {

@@ -20,11 +20,24 @@
 
 ## How to use
 
-![Instruction1](https://github.com/SoundOfTheSky/wplace-bot/raw/refs/heads/main/Instruction.png)
+1. Click here to unfocus window.
+2. Add raw or exported image.
+3. Drag image and it's edges to position it.
+4. Click "Draw" to draw :)
+5. How to distribute pixels between images.
+6. Change brightness of the image.
+7. How to draw image.
+8. Export image with it's position and settings.
+9. Lock image to prevent accidental edits.
+10. Delete image.
+11. Click to disable color.
+12. It's a substitute color automatically replaced. Click right to disable it.
+13. Click left to try to buy recommended color.
+14. Drag colors to change order. Don't forget to check "Draw color in order".
+15. Move image up
+16. Move image down
 
-1. On error "Stars are too close" delete your favorite locations. You can restore them later.
-2. On error during initialization try to zoom in first.
-3. On error "Zoom is too far" just zoom in.
+![Instruction1](https://github.com/SoundOfTheSky/wplace-bot/raw/refs/heads/main/Instruction.png)
 
 ## Captcha bypass
 
@@ -41,8 +54,7 @@ Also I'm using [Firefox Multi-Account Containers](https://addons.mozilla.org/en-
 ## Known issues
 
 1. Once your session on website ends, bot obviously stops.
-2. You have to zoom in before drawing.
-3. Your favorite locations may break the bot. Delete them. You can restore them later. It happens because the bot requires 2 favorite location far away from each other to precisely align images on the map.
+2. Very big images make everything lag.
 
 ## Contribution
 

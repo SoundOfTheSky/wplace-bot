@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.1.4
+// @version      4.2.0
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -170,43 +170,6 @@ class SpeedCalculator {
     return { time, historyTime };
   }
 }
-// src/errors.ts
-class WPlaceBotError extends Error {
-  name = "WPlaceBotError";
-  constructor(message, bot) {
-    super(message);
-    bot.widget.status = message;
-  }
-}
-
-class NotInitializedError extends WPlaceBotError {
-  name = "NotInitializedError";
-  constructor(bot) {
-    super("❌ Not initialized", bot);
-  }
-}
-
-class StarsAreTooCloseError extends WPlaceBotError {
-  name = "StarsAreTooCloseError";
-  constructor(bot) {
-    super("❌ Stars are too close", bot);
-  }
-}
-
-class ZoomTooFarError extends WPlaceBotError {
-  name = "ZoomTooFarError";
-  constructor(bot) {
-    super("❌ Zoom is too far", bot);
-  }
-}
-
-class NoImageError extends WPlaceBotError {
-  name = "NoImageError";
-  constructor(bot) {
-    super("❌ No image is selected", bot);
-  }
-}
-
 // src/base.ts
 class Base2 {
   runOnDestroy = [];
@@ -228,44 +191,7 @@ class Base2 {
   }
 }
 
-// src/image.html
-var image_default = `<div class="wtopbar">
-  <button class="export">📤</button>
-  <button class="lock">🔓</button>
-</div>
-<div class="wrapper">
-  <div class="wsettings">
-    <div class="progress">
-      <div></div>
-      <span></span>
-    </div>
-    <div class="colors"></div>
-    <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>
-    <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
-    <label>
-      Strategy:&nbsp;<select class="strategy">
-        <option value="RANDOM" selected>Random</option>
-        <option value="DOWN">Down</option>
-        <option value="UP">Up</option>
-        <option value="LEFT">Left</option>
-        <option value="RIGHT">Right</option>
-        <option value="SPIRAL_FROM_CENTER">Spiral out</option>
-        <option value="SPIRAL_TO_CENTER">Spiral in</option>
-      </select>
-    </label>
-    <button class="reset-size">Reset size [<span></span>px]</button>
-    <label>
-      <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels
-    </label>
-  </div>
-  <div class="resize n"></div>
-  <div class="resize e"></div>
-  <div class="resize s"></div>
-  <div class="resize w"></div>
-</div>
-`;
-
-// src/pixels.ts
+// src/colors.ts
 function srgbNonlinearTransformInv(c) {
   return c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92;
 }
@@ -324,7 +250,187 @@ function deltaE2000(lab1, lab2, brightness) {
   const RT = -RC * Math.sin(deg2rad(2 * θ));
   return Math.sqrt((Lp / (kL * SL)) ** 2 + (Cp / (kC * SC)) ** 2 + (Hp / (kH * SH)) ** 2 + RT * (Cp / (kC * SC)) * (Hp / (kH * SH))) - Lp * brightness;
 }
+var COLORS = [
+  [Number.NaN, Number.NaN, Number.NaN],
+  [0, 0, 0],
+  [0.356, 0, 0],
+  [0.573, 0, 0],
+  [0.864, 0, 0],
+  [1, 0, 0],
+  [0.31, 0.119, 0.037],
+  [0.603, 0.209, 0.107],
+  [0.732, 0.118, 0.137],
+  [0.791, 0.039, 0.16],
+  [0.895, -0.026, 0.168],
+  [0.974, -0.019, 0.077],
+  [0.691, -0.154, 0.075],
+  [0.812, -0.185, 0.096],
+  [0.898, -0.17, 0.149],
+  [0.541, -0.097, 0.005],
+  [0.678, -0.114, -0.018],
+  [0.814, -0.15, 0.011],
+  [0.447, -0.019, -0.134],
+  [0.65, -0.048, -0.137],
+  [0.895, -0.124, -0.027],
+  [0.561, 0.054, -0.229],
+  [0.771, 0, -0.11],
+  [0.431, 0.145, -0.143],
+  [0.557, 0.168, -0.127],
+  [0.796, 0.102, -0.097],
+  [0.551, 0.225, -0.023],
+  [0.62, 0.238, 0],
+  [0.759, 0.127, 0.006],
+  [0.428, 0.036, 0.041],
+  [0.552, 0.03, 0.092],
+  [0.817, 0.055, 0.097],
+  [0.738, 0, 0],
+  [0.46, 0.163, 0.074],
+  [0.735, 0.134, 0.071],
+  [0.642, 0.137, 0.122],
+  [0.794, 0.023, 0.054],
+  [0.62, -0.005, 0.105],
+  [0.747, -0.019, 0.138],
+  [0.864, -0.023, 0.136],
+  [0.489, -0.06, 0.058],
+  [0.609, -0.092, 0.08],
+  [0.76, -0.099, 0.085],
+  [0.54, -0.067, -0.079],
+  [0.941, -0.064, -0.007],
+  [0.803, -0.05, -0.096],
+  [0.438, 0.048, -0.192],
+  [0.421, 0.03, -0.102],
+  [0.593, 0.036, -0.119],
+  [0.781, 0.031, -0.09],
+  [0.757, 0.036, 0.098],
+  [0.676, 0.076, 0.09],
+  [0.868, 0.051, 0.061],
+  [0.524, 0.087, 0.047],
+  [0.684, 0.091, 0.045],
+  [0.835, 0.068, 0.048],
+  [0.519, 0.022, 0.034],
+  [0.629, 0.017, 0.043],
+  [0.342, -0.004, -0.016],
+  [0.564, 0, -0.038],
+  [0.789, 0.003, -0.035],
+  [0.502, -0.006, 0.055],
+  [0.638, -0.005, 0.047],
+  [0.82, -0.007, 0.053]
+];
+var COLORS_RGB = [
+  "NaN",
+  "0,0,0",
+  "60,60,60",
+  "120,120,120",
+  "210,210,210",
+  "255,255,255",
+  "96,0,24",
+  "237,28,36",
+  "255,127,39",
+  "246,170,9",
+  "249,221,59",
+  "255,250,188",
+  "14,185,104",
+  "19,230,123",
+  "135,255,94",
+  "12,129,110",
+  "16,174,166",
+  "19,225,190",
+  "40,80,158",
+  "64,147,228",
+  "96,247,242",
+  "107,80,246",
+  "153,177,251",
+  "120,12,153",
+  "170,56,185",
+  "224,159,249",
+  "203,0,122",
+  "236,31,128",
+  "243,141,169",
+  "104,70,52",
+  "149,104,42",
+  "248,178,119",
+  "170,170,170",
+  "165,14,30",
+  "250,128,114",
+  "228,92,26",
+  "214,181,148",
+  "156,132,49",
+  "197,173,49",
+  "232,212,95",
+  "74,107,58",
+  "90,148,74",
+  "132,197,115",
+  "15,121,159",
+  "187,250,242",
+  "125,199,255",
+  "77,49,184",
+  "74,66,132",
+  "122,113,196",
+  "181,174,241",
+  "219,164,99",
+  "209,128,81",
+  "255,197,165",
+  "155,82,73",
+  "209,128,120",
+  "250,182,164",
+  "123,99,82",
+  "156,132,107",
+  "51,57,65",
+  "109,117,141",
+  "179,185,209",
+  "109,100,63",
+  "148,140,107",
+  "205,197,158"
+];
+function colorToCSS(colorId) {
+  if (colorId === 0)
+    return "transparent";
+  const color = COLORS[colorId];
+  return `oklab(${color[0] * 100}% ${color[1]} ${color[2]})`;
+}
 
+// src/image.html
+var image_default = `<div class="wtopbar">
+  <button class="export">📤</button>
+  <button class="lock">🔓</button>
+  <button class="delete">❌</button>
+</div>
+<div class="wrapper">
+  <div class="wsettings">
+    <div class="progress">
+      <div></div>
+      <span></span>
+    </div>
+    <div class="colors"></div>
+    <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>
+    <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
+    <label>
+      Strategy:&nbsp;<select class="strategy">
+        <option value="RANDOM" selected>Random</option>
+        <option value="DOWN">Down</option>
+        <option value="UP">Up</option>
+        <option value="LEFT">Left</option>
+        <option value="RIGHT">Right</option>
+        <option value="SPIRAL_FROM_CENTER">Spiral out</option>
+        <option value="SPIRAL_TO_CENTER">Spiral in</option>
+      </select>
+    </label>
+    <button class="reset-size">Reset size [<span></span>px]</button>
+    <label>
+      <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels
+    </label>
+    <label>
+      <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order
+    </label>
+  </div>
+  <div class="resize n"></div>
+  <div class="resize e"></div>
+  <div class="resize s"></div>
+  <div class="resize w"></div>
+</div>
+`;
+
+// src/pixels.ts
 class Pixels {
   bot;
   image;
@@ -340,7 +446,7 @@ class Pixels {
   canvas = document.createElement("canvas");
   context = this.canvas.getContext("2d");
   pixels;
-  colorsToBuy = [];
+  colors = new Map;
   resolution;
   get height() {
     return this.width / this.resolution | 0;
@@ -360,12 +466,10 @@ class Pixels {
   update() {
     this.canvas.width = this.width;
     this.canvas.height = this.height;
-    const colorsToBuy = new Map;
+    this.colors.clear();
     const colorCache = new Map;
-    for (let index = 0;index < this.bot.colors.length; index++) {
-      const color = this.bot.colors[index];
-      colorCache.set(`${color.color[0].toFixed(4)},${color.color[1].toFixed(4)},${color.color[2].toFixed(4)}`, [color, color]);
-    }
+    for (let index = 1;index < 64; index++)
+      colorCache.set(COLORS_RGB[index], [index, index]);
     this.context.imageSmoothingEnabled = false;
     this.context.imageSmoothingQuality = "low";
     this.context.drawImage(this.image, 0, 0, this.canvas.width, this.canvas.height);
@@ -374,41 +478,55 @@ class Pixels {
     for (let y = 0;y < this.canvas.height; y++) {
       for (let x = 0;x < this.canvas.width; x++) {
         const index = (y * this.canvas.width + x) * 4;
-        if (data[index + 3] < 100) {
-          this.pixels[y][x] = "color-0";
+        const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
+        const a = data[index + 3];
+        const key = `${r},${g},${b}`;
+        if (this.exactColor) {
+          this.pixels[y][x] = COLORS_RGB.indexOf(key);
           continue;
         }
-        const originalColor = rgbToOklab(...data.slice(index, index + 3));
-        const key = `${originalColor[0].toFixed(4)},${originalColor[1].toFixed(4)},${originalColor[2].toFixed(4)}`;
         let min;
         let minReal;
-        if (colorCache.has(key))
+        if (a < 100)
+          min = minReal = 0;
+        else if (colorCache.has(key))
           [min, minReal] = colorCache.get(key);
         else {
           let minDelta = Infinity;
           let minDeltaReal = Infinity;
-          for (let colorIndex = 0;colorIndex < this.bot.colors.length; colorIndex++) {
-            const color = this.bot.colors[colorIndex];
-            const delta = deltaE2000(originalColor, color.color, this.brightness);
-            if (color.available && delta < minDelta) {
+          for (let colorIndex = 0;colorIndex < COLORS.length; colorIndex++) {
+            const color = COLORS[colorIndex];
+            const delta = deltaE2000(rgbToOklab(r, g, b), color, this.brightness);
+            if (!this.bot.unavailableColors.has(colorIndex) && delta < minDelta) {
               minDelta = delta;
-              min = color;
+              min = colorIndex;
             }
             if (delta < minDeltaReal) {
               minDeltaReal = delta;
-              minReal = color;
+              minReal = colorIndex;
             }
           }
           colorCache.set(key, [min, minReal]);
         }
-        this.context.fillStyle = `oklab(${min.color[0] * 100}% ${min.color[1]} ${min.color[2]})`;
-        this.context.fillRect(x, y, 1, 1);
-        this.pixels[y][x] = min.buttonId;
-        if (minReal.buttonId !== min.buttonId)
-          colorsToBuy.set(minReal, (colorsToBuy.get(minReal) ?? 0) + 1);
+        if (min !== 0) {
+          this.context.fillStyle = `oklab(${COLORS[min][0] * 100}% ${COLORS[min][1]} ${COLORS[min][2]})`;
+          this.context.fillRect(x, y, 1, 1);
+        }
+        this.pixels[y][x] = min;
+        const stat = this.colors.get(minReal);
+        if (stat)
+          stat.amount++;
+        else {
+          this.colors.set(minReal, {
+            color: min,
+            amount: 1,
+            realColor: minReal
+          });
+        }
       }
     }
-    this.colorsToBuy.splice(0, Infinity, ...[...colorsToBuy.entries()].sort(([, a], [, b]) => b - a));
   }
   toJSON() {
     const canvas = document.createElement("canvas");
@@ -422,6 +540,28 @@ class Pixels {
       brightness: this.brightness,
       exactColor: this.exactColor
     };
+  }
+}
+
+// src/errors.ts
+class WPlaceBotError extends Error {
+  name = "WPlaceBotError";
+  constructor(message, bot) {
+    super(message);
+    bot.widget.status = message;
+  }
+}
+
+class NotInitializedError extends WPlaceBotError {
+  name = "NotInitializedError";
+  constructor(bot) {
+    super("❌ Not initialized", bot);
+  }
+}
+class NoImageError extends WPlaceBotError {
+  name = "NoImageError";
+  constructor(bot) {
+    super("❌ No image is selected", bot);
   }
 }
 
@@ -486,17 +626,8 @@ class WorldPosition {
       y: (this.globalY - p.globalY) * this.bot.pixelSize + s.y
     };
   }
-  async getMapColor() {
-    const key = this.tileX + "/" + this.tileY;
-    let map = this.bot.mapsCache.get(key);
-    if (!map) {
-      map = await Pixels.fromJSON(this.bot, {
-        url: `https://backend.wplace.live/files/s0/tiles/${key}.png`,
-        exactColor: true
-      });
-      this.bot.mapsCache.set(key, map);
-    }
-    return map.pixels[this.y][this.x];
+  getMapColor() {
+    return this.bot.mapsCache.get(this.tileX + "/" + this.tileY).pixels[this.y][this.x];
   }
   scrollScreenTo() {
     const { x, y } = this.toScreenPosition();
@@ -521,29 +652,33 @@ class BotImage extends Base2 {
   strategy;
   opacity;
   drawTransparentPixels;
+  drawColorsInOrder;
+  colors;
   lock;
   static async fromJSON(bot, data) {
-    return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels, data.lock);
+    return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels, data.drawColorsInOrder, data.colors, data.lock);
   }
   element = document.createElement("div");
   tasks = [];
   moveInfo;
-  $wrapper;
+  $brightness;
+  $canvas;
+  $colors;
+  $delete;
+  $drawColorsInOrder;
+  $drawTransparent;
+  $export;
+  $lock;
+  $opacity;
+  $progressLine;
+  $progressText;
+  $resetSize;
+  $resetSizeSpan;
   $settings;
   $strategy;
   $topbar;
-  $lock;
-  $opacity;
-  $brightness;
-  $drawTransparent;
-  $resetSize;
-  $resetSizeSpan;
-  $progressLine;
-  $progressText;
-  $canvas;
-  $colors;
-  $export;
-  constructor(bot, position, pixels, strategy = "RANDOM" /* RANDOM */, opacity = 50, drawTransparentPixels = false, lock = false) {
+  $wrapper;
+  constructor(bot, position, pixels, strategy = "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */, opacity = 50, drawTransparentPixels = false, drawColorsInOrder = false, colors = [], lock = false) {
     super();
     this.bot = bot;
     this.position = position;
@@ -551,24 +686,28 @@ class BotImage extends Base2 {
     this.strategy = strategy;
     this.opacity = opacity;
     this.drawTransparentPixels = drawTransparentPixels;
+    this.drawColorsInOrder = drawColorsInOrder;
+    this.colors = colors;
     this.lock = lock;
     this.element.innerHTML = image_default;
     this.element.classList.add("wimage");
     document.body.append(this.element);
     this.populateElementsWithSelector(this.element, {
-      $wrapper: ".wrapper",
-      $strategy: ".strategy",
-      $opacity: ".opacity",
-      $settings: ".wsettings",
-      $lock: ".lock",
-      $topbar: ".wtopbar",
       $brightness: ".brightness",
+      $colors: ".colors",
+      $delete: ".delete",
+      $drawColorsInOrder: ".draw-colors-in-order",
       $drawTransparent: ".draw-transparent",
-      $resetSize: ".reset-size",
+      $export: ".export",
+      $lock: ".lock",
+      $opacity: ".opacity",
       $progressLine: ".progress div",
       $progressText: ".progress span",
-      $colors: ".colors",
-      $export: ".export"
+      $resetSize: ".reset-size",
+      $settings: ".wsettings",
+      $strategy: ".strategy",
+      $topbar: ".wtopbar",
+      $wrapper: ".wrapper"
     });
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
     this.$canvas = this.pixels.canvas;
@@ -588,7 +727,7 @@ class BotImage extends Base2 {
       timeout2 = setTimeout(() => {
         this.pixels.brightness = this.$brightness.valueAsNumber;
         this.pixels.update();
-        this.updateColorsToBuy();
+        this.updateColors();
         this.update();
         this.bot.save();
       }, 1000);
@@ -596,7 +735,7 @@ class BotImage extends Base2 {
     this.registerEvent(this.$resetSize, "click", () => {
       this.pixels.width = this.pixels.image.naturalWidth;
       this.pixels.update();
-      this.updateColorsToBuy();
+      this.updateColors();
       this.update();
       this.bot.save();
     });
@@ -604,11 +743,16 @@ class BotImage extends Base2 {
       this.drawTransparentPixels = this.$drawTransparent.checked;
       this.bot.save();
     });
+    this.registerEvent(this.$drawColorsInOrder, "click", () => {
+      this.drawColorsInOrder = this.$drawColorsInOrder.checked;
+      this.bot.save();
+    });
     this.registerEvent(this.$lock, "click", () => {
       this.lock = !this.lock;
       this.update();
       this.bot.save();
     });
+    this.registerEvent(this.$delete, "click", this.destroy.bind(this));
     this.registerEvent(this.$export, "click", this.export.bind(this));
     this.registerEvent(this.$topbar, "mousedown", this.moveStart.bind(this));
     this.registerEvent(this.$canvas, "mousedown", this.moveStart.bind(this));
@@ -617,7 +761,7 @@ class BotImage extends Base2 {
     for (const $resize of this.element.querySelectorAll(".resize"))
       this.registerEvent($resize, "mousedown", this.resizeStart.bind(this));
     this.update();
-    this.updateColorsToBuy();
+    this.updateColors();
   }
   toJSON() {
     return {
@@ -626,24 +770,38 @@ class BotImage extends Base2 {
       strategy: this.strategy,
       opacity: this.opacity,
       drawTransparentPixels: this.drawTransparentPixels,
+      drawColorsInOrder: this.drawColorsInOrder,
+      colors: this.colors,
       lock: this.lock
     };
   }
-  async updateTasks() {
+  updateTasks() {
     this.tasks.length = 0;
     const position = this.position.clone();
+    const skipColors = new Set;
+    const colorsOrderMap = new Map;
+    if (this.drawColorsInOrder)
+      for (let index = 0;index < this.colors.length; index++) {
+        const drawColor = this.colors[index];
+        if (drawColor.disabled)
+          skipColors.add(drawColor.realColor);
+        colorsOrderMap.set(drawColor.realColor, index);
+      }
     for (const { x, y } of this.strategyPositionIterator()) {
       const color = this.pixels.pixels[y][x];
+      if (skipColors.has(color))
+        continue;
       position.globalX = this.position.globalX + x;
       position.globalY = this.position.globalY + y;
-      const mapColor = await position.getMapColor();
-      if (color !== mapColor && (this.drawTransparentPixels || color !== "color-0"))
+      const mapColor = position.getMapColor();
+      if (color !== mapColor && (this.drawTransparentPixels || color !== 0))
         this.tasks.push({
           position: position.clone(),
-          buttonId: color,
-          mapColor
+          color
         });
     }
+    if (this.drawColorsInOrder)
+      this.tasks.sort((a, b) => (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0));
     this.update();
     this.bot.widget.update();
   }
@@ -663,6 +821,7 @@ class BotImage extends Base2 {
     this.$strategy.value = this.strategy;
     this.$opacity.valueAsNumber = this.opacity;
     this.$drawTransparent.checked = this.drawTransparentPixels;
+    this.$drawColorsInOrder.checked = this.drawColorsInOrder;
     const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0].length;
     const doneTasks = maxTasks - this.tasks.length;
     const percent = doneTasks / maxTasks * 100 | 0;
@@ -674,6 +833,9 @@ class BotImage extends Base2 {
   destroy() {
     super.destroy();
     this.element.remove();
+    removeFromArray(this.bot.widget.images, this);
+    this.bot.widget.update();
+    this.bot.save();
   }
   *strategyPositionIterator() {
     const width = this.pixels.pixels[0].length;
@@ -797,7 +959,7 @@ class BotImage extends Base2 {
       this.pixels.height = Math.max(1, deltaY + this.moveInfo.height);
     if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined) {
       this.pixels.update();
-      this.updateColorsToBuy();
+      this.updateColors();
     }
     this.update();
     this.bot.save();
@@ -821,25 +983,91 @@ class BotImage extends Base2 {
       this.moveInfo.globalX = this.position.globalX;
     }
   }
-  updateColorsToBuy() {
-    if (this.pixels.colorsToBuy.length === 0) {
-      this.$colors.innerHTML = "You have all colors!";
-      return;
-    }
-    let sum = 0;
-    for (let index = 0;index < this.pixels.colorsToBuy.length; index++)
-      sum += this.pixels.colorsToBuy[index][1];
+  updateColors() {
     this.$colors.innerHTML = "";
-    for (let index = 0;index < this.pixels.colorsToBuy.length; index++) {
-      const [color, amount] = this.pixels.colorsToBuy[index];
+    const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0].length;
+    const itemWidth = 100 / this.pixels.colors.size;
+    if (this.colors.length !== this.pixels.colors.size || this.colors.some((x) => !this.pixels.colors.has(x.realColor))) {
+      this.colors = this.pixels.colors.values().toArray().sort((a, b) => b.amount - a.amount).map((color) => ({
+        realColor: color.realColor,
+        disabled: false
+      }));
+      this.bot.save();
+    }
+    let nextXPosition = 0;
+    for (let index = 0;index < this.colors.length; index++) {
+      const drawColor = this.colors[index];
+      const color = this.pixels.colors.get(drawColor.realColor);
+      let dragging = false;
+      const toggleDisabled = () => {
+        if (dragging)
+          return;
+        drawColor.disabled = drawColor.disabled ? undefined : true;
+        $button.classList.toggle("color-disabled");
+        this.bot.save();
+      };
       const $button = document.createElement("button");
+      if (drawColor.disabled)
+        $button.classList.add("color-disabled");
+      if (color.realColor === color.color)
+        $button.style.background = colorToCSS(color.realColor);
+      else {
+        $button.classList.add("substitution");
+        $button.style.setProperty("--wreal-color", colorToCSS(color.realColor));
+        $button.style.setProperty("--wsubstitution-color", colorToCSS(color.color));
+        const $button1 = document.createElement("button");
+        const $button2 = document.createElement("button");
+        $button1.textContent = "$";
+        $button2.textContent = "✓";
+        $button1.addEventListener("click", () => {
+          document.getElementById("color-" + color.realColor)?.click();
+        });
+        $button2.addEventListener("click", toggleDisabled);
+        $button.append($button1);
+        $button.append($button2);
+      }
+      $button.style.left = nextXPosition + "%";
+      const width = color.amount / pixelsSum * 100;
+      $button.style.width = width + "%";
+      nextXPosition += width;
+      $button.style.setProperty("--wleft", itemWidth * index + "%");
+      $button.style.setProperty("--wwidth", itemWidth + "%");
       this.$colors.append($button);
-      $button.style.backgroundColor = `oklab(${color.color[0] * 100}% ${color.color[1]} ${color.color[2]})`;
-      $button.style.width = amount / sum * 100 + "%";
-      $button.addEventListener("click", async () => {
-        await this.bot.updateColors();
-        document.getElementById(color.buttonId)?.click();
-      });
+      const startDrag = (startEvent) => {
+        let newIndex = index;
+        const buttonWidth = $button.getBoundingClientRect().width;
+        const mouseMoveHandler = (event) => {
+          newIndex = Math.min(this.colors.length - 1, Math.max(0, Math.round(index + (event.clientX - startEvent.clientX) / buttonWidth)));
+          if (newIndex !== index)
+            dragging = true;
+          let childIndex = 0;
+          for (const $child of this.$colors.children) {
+            if ($child === $button)
+              continue;
+            if (childIndex === newIndex)
+              childIndex++;
+            $child.style.setProperty("--wleft", itemWidth * childIndex + "%");
+            childIndex++;
+          }
+          $button.style.setProperty("--wleft", itemWidth * newIndex + "%");
+        };
+        document.addEventListener("mousemove", mouseMoveHandler);
+        document.addEventListener("mouseup", () => {
+          document.removeEventListener("mousemove", mouseMoveHandler);
+          if (newIndex !== index)
+            this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1));
+          this.bot.save();
+          $button.removeEventListener("mousedown", startDrag);
+          setTimeout(() => {
+            this.updateColors();
+          }, 200);
+        }, {
+          once: true
+        });
+      };
+      $button.addEventListener("mousedown", startDrag);
+      if (color.realColor === color.color)
+        $button.addEventListener("click", toggleDisabled);
     }
   }
   export() {
@@ -968,7 +1196,8 @@ class Widget extends Base2 {
         }), new Pixels(this.bot, image));
       }
       this.images.push(botImage);
-      await botImage.updateTasks();
+      await this.bot.readMap();
+      botImage.updateTasks();
       this.bot.save();
     }, () => {
       this.setDisabled("add-image", false);
@@ -995,8 +1224,7 @@ class Widget extends Base2 {
       $image.className = "image";
       $image.innerHTML = `<img src="${image.pixels.image.src}">
   <button class="up" title="Move up" ${index === 0 ? "disabled" : ""}>▴</button>
-  <button class="down" title="Move down" ${index === this.images.length - 1 ? "disabled" : ""}>▾</button>
-  <button class="delete" title="Move delete">X</button>`;
+  <button class="down" title="Move down" ${index === this.images.length - 1 ? "disabled" : ""}>▾</button>`;
       $image.querySelector("img").addEventListener("click", () => {
         image.position.scrollScreenTo();
       });
@@ -1010,17 +1238,15 @@ class Widget extends Base2 {
         this.update();
         this.bot.save();
       });
-      $image.querySelector(".delete").addEventListener("click", () => {
-        this.images.splice(index, 1);
-        image.destroy();
-        this.update();
-        this.bot.save();
-      });
     }
   }
   updateImages() {
     for (let index = 0;index < this.images.length; index++)
       this.images[index].update();
+  }
+  updateTasks() {
+    for (let index = 0;index < this.images.length; index++)
+      this.images[index].updateTasks();
   }
   setDisabled(name, disabled) {
     this.element.querySelector("." + name).disabled = disabled;
@@ -1077,13 +1303,14 @@ var SAVE_VERSION = 1;
 
 class WPlaceBot {
   widget = new Widget(this);
-  colors = [];
+  unavailableColors = new Set;
   pixelSize = 1;
   mapsCache = new Map;
   anchorsWorldPosition = new Array(2);
   anchorsScreenPosition = new Array(2);
   markerPixelPositionResolvers = [];
   saveTimeout;
+  lastTasksUpdate = 0;
   constructor() {
     this.registerFetchInterceptor();
     this.widget.run("Initializing", async () => {
@@ -1120,30 +1347,40 @@ class WPlaceBot {
           this.widget.images.push(image);
           image.update();
         }
-      for (let index = 0;index < this.widget.images.length; index++)
-        await this.widget.images[index].updateTasks();
+      await this.readMap();
+      this.widget.updateTasks();
       this.widget.setDisabled("draw", false);
       this.widget.setDisabled("add-image", false);
     });
   }
   draw() {
-    if (this.pixelSize < 2)
-      throw new ZoomTooFarError(this);
-    this.widget.status = "";
+    const $canvas = document.querySelector(".maplibregl-canvas");
     const prevent = (event) => {
       if (!event.shiftKey)
         event.stopPropagation();
     };
-    const $canvas = document.querySelector(".maplibregl-canvas");
-    globalThis.addEventListener("mousemove", prevent, true);
-    $canvas.addEventListener("wheel", prevent, true);
     return this.widget.run("Drawing", async () => {
+      await this.widget.run("Zooming in", async () => {
+        while (this.pixelSize < 3) {
+          $canvas.dispatchEvent(new WheelEvent("wheel", {
+            deltaY: -1000,
+            bubbles: true,
+            cancelable: true,
+            clientX: window.innerWidth / 2,
+            clientY: window.innerWidth / 2
+          }));
+          await wait(200);
+        }
+      });
+      this.widget.status = "";
+      globalThis.addEventListener("mousemove", prevent, true);
+      $canvas.addEventListener("wheel", prevent, true);
       this.mapsCache.clear();
       this.widget.setDisabled("draw", true);
       this.save();
       await this.updateColors();
-      for (let index = 0;index < this.widget.images.length; index++)
-        await this.widget.images[index].updateTasks();
+      await this.readMap();
+      this.widget.updateTasks();
       const n = this.widget.images.reduce((accumulator, x) => accumulator + x.tasks.length, 0);
       switch (this.widget.strategy) {
         case "ALL" /* ALL */: {
@@ -1153,7 +1390,8 @@ class WPlaceBot {
               const task = this.widget.images[imageIndex].tasks.shift();
               if (!task)
                 continue;
-              await this.drawTask(task);
+              this.drawTask(task);
+              await wait(1);
               end = false;
             }
             if (end)
@@ -1173,15 +1411,18 @@ class WPlaceBot {
                 minImage = image;
               }
             }
-            await this.drawTask(minImage.tasks.shift());
+            this.drawTask(minImage.tasks.shift());
+            await wait(1);
           }
           break;
         }
         case "SEQUENTIAL" /* SEQUENTIAL */: {
           for (let imageIndex = 0;imageIndex < this.widget.images.length; imageIndex++) {
             const image = this.widget.images[imageIndex];
-            for (let task = image.tasks.shift();task && !document.querySelector("ol"); task = image.tasks.shift())
-              await this.drawTask(task);
+            for (let task = image.tasks.shift();task && !document.querySelector("ol"); task = image.tasks.shift()) {
+              this.drawTask(task);
+              await wait(1);
+            }
           }
         }
       }
@@ -1207,22 +1448,9 @@ class WPlaceBot {
   updateColors() {
     return this.widget.run("Colors update", async () => {
       await this.openColors();
-      this.colors = [
-        ...document.querySelectorAll("button.btn.relative.w-full")
-      ].map((button, index, array) => {
-        if (index === array.length - 1)
-          return {
-            color: [Number.NaN, Number.NaN, Number.NaN],
-            available: true,
-            buttonId: "color-0"
-          };
-        const rgb = button.style.background.slice(4, -1).split(", ").map((x) => +x);
-        return {
-          color: rgbToOklab(...rgb),
-          available: button.children.length === 0,
-          buttonId: button.id
-        };
-      });
+      for (const $button of document.querySelectorAll("button.btn.relative.w-full"))
+        if ($button.children.length !== 0)
+          this.unavailableColors.add(Math.abs(Number.parseInt($button.id.slice(6))));
     });
   }
   moveMap(delta) {
@@ -1243,6 +1471,25 @@ class WPlaceBot {
     fire("mousedown", startX, startY);
     fire("mousemove", endX, endY);
     fire("mouseup", endX, endY);
+  }
+  readMap() {
+    this.mapsCache.clear();
+    const imagesToDownload = new Set;
+    for (let index = 0;index < this.widget.images.length; index++) {
+      const image = this.widget.images[index];
+      const { tileX: tileXEnd, tileY: tileYEnd } = new WorldPosition(this, image.position.globalX + image.pixels.pixels[0].length, image.position.globalY + image.pixels.pixels.length);
+      for (let tileX = image.position.tileX;tileX <= tileXEnd; tileX++)
+        for (let tileY = image.position.tileY;tileY <= tileYEnd; tileY++)
+          imagesToDownload.add(`${tileX}/${tileY}`);
+    }
+    let done = 0;
+    return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, () => Promise.all([...imagesToDownload].map(async (x) => {
+      this.mapsCache.set(x, await Pixels.fromJSON(this, {
+        url: `https://backend.wplace.live/files/s0/tiles/${x}.png`,
+        exactColor: true
+      }));
+      this.widget.status = `Reading map [${++done}/${imagesToDownload.size}]`;
+    })));
   }
   async openColors() {
     document.querySelector(".flex.gap-2.px-3 > .btn-circle")?.click();
@@ -1269,8 +1516,8 @@ class WPlaceBot {
     }));
     return positionPromise;
   }
-  async drawTask(task) {
-    document.getElementById(task.buttonId).click();
+  drawTask(task) {
+    document.getElementById("color-" + task.color).click();
     const position = task.position.toScreenPosition();
     document.documentElement.dispatchEvent(new MouseEvent("mousemove", {
       bubbles: true,
@@ -1294,7 +1541,6 @@ class WPlaceBot {
       bubbles: true,
       cancelable: true
     }));
-    await wait(1);
   }
   waitForUnfocus() {
     return this.widget.run("UNFOCUS WINDOW", () => new Promise((resolve) => {
@@ -1330,10 +1576,33 @@ class WPlaceBot {
       await this.waitForUnfocus();
       await this.closeAll();
       const stars = this.getStars();
+      const $canvas = document.querySelector(".maplibregl-canvas");
       for (let index = 0;index < 2; index++) {
         let star = stars[index];
         const position = star ? star[1] : index === 0 ? { x: -20000, y: -20000 } : { x: 20000, y: 20000 };
-        this.anchorsWorldPosition[index] = await this.clickAndGetPixelWorldPosition(position);
+        try {
+          this.anchorsWorldPosition[index] = await this.clickAndGetPixelWorldPosition(position);
+        } catch (error) {
+          if (document.querySelector("ol")) {
+            $canvas.dispatchEvent(new WheelEvent("wheel", {
+              deltaY: -1000,
+              bubbles: true,
+              cancelable: true,
+              clientX: window.innerWidth / 2,
+              clientY: window.innerWidth / 2
+            }));
+            index--;
+            await wait(1000);
+            continue;
+          } else
+            throw error;
+        }
+        if (index === 1 && this.anchorsWorldPosition[1].globalX - this.anchorsWorldPosition[0].globalX < 500) {
+          console.log("TOO CLOSE");
+          index--;
+          stars[1] = undefined;
+          continue;
+        }
         if (!star) {
           document.querySelector("button.btn-soft:nth-child(2)").click();
           while (!star) {
@@ -1382,8 +1651,6 @@ class WPlaceBot {
     if (!stars[0] || !stars[1] || !p1 || !p2)
       return;
     const worldDistance = p2.globalX - p1.globalX;
-    if (worldDistance < 500)
-      throw new StarsAreTooCloseError(this);
     this.anchorsScreenPosition[0] = stars[0][1];
     this.anchorsScreenPosition[1] = stars[1][1];
     const s1 = this.anchorsScreenPosition[0];
@@ -1406,96 +1673,114 @@ class WPlaceBot {
 }
 
 // src/style.css
-var style_default = `:root {
-  --background: #ffffff;
+var style_default = `/* stylelint-disable declaration-no-important */
+/* stylelint-disable plugin/no-low-performance-animation-properties */
+/* stylelint-disable no-descending-specificity */
+:root {
+  --background: #fff;
   --disabled: #c2c2c2;
   --hover: #dfdfdf;
   --main-hover: #2580ff;
   --main: #0069ff;
-  --text-invert: #ffffff;
+  --text-invert: #fff;
   --text: #394e6a;
+  --error: #f00;
   --resize: 4px;
 }
 
 /** Widget */
 .wwidget {
-  background-color: var(--background);
-  color: var(--text);
-  left: 0;
   position: fixed;
   top: 0;
-  width: 256px;
+  left: 0;
   z-index: 10;
+  width: 256px;
+  background-color: var(--background);
+  color: var(--text);
 }
+
 .wwidget .images {
-  height: auto;
   display: block;
-  max-height: 240px;
   overflow-y: auto;
+  height: auto;
+  max-height: 240px;
 }
+
 .wwidget .images .image {
   display: flex;
   align-items: center;
-  height: 64px;
   width: 100%;
-}
-.wwidget .images .image img {
   height: 64px;
+}
+
+.wwidget .images .image img {
+  max-width: 100%;
+  max-height: 100%;
   margin: 0 auto;
   cursor: pointer;
 }
+
 .wwidget .images .image button {
-  height: 64px;
   width: 32px;
-  font-size: 24px;
+  height: 64px;
   font-weight: bolder;
+  font-size: 24px;
 }
 
 /** Image */
 .wimage {
-  left: 0;
   position: fixed;
   top: 0;
+  left: 0;
   z-index: 9;
 }
+
 .wimage canvas {
-  cursor: all-scroll;
-  image-rendering: pixelated;
   width: 100%;
   box-shadow: inset var(--main) 0 0 0 1px;
+  cursor: all-scroll;
+  image-rendering: pixelated;
 }
+
 .wimage .wsettings {
-  background-color: var(--background);
-  color: var(--text);
-  display: none;
   position: absolute;
+  display: none;
   width: 100%;
   min-width: 256px;
+  background-color: var(--background);
+  color: var(--text);
 }
+
 .wimage .wrapper:hover .wsettings {
   display: block;
 }
 
 /* Settings */
 .wsettings > * {
-  align-items: center;
   display: flex;
-  height: 24px;
   justify-content: center;
+  align-items: center;
   overflow: hidden;
+  width: 100%;
+  height: 24px;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-  width: 100%;
 }
-.wsettings button, .wsettings input {
+
+.wsettings button,
+.wsettings input {
   cursor: pointer;
-  transition: background-color 0.5s;
-} 
-.wsettings button:hover, .wsettings input:hover {
+  transition: background-color 0.2s;
+}
+
+.wsettings button:hover,
+.wsettings input:hover {
   background-color: var(--hover);
-} 
-.wsettings button:disabled, .wsettings input:disabled {
+}
+
+.wsettings button:disabled,
+.wsettings input:disabled {
   background-color: var(--disabled);
   cursor: no-drop;
 }
@@ -1503,21 +1788,95 @@ var style_default = `:root {
 .wsettings label input:not([type='checkbox']) {
   width: inherit;
 }
+
 .wsettings .progress {
   position: relative;
 }
+
 .wsettings .progress div {
+  position: absolute;
   width: 100%;
   height: 100%;
-  position: absolute;
   background-color: var(--main-hover);
   transform-origin: left;
 }
+
 .wsettings .progress span {
   z-index: 0;
 }
-.wsettings .colors button {
+
+.wsettings .colors {
+  position: relative;
+  background: repeating-linear-gradient(
+    25deg,
+    var(--background),
+    var(--background),
+    var(--hover) 8px,
+    var(--hover) 12px
+  );
+  cursor: ew-resize;
+}
+
+.wsettings .colors > button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
   height: 100%;
+  cursor: grab;
+  transition:
+    0.2s left,
+    0.2s width,
+    0.2s filter;
+}
+
+.wsettings .colors > button:hover {
+  filter: brightness(0.6);
+}
+
+.wsettings .colors > button.color-disabled::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  box-shadow: inset 0 0 0 2px var(--error);
+  pointer-events: none;
+}
+
+.wsettings .colors > button.substitution button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 4px;
+  color: var(--background);
+  transition: 0.2s filter;
+}
+
+.wsettings .colors > button.substitution button:hover {
+  filter: brightness(0.6);
+}
+
+.wsettings .colors > button.substitution button:first-child {
+  background: var(--wreal-color);
+  text-align: left;
+  clip-path: polygon(0 0, 80% 0, 20% 100%, 0 100%);
+}
+
+.wsettings .colors > button.substitution button:last-child {
+  background: var(--wsubstitution-color);
+  text-align: right;
+  clip-path: polygon(100% 100%, 100% 0, 80% 0, 20% 100%);
+}
+
+.wsettings .colors > button.substitution:hover {
+  filter: none;
+}
+
+.wsettings .colors:hover > button {
+  left: var(--wleft) !important;
+  width: var(--wwidth) !important;
 }
 
 /* Move */
@@ -1525,64 +1884,73 @@ var style_default = `:root {
   position: absolute;
   top: -24px;
   left: 0;
+  display: flex;
+  justify-content: end;
+  align-items: center;
+  width: 100%;
+  min-width: min-content;
+  min-width: 256px;
   background-color: var(--main);
   color: var(--text-invert);
   cursor: all-scroll;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: end;
 }
+
 .wtopbar button {
   min-width: 24px;
 }
+
 .wtopbar button:hover {
   background-color: var(--main-hover);
 }
 
 /* Resize */
 .resize {
-  height: calc(100% - var(--resize) - var(--resize));
-  width: calc(100% - var(--resize) - var(--resize));
   position: absolute;
+  width: calc(100% - var(--resize) - var(--resize));
+  height: calc(100% - var(--resize) - var(--resize));
 }
+
 .resize.n {
-  cursor: n-resize;
   top: 0;
   left: var(--resize);
   height: var(--resize);
+  cursor: n-resize;
 }
+
 .resize.e {
-  cursor: e-resize;
   top: var(--resize);
   right: 0;
   width: var(--resize);
+  cursor: e-resize;
 }
+
 .resize.s {
-  cursor: s-resize;
-  left: var(--resize);
   bottom: 0;
+  left: var(--resize);
   height: var(--resize);
+  cursor: s-resize;
 }
+
 .resize.w {
-  cursor: w-resize;
   top: var(--resize);
   left: 0;
   width: var(--resize);
+  cursor: w-resize;
 }
 
 /* Utility */
 .wp {
   padding: 0 8px;
 }
+
 .hidden {
   display: none;
 }
-.no-pointer-events {
-  pointer-events: none;
-  height: 1px;
-}
 
+.no-pointer-events {
+  height: 1px;
+  pointer-events: none;
+}
 `;
 
 // src/index.ts

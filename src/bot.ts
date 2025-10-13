@@ -1,8 +1,7 @@
 import { wait, withTimeout } from '@softsky/utils'
 
-import { StarsAreTooCloseError, ZoomTooFarError } from './errors'
 import { BotImage, DrawTask } from './image'
-import { Color, Pixels, rgbToOklab } from './pixels'
+import { Pixels } from './pixels'
 import { BotStrategy, Widget } from './widget'
 import { Position, WorldPosition } from './world-position'
 
@@ -15,8 +14,8 @@ const SAVE_VERSION = 1
 export class WPlaceBot {
   public widget = new Widget(this)
 
-  /** WPlace colors. Update with updateColors() */
-  public colors: Color[] = []
+  /** Colors that can be bought */
+  public unavailableColors = new Set<number>()
 
   /** Estimated pixel size */
   public pixelSize = 1
@@ -37,6 +36,8 @@ export class WPlaceBot {
 
   /** Used to defer save */
   protected saveTimeout?: ReturnType<typeof setTimeout>
+
+  protected lastTasksUpdate = 0
 
   public constructor() {
     this.registerFetchInterceptor()
@@ -92,8 +93,8 @@ export class WPlaceBot {
           this.widget.images.push(image)
           image.update()
         }
-      for (let index = 0; index < this.widget.images.length; index++)
-        await this.widget.images[index]!.updateTasks()
+      await this.readMap()
+      this.widget.updateTasks()
       // Unblock buttons
       this.widget.setDisabled('draw', false)
       this.widget.setDisabled('add-image', false)
@@ -102,26 +103,40 @@ export class WPlaceBot {
 
   /** Start drawing */
   public draw() {
-    if (this.pixelSize < 2) throw new ZoomTooFarError(this)
-    this.widget.status = ''
+    const $canvas =
+      document.querySelector<HTMLDivElement>('.maplibregl-canvas')!
     const prevent = (event: MouseEvent | WheelEvent) => {
       if (!event.shiftKey) event.stopPropagation()
     }
-    const $canvas =
-      document.querySelector<HTMLDivElement>('.maplibregl-canvas')!
-    // Stop mouse messing with drawing by capturing event
-    globalThis.addEventListener('mousemove', prevent, true)
-    $canvas.addEventListener('wheel', prevent, true)
     return this.widget.run(
       'Drawing',
       async () => {
+        await this.widget.run('Zooming in', async () => {
+          while (this.pixelSize < 3) {
+            $canvas.dispatchEvent(
+              new WheelEvent('wheel', {
+                deltaY: -1000,
+                bubbles: true,
+                cancelable: true,
+                clientX: window.innerWidth / 2,
+                clientY: window.innerWidth / 2,
+              }),
+            )
+            await wait(200)
+          }
+        })
+
+        this.widget.status = ''
+        // Stop mouse messing with drawing by capturing event
+        globalThis.addEventListener('mousemove', prevent, true)
+        $canvas.addEventListener('wheel', prevent, true)
         // Clear maps cache to refetch pixels
         this.mapsCache.clear()
         this.widget.setDisabled('draw', true)
         this.save()
         await this.updateColors()
-        for (let index = 0; index < this.widget.images.length; index++)
-          await this.widget.images[index]!.updateTasks()
+        await this.readMap()
+        this.widget.updateTasks()
         const n = this.widget.images.reduce(
           (accumulator, x) => accumulator + x.tasks.length,
           0,
@@ -137,7 +152,8 @@ export class WPlaceBot {
               ) {
                 const task = this.widget.images[imageIndex]!.tasks.shift()
                 if (!task) continue
-                await this.drawTask(task)
+                this.drawTask(task)
+                await wait(1)
                 end = false
               }
               if (end) break
@@ -168,7 +184,8 @@ export class WPlaceBot {
                   minImage = image
                 }
               }
-              await this.drawTask(minImage.tasks.shift()!)
+              this.drawTask(minImage.tasks.shift()!)
+              await wait(1)
             }
             break
           }
@@ -183,8 +200,10 @@ export class WPlaceBot {
                 let task = image.tasks.shift();
                 task && !document.querySelector('ol');
                 task = image.tasks.shift()
-              )
-                await this.drawTask(task)
+              ) {
+                this.drawTask(task)
+                await wait(1)
+              }
             }
           }
         }
@@ -218,27 +237,13 @@ export class WPlaceBot {
   public updateColors() {
     return this.widget.run('Colors update', async () => {
       await this.openColors()
-      this.colors = (
-        [
-          ...document.querySelectorAll('button.btn.relative.w-full'),
-        ] as HTMLButtonElement[]
-      ).map((button, index, array) => {
-        if (index === array.length - 1)
-          return {
-            color: [Number.NaN, Number.NaN, Number.NaN],
-            available: true,
-            buttonId: 'color-0',
-          } satisfies Color
-        const rgb = button.style.background
-          .slice(4, -1)
-          .split(', ')
-          .map((x) => +x) as [number, number, number]
-        return {
-          color: rgbToOklab(...rgb),
-          available: button.children.length === 0,
-          buttonId: button.id,
-        } satisfies Color
-      })
+      for (const $button of document.querySelectorAll<HTMLButtonElement>(
+        'button.btn.relative.w-full',
+      ))
+        if ($button.children.length !== 0)
+          this.unavailableColors.add(
+            Math.abs(Number.parseInt($button.id.slice(6))),
+          )
     })
   }
 
@@ -263,6 +268,38 @@ export class WPlaceBot {
     fire('mousedown', startX, startY)
     fire('mousemove', endX, endY)
     fire('mouseup', endX, endY)
+  }
+
+  /** Read and cache the map */
+  public readMap() {
+    this.mapsCache.clear()
+    const imagesToDownload = new Set<string>()
+    for (let index = 0; index < this.widget.images.length; index++) {
+      const image = this.widget.images[index]!
+      const { tileX: tileXEnd, tileY: tileYEnd } = new WorldPosition(
+        this,
+        image.position.globalX + image.pixels.pixels[0]!.length,
+        image.position.globalY + image.pixels.pixels.length,
+      )
+      for (let tileX = image.position.tileX; tileX <= tileXEnd; tileX++)
+        for (let tileY = image.position.tileY; tileY <= tileYEnd; tileY++)
+          imagesToDownload.add(`${tileX}/${tileY}`)
+    }
+    let done = 0
+    return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, () =>
+      Promise.all(
+        [...imagesToDownload].map(async (x) => {
+          this.mapsCache.set(
+            x,
+            await Pixels.fromJSON(this, {
+              url: `https://backend.wplace.live/files/s0/tiles/${x}.png`,
+              exactColor: true,
+            }),
+          )
+          this.widget.status = `Reading map [${++done}/${imagesToDownload.size}]`
+        }),
+      ),
+    )
   }
 
   /** Opens colors and makes them visible for selection */
@@ -314,8 +351,10 @@ export class WPlaceBot {
   }
 
   /** Draw one task */
-  protected async drawTask(task: DrawTask) {
-    ;(document.getElementById(task.buttonId) as HTMLButtonElement).click()
+  protected drawTask(task: DrawTask) {
+    ;(
+      document.getElementById('color-' + task.color) as HTMLButtonElement
+    ).click()
     const position = task.position.toScreenPosition()
     document.documentElement.dispatchEvent(
       new MouseEvent('mousemove', {
@@ -345,7 +384,6 @@ export class WPlaceBot {
         cancelable: true,
       }),
     )
-    await wait(1)
   }
 
   /** Wait until window is unfocused */
@@ -413,6 +451,8 @@ export class WPlaceBot {
       await this.waitForUnfocus()
       await this.closeAll()
       const stars = this.getStars()
+      const $canvas =
+        document.querySelector<HTMLDivElement>('.maplibregl-canvas')!
       for (let index = 0; index < 2; index++) {
         let star = stars[index]
         // Select star's position or create one to put star into
@@ -421,8 +461,41 @@ export class WPlaceBot {
           : index === 0
             ? { x: -20_000, y: -20_000 }
             : { x: 20_000, y: 20_000 }
-        this.anchorsWorldPosition[index] =
-          await this.clickAndGetPixelWorldPosition(position)
+        try {
+          this.anchorsWorldPosition[index] =
+            await this.clickAndGetPixelWorldPosition(position)
+        } catch (error) {
+          // Probably an error with zoom. Try to zoom in and retry.
+          if (document.querySelector('ol')) {
+            $canvas.dispatchEvent(
+              new WheelEvent('wheel', {
+                deltaY: -1000,
+                bubbles: true,
+                cancelable: true,
+                clientX: window.innerWidth / 2,
+                clientY: window.innerWidth / 2,
+              }),
+            )
+            index--
+            await wait(1000)
+            continue
+          } else throw error
+        }
+
+        // Check if distance is too small to serve as an anchor
+        // Rerun this loop with star removed to create new star
+        if (
+          index === 1 &&
+          this.anchorsWorldPosition[1]!.globalX -
+            this.anchorsWorldPosition[0]!.globalX <
+            500
+        ) {
+          console.log('TOO CLOSE')
+          index--
+          stars[1] = undefined
+          continue
+        }
+
         // Add star if none found
         if (!star) {
           // Click "Favorite"
@@ -490,7 +563,6 @@ export class WPlaceBot {
     const p2 = this.anchorsWorldPosition[1]
     if (!stars[0] || !stars[1] || !p1 || !p2) return
     const worldDistance = p2.globalX - p1.globalX
-    if (worldDistance < 500) throw new StarsAreTooCloseError(this)
     this.anchorsScreenPosition[0] = stars[0][1]
     this.anchorsScreenPosition[1] = stars[1][1]
     const s1 = this.anchorsScreenPosition[0]
@@ -516,9 +588,13 @@ export class WPlaceBot {
       ),
     ]
     const stars = $stars.map(
-      ($star) => [$star, this.extractScreenPositionFromStar($star)] as const,
+      ($star) =>
+        [$star, this.extractScreenPositionFromStar($star)] as [
+          HTMLDivElement,
+          Position,
+        ],
     )
     stars.sort((a, b) => a[1].x - b[1].x)
-    return [stars[0], stars.at(-1)] as const
+    return [stars[0], stars.at(-1)]
   }
 }

@@ -1,6 +1,5 @@
 import { WPlaceBot } from './bot'
 import { NotInitializedError } from './errors'
-import { Pixels } from './pixels'
 
 export type Position = {
   x: number
@@ -85,17 +84,10 @@ export class WorldPosition {
     }
   }
 
-  public async getMapColor() {
-    const key = this.tileX + '/' + this.tileY
-    let map = this.bot.mapsCache.get(key)
-    if (!map) {
-      map = await Pixels.fromJSON(this.bot, {
-        url: `https://backend.wplace.live/files/s0/tiles/${key}.png`,
-        exactColor: true,
-      })
-      this.bot.mapsCache.set(key, map)
-    }
-    return map.pixels[this.y]![this.x]!
+  public getMapColor() {
+    return this.bot.mapsCache.get(this.tileX + '/' + this.tileY)!.pixels[
+      this.y
+    ]![this.x]!
   }
 
   public scrollScreenTo() {

@@ -1,5 +1,8 @@
+import { removeFromArray } from '@softsky/utils'
+
 import { Base } from './base'
 import { WPlaceBot } from './bot'
+import { colorToCSS } from './colors'
 // @ts-ignore
 import html from './image.html' with { type: 'text' }
 import { Pixels } from './pixels'
@@ -7,8 +10,12 @@ import { Position, WorldPosition } from './world-position'
 
 export type DrawTask = {
   position: WorldPosition
-  buttonId: string
-  mapColor: string
+  color: number
+}
+
+export type ImageColorSetting = {
+  color: number
+  disabled?: boolean
 }
 
 export enum ImageStrategy {
@@ -33,6 +40,8 @@ export class BotImage extends Base {
       data.strategy,
       data.opacity,
       data.drawTransparentPixels,
+      data.drawColorsInOrder,
+      data.colors,
       data.lock,
     )
   }
@@ -52,21 +61,23 @@ export class BotImage extends Base {
     clientY: number
   }
 
-  protected readonly $wrapper!: HTMLDivElement
+  protected readonly $brightness!: HTMLInputElement
+  protected readonly $canvas!: HTMLCanvasElement
+  protected readonly $colors!: HTMLDivElement
+  protected readonly $delete!: HTMLButtonElement
+  protected readonly $drawColorsInOrder!: HTMLInputElement
+  protected readonly $drawTransparent!: HTMLInputElement
+  protected readonly $export!: HTMLDivElement
+  protected readonly $lock!: HTMLButtonElement
+  protected readonly $opacity!: HTMLInputElement
+  protected readonly $progressLine!: HTMLDivElement
+  protected readonly $progressText!: HTMLSpanElement
+  protected readonly $resetSize!: HTMLButtonElement
+  protected readonly $resetSizeSpan!: HTMLSpanElement
   protected readonly $settings!: HTMLDivElement
   protected readonly $strategy!: HTMLSelectElement
   protected readonly $topbar!: HTMLDivElement
-  protected readonly $lock!: HTMLButtonElement
-  protected readonly $opacity!: HTMLInputElement
-  protected readonly $brightness!: HTMLInputElement
-  protected readonly $drawTransparent!: HTMLInputElement
-  protected readonly $resetSize!: HTMLButtonElement
-  protected readonly $resetSizeSpan!: HTMLSpanElement
-  protected readonly $progressLine!: HTMLDivElement
-  protected readonly $progressText!: HTMLSpanElement
-  protected readonly $canvas!: HTMLCanvasElement
-  protected readonly $colors!: HTMLDivElement
-  protected readonly $export!: HTMLDivElement
+  protected readonly $wrapper!: HTMLDivElement
 
   public constructor(
     protected bot: WPlaceBot,
@@ -75,11 +86,15 @@ export class BotImage extends Base {
     /** Parsed imageto draw */
     public pixels: Pixels,
     /** Order of pixels to draw */
-    public strategy = ImageStrategy.RANDOM,
+    public strategy = ImageStrategy.SPIRAL_FROM_CENTER,
     /** Opacity of overlay */
     public opacity = 50,
     /** Should we erase pixels there transparency should be */
     public drawTransparentPixels = false,
+    /** Should bot draw colors in order */
+    public drawColorsInOrder = false,
+    /** Colors settings */
+    public colors: { realColor: number; disabled?: boolean }[] = [],
     /** Stop accidental image edit */
     public lock = false,
   ) {
@@ -89,19 +104,21 @@ export class BotImage extends Base {
     document.body.append(this.element)
 
     this.populateElementsWithSelector(this.element, {
-      $wrapper: '.wrapper',
-      $strategy: '.strategy',
-      $opacity: '.opacity',
-      $settings: '.wsettings',
-      $lock: '.lock',
-      $topbar: '.wtopbar',
       $brightness: '.brightness',
+      $colors: '.colors',
+      $delete: '.delete',
+      $drawColorsInOrder: '.draw-colors-in-order',
       $drawTransparent: '.draw-transparent',
-      $resetSize: '.reset-size',
+      $export: '.export',
+      $lock: '.lock',
+      $opacity: '.opacity',
       $progressLine: '.progress div',
       $progressText: '.progress span',
-      $colors: '.colors',
-      $export: '.export',
+      $resetSize: '.reset-size',
+      $settings: '.wsettings',
+      $strategy: '.strategy',
+      $topbar: '.wtopbar',
+      $wrapper: '.wrapper',
     })
     this.$resetSizeSpan =
       this.$resetSize.querySelector<HTMLSpanElement>('span')!
@@ -129,7 +146,7 @@ export class BotImage extends Base {
       timeout = setTimeout(() => {
         this.pixels.brightness = this.$brightness.valueAsNumber
         this.pixels.update()
-        this.updateColorsToBuy()
+        this.updateColors()
         this.update()
         this.bot.save()
       }, 1000)
@@ -139,7 +156,7 @@ export class BotImage extends Base {
     this.registerEvent(this.$resetSize, 'click', () => {
       this.pixels.width = this.pixels.image.naturalWidth
       this.pixels.update()
-      this.updateColorsToBuy()
+      this.updateColors()
       this.update()
       this.bot.save()
     })
@@ -150,12 +167,20 @@ export class BotImage extends Base {
       this.bot.save()
     })
 
-    // click-through
+    // drawColorsInOrder
+    this.registerEvent(this.$drawColorsInOrder, 'click', () => {
+      this.drawColorsInOrder = this.$drawColorsInOrder.checked
+      this.bot.save()
+    })
+
+    // Lock
     this.registerEvent(this.$lock, 'click', () => {
       this.lock = !this.lock
       this.update()
       this.bot.save()
     })
+
+    this.registerEvent(this.$delete, 'click', this.destroy.bind(this))
 
     // Export
     this.registerEvent(this.$export, 'click', this.export.bind(this))
@@ -172,7 +197,7 @@ export class BotImage extends Base {
     ))
       this.registerEvent($resize, 'mousedown', this.resizeStart.bind(this))
     this.update()
-    this.updateColorsToBuy()
+    this.updateColors()
   }
 
   public toJSON() {
@@ -182,29 +207,42 @@ export class BotImage extends Base {
       strategy: this.strategy,
       opacity: this.opacity,
       drawTransparentPixels: this.drawTransparentPixels,
+      drawColorsInOrder: this.drawColorsInOrder,
+      colors: this.colors,
       lock: this.lock,
     }
   }
 
   /** Calculates everything we need to do. Very expensive task! */
-  public async updateTasks() {
+  public updateTasks() {
     this.tasks.length = 0
     const position = this.position.clone()
+    const skipColors = new Set<number>()
+    const colorsOrderMap = new Map<number, number>()
+    if (this.drawColorsInOrder)
+      for (let index = 0; index < this.colors.length; index++) {
+        const drawColor = this.colors[index]!
+        if (drawColor.disabled) skipColors.add(drawColor.realColor)
+        colorsOrderMap.set(drawColor.realColor, index)
+      }
     for (const { x, y } of this.strategyPositionIterator()) {
       const color = this.pixels.pixels[y]![x]!
+      if (skipColors.has(color)) continue
       position.globalX = this.position.globalX + x
       position.globalY = this.position.globalY + y
-      const mapColor = await position.getMapColor()
-      if (
-        color !== mapColor &&
-        (this.drawTransparentPixels || color !== 'color-0')
-      )
+      const mapColor = position.getMapColor()
+      if (color !== mapColor && (this.drawTransparentPixels || color !== 0))
         this.tasks.push({
           position: position.clone(),
-          buttonId: color,
-          mapColor,
+          color,
         })
     }
+    if (this.drawColorsInOrder)
+      this.tasks.sort(
+        (a, b) =>
+          (colorsOrderMap.get(a.color) ?? 0) -
+          (colorsOrderMap.get(b.color) ?? 0),
+      )
     this.update()
     this.bot.widget.update()
   }
@@ -213,7 +251,7 @@ export class BotImage extends Base {
   public update() {
     const halfPixel = this.bot.pixelSize / 2
     try {
-      // Might throw if no anchor. Then we just hide all images
+      // Might throw if no anchor. Then we just hide everything
       const { x, y } = this.position.toScreenPosition()
       this.element.style.transform = `translate(${x - halfPixel}px, ${y - halfPixel}px)`
       this.element.style.width = `${this.bot.pixelSize * this.pixels.width}px`
@@ -228,6 +266,7 @@ export class BotImage extends Base {
     this.$strategy.value = this.strategy
     this.$opacity.valueAsNumber = this.opacity
     this.$drawTransparent.checked = this.drawTransparentPixels
+    this.$drawColorsInOrder.checked = this.drawColorsInOrder
     const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0]!.length
     const doneTasks = maxTasks - this.tasks.length
     const percent = ((doneTasks / maxTasks) * 100) | 0
@@ -241,6 +280,9 @@ export class BotImage extends Base {
   public destroy() {
     super.destroy()
     this.element.remove()
+    removeFromArray(this.bot.widget.images, this)
+    this.bot.widget.update()
+    this.bot.save()
   }
 
   /** Create iterator that generates positions based on strategy */
@@ -372,7 +414,7 @@ export class BotImage extends Base {
       this.moveInfo.height !== undefined
     ) {
       this.pixels.update()
-      this.updateColorsToBuy()
+      this.updateColors()
     }
     this.update()
     this.bot.save()
@@ -398,27 +440,115 @@ export class BotImage extends Base {
     }
   }
 
-  /** Draw colors to buy */
-  protected updateColorsToBuy() {
-    if (this.pixels.colorsToBuy.length === 0) {
-      this.$colors.innerHTML = 'You have all colors!'
-      return
-    }
-    let sum = 0
-    for (let index = 0; index < this.pixels.colorsToBuy.length; index++)
-      sum += this.pixels.colorsToBuy[index]![1]
+  /** Draw colors */
+  protected updateColors() {
     this.$colors.innerHTML = ''
-    for (let index = 0; index < this.pixels.colorsToBuy.length; index++) {
-      const [color, amount] = this.pixels.colorsToBuy[index]!
+    const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0]!.length
+    const itemWidth = 100 / this.pixels.colors.size
+
+    // If not the synced with colors then rebuild order
+    if (
+      this.colors.length !== this.pixels.colors.size ||
+      this.colors.some((x) => !this.pixels.colors.has(x.realColor))
+    ) {
+      this.colors = this.pixels.colors
+        .values()
+        .toArray()
+        .sort((a, b) => b.amount - a.amount)
+        .map((color) => ({
+          realColor: color.realColor,
+          disabled: false,
+        }))
+      this.bot.save()
+    }
+
+    // Build colors UI
+    let nextXPosition = 0
+    for (let index = 0; index < this.colors.length; index++) {
+      const drawColor = this.colors[index]!
+      const color = this.pixels.colors.get(drawColor.realColor)!
+      let dragging = false
+      const toggleDisabled = () => {
+        if (dragging) return
+        drawColor.disabled = drawColor.disabled ? undefined : true
+        $button.classList.toggle('color-disabled')
+        this.bot.save()
+      }
       const $button = document.createElement('button')
+      if (drawColor.disabled) $button.classList.add('color-disabled')
+      if (color.realColor === color.color)
+        $button.style.background = colorToCSS(color.realColor)
+      else {
+        $button.classList.add('substitution')
+        $button.style.setProperty('--wreal-color', colorToCSS(color.realColor))
+        $button.style.setProperty(
+          '--wsubstitution-color',
+          colorToCSS(color.color),
+        )
+        const $button1 = document.createElement('button')
+        const $button2 = document.createElement('button')
+        $button1.textContent = '$'
+        $button2.textContent = '✓'
+        $button1.addEventListener('click', () => {
+          document.getElementById('color-' + color.realColor)?.click()
+        })
+        $button2.addEventListener('click', toggleDisabled)
+        $button.append($button1)
+        $button.append($button2)
+      }
+      $button.style.left = nextXPosition + '%'
+      const width = (color.amount / pixelsSum) * 100
+      $button.style.width = width + '%'
+      nextXPosition += width
+      $button.style.setProperty('--wleft', itemWidth * index + '%')
+      $button.style.setProperty('--wwidth', itemWidth + '%')
       this.$colors.append($button)
-      $button.style.backgroundColor = `oklab(${color.color[0] * 100}% ${color.color[1]} ${color.color[2]})`
-      $button.style.width = (amount / sum) * 100 + '%'
-      // Do not use register event cause it will be disposed automatically
-      $button.addEventListener('click', async () => {
-        await this.bot.updateColors()
-        document.getElementById(color.buttonId)?.click()
-      })
+
+      // Drag functionality
+      const startDrag = (startEvent: MouseEvent) => {
+        let newIndex = index
+        const buttonWidth = $button.getBoundingClientRect().width
+        const mouseMoveHandler = (event: MouseEvent) => {
+          newIndex = Math.min(
+            this.colors.length - 1,
+            Math.max(
+              0,
+              Math.round(
+                index + (event.clientX - startEvent.clientX) / buttonWidth,
+              ),
+            ),
+          )
+          if (newIndex !== index) dragging = true
+          let childIndex = 0
+          for (const $child of this.$colors.children as Iterable<HTMLElement>) {
+            if ($child === $button) continue
+            if (childIndex === newIndex) childIndex++
+            $child.style.setProperty('--wleft', itemWidth * childIndex + '%')
+            childIndex++
+          }
+          $button.style.setProperty('--wleft', itemWidth * newIndex + '%')
+        }
+        document.addEventListener('mousemove', mouseMoveHandler)
+        document.addEventListener(
+          'mouseup',
+          () => {
+            document.removeEventListener('mousemove', mouseMoveHandler)
+            if (newIndex !== index)
+              this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1))
+            this.bot.save()
+            $button.removeEventListener('mousedown', startDrag)
+            setTimeout(() => {
+              this.updateColors()
+            }, 200)
+          },
+          {
+            once: true,
+          },
+        )
+      }
+      $button.addEventListener('mousedown', startDrag)
+      if (color.realColor === color.color)
+        $button.addEventListener('click', toggleDisabled)
     }
   }
 
