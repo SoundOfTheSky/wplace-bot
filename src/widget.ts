@@ -303,7 +303,7 @@ export class Widget extends Base {
             )
           ).claimed,
         )
-        const pumpkinsFound = Object.values(
+        const pumpkinsFound = Object.entries(
           (await retry(
             () =>
               fetch('https://wplace.samuelscheit.com/tiles/pumpkin.json').then(
@@ -325,15 +325,14 @@ export class Widget extends Base {
           >,
         )
 
-        for (let index = 0; index < pumpkinsFound.length; index++) {
+        for (const [index, pumpkin] of pumpkinsFound) {
           if (claimed.size === 100) {
             this.$pumpkinHunt.textContent = `Pumpkin Hunt Finished!`
             break main
           }
           this.$pumpkinHunt.textContent = `⌛ Pumpkin Hunt [${claimed.size}/100]`
-          const pumpkin = pumpkinsFound[index]!
           if (
-            claimed.has(index + 1) ||
+            claimed.has(+index) ||
             Date.now() - new Date(pumpkin.foundAt).getTime() > 3_600_000
           )
             continue
@@ -395,7 +394,7 @@ export class Widget extends Base {
                 3,
                 10_000,
               )
-              claimed.add(index + 1)
+              claimed.add(+index)
             }
           }
           await wait(5000)

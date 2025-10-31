@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.3.0
+// @version      4.3.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -1324,15 +1324,14 @@ class Widget extends Base2 {
           const claimed = new Set((await retry(() => fetch("https://backend.wplace.live/event/hallowen/pumpkins/claimed", {
             credentials: "include"
           }).then((x) => x.json()), 10, 1e4)).claimed);
-          const pumpkinsFound = Object.values(await retry(() => fetch("https://wplace.samuelscheit.com/tiles/pumpkin.json").then((x) => x.json()), 10, 1e4));
-          for (let index = 0;index < pumpkinsFound.length; index++) {
+          const pumpkinsFound = Object.entries(await retry(() => fetch("https://wplace.samuelscheit.com/tiles/pumpkin.json").then((x) => x.json()), 10, 1e4));
+          for (const [index, pumpkin] of pumpkinsFound) {
             if (claimed.size === 100) {
               this.$pumpkinHunt.textContent = `Pumpkin Hunt Finished!`;
               break main;
             }
             this.$pumpkinHunt.textContent = `⌛ Pumpkin Hunt [${claimed.size}/100]`;
-            const pumpkin = pumpkinsFound[index];
-            if (claimed.has(index + 1) || Date.now() - new Date(pumpkin.foundAt).getTime() > 3600000)
+            if (claimed.has(+index) || Date.now() - new Date(pumpkin.foundAt).getTime() > 3600000)
               continue;
             const { pixels } = await retry(() => Pixels.fromJSON(this.bot, {
               url: `https://backend.wplace.live/files/s0/tiles/${pumpkin.tileX}/${pumpkin.tileY}.png`,
@@ -1341,8 +1340,6 @@ class Widget extends Base2 {
             for (let x = 0;x < 1000; x++) {
               nextPixel:
                 for (let y = 0;y < 1000; y++) {
-                  if (!pixels[y])
-                    console.log(y, x, pixels);
                   if (pixels[y][x] !== firstColor)
                     continue;
                   for (let offsetY = 0;offsetY < PUMPKIN_PATTERN.length; offsetY++)
@@ -1350,10 +1347,8 @@ class Widget extends Base2 {
                       if (pixels[y + offsetY][x + offsetX] !== PUMPKIN_PATTERN[offsetY][offsetX])
                         continue nextPixel;
                   const info = await retry(() => fetch(`https://backend.wplace.live/s0/pixel/${pumpkin.tileX}/${pumpkin.tileY}?x=${x + 10}&y=${y + 10}`).then((x2) => x2.json()), 3, 1e4);
-                  if (!info.paintedBy.event) {
-                    console.log("not event");
+                  if (!info.paintedBy.event)
                     continue;
-                  }
                   await retry(async () => {
                     const response = await fetch(`https://backend.wplace.live/s0/event/pixel/claim`, {
                       credentials: "include",
@@ -1369,7 +1364,7 @@ class Widget extends Base2 {
                     if (!response.ok)
                       throw new Error("CAN NOT CLAIM");
                   }, 3, 1e4);
-                  claimed.add(index + 1);
+                  claimed.add(+index);
                 }
             }
             await wait(5000);
