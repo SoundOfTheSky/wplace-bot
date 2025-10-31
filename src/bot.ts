@@ -37,7 +37,8 @@ export class WPlaceBot {
   /** Used to defer save */
   protected saveTimeout?: ReturnType<typeof setTimeout>
 
-  protected lastTasksUpdate = 0
+  /** Last color drawn */
+  protected lastColor?: number
 
   public constructor() {
     this.registerFetchInterceptor()
@@ -98,11 +99,16 @@ export class WPlaceBot {
       // Unblock buttons
       this.widget.setDisabled('draw', false)
       this.widget.setDisabled('add-image', false)
+      this.widget.setDisabled('pumpkin-hunt', false)
     })
   }
 
   /** Start drawing */
   public draw() {
+    this.widget.setDisabled('draw', true)
+    this.widget.status = ''
+    // Clear maps cache to refetch pixels
+    this.mapsCache.clear()
     const $canvas =
       document.querySelector<HTMLDivElement>('.maplibregl-canvas')!
     const prevent = (event: MouseEvent | WheelEvent) => {
@@ -111,36 +117,33 @@ export class WPlaceBot {
     return this.widget.run(
       'Drawing',
       async () => {
-        await this.widget.run('Zooming in', async () => {
-          while (this.pixelSize < 3) {
-            $canvas.dispatchEvent(
-              new WheelEvent('wheel', {
-                deltaY: -1000,
-                bubbles: true,
-                cancelable: true,
-                clientX: window.innerWidth / 2,
-                clientY: window.innerWidth / 2,
-              }),
-            )
-            await wait(200)
-          }
-        })
-
-        this.widget.status = ''
+        await this.widget.run('Initializing draw', () =>
+          Promise.all([
+            this.updateColors(),
+            this.readMap(),
+            (async () => {
+              while (this.pixelSize < 3) {
+                $canvas.dispatchEvent(
+                  new WheelEvent('wheel', {
+                    deltaY: -1000,
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: window.innerWidth / 2,
+                    clientY: window.innerWidth / 2,
+                  }),
+                )
+                await wait(200)
+              }
+            })(),
+          ]),
+        )
         // Stop mouse messing with drawing by capturing event
         globalThis.addEventListener('mousemove', prevent, true)
         $canvas.addEventListener('wheel', prevent, true)
-        // Clear maps cache to refetch pixels
-        this.mapsCache.clear()
-        this.widget.setDisabled('draw', true)
-        this.save()
-        await this.updateColors()
-        await this.readMap()
         this.widget.updateTasks()
-        const n = this.widget.images.reduce(
-          (accumulator, x) => accumulator + x.tasks.length,
-          0,
-        )
+        let n = 0
+        for (let index = 0; index < this.widget.images.length; index++)
+          n += this.widget.images[index]!.tasks.length
         switch (this.widget.strategy) {
           case BotStrategy.ALL: {
             while (!document.querySelector('ol')) {
@@ -234,17 +237,15 @@ export class WPlaceBot {
   }
 
   /** Read colors */
-  public updateColors() {
-    return this.widget.run('Colors update', async () => {
-      await this.openColors()
-      for (const $button of document.querySelectorAll<HTMLButtonElement>(
-        'button.btn.relative.w-full',
-      ))
-        if ($button.children.length !== 0)
-          this.unavailableColors.add(
-            Math.abs(Number.parseInt($button.id.slice(6))),
-          )
-    })
+  public async updateColors() {
+    await this.openColors()
+    for (const $button of document.querySelectorAll<HTMLButtonElement>(
+      'button.btn.relative.w-full',
+    ))
+      if ($button.children.length !== 0)
+        this.unavailableColors.add(
+          Math.abs(Number.parseInt($button.id.slice(6))),
+        )
   }
 
   /** Move map */
@@ -296,7 +297,7 @@ export class WPlaceBot {
               exactColor: true,
             }),
           )
-          this.widget.status = `Reading map [${++done}/${imagesToDownload.size}]`
+          this.widget.status = `⌛ Reading map [${++done}/${imagesToDownload.size}]`
         }),
       ),
     )
@@ -304,6 +305,7 @@ export class WPlaceBot {
 
   /** Opens colors and makes them visible for selection */
   protected async openColors() {
+    this.lastColor = undefined
     // Click close marker
     document
       .querySelector<HTMLButtonElement>('.flex.gap-2.px-3 > .btn-circle')
@@ -352,9 +354,12 @@ export class WPlaceBot {
 
   /** Draw one task */
   protected drawTask(task: DrawTask) {
-    ;(
-      document.getElementById('color-' + task.color) as HTMLButtonElement
-    ).click()
+    if (this.lastColor !== task.color) {
+      ;(
+        document.getElementById('color-' + task.color) as HTMLButtonElement
+      ).click()
+      this.lastColor = task.color
+    }
     const position = task.position.toScreenPosition()
     document.documentElement.dispatchEvent(
       new MouseEvent('mousemove', {
@@ -387,7 +392,7 @@ export class WPlaceBot {
   }
 
   /** Wait until window is unfocused */
-  protected waitForUnfocus() {
+  public waitForUnfocus() {
     return this.widget.run(
       'UNFOCUS WINDOW',
       () =>
@@ -513,7 +518,7 @@ export class WPlaceBot {
   }
 
   /** Closes all popups */
-  protected async closeAll() {
+  public async closeAll() {
     for (const button of document.querySelectorAll('button')) {
       if (
         button.innerHTML === '✕' ||
@@ -580,20 +585,26 @@ export class WPlaceBot {
   }
 
   /** Get stars that can be used as anchors */
-  protected getStars() {
-    const $stars = [
-      ...document.querySelectorAll<HTMLDivElement>(
-        '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
-      ),
-    ]
-    const stars = $stars.map(
-      ($star) =>
-        [$star, this.extractScreenPositionFromStar($star)] as [
-          HTMLDivElement,
-          Position,
-        ],
-    )
-    stars.sort((a, b) => a[1].x - b[1].x)
-    return [stars[0], stars.at(-1)]
+  protected getStars(): [
+    [HTMLElement, Position] | undefined,
+    [HTMLElement, Position] | undefined,
+  ] {
+    let minX = Infinity
+    let maxX = 0
+    let min: [HTMLElement, Position] | undefined
+    let max: [HTMLElement, Position] | undefined
+    for (const $star of document.querySelectorAll<HTMLDivElement>(
+      '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
+    )) {
+      const pos = this.extractScreenPositionFromStar($star)
+      if (pos.x < minX) {
+        minX = pos.x
+        min = [$star, pos]
+      } else if (pos.x > maxX) {
+        maxX = pos.x
+        max = [$star, pos]
+      }
+    }
+    return [min, max]
   }
 }

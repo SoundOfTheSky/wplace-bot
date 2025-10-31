@@ -54,7 +54,10 @@ export class Pixels {
     /** Use fast exact color algorithm */
     public exactColor = false,
   ) {
-    this.resolution = this.image.naturalWidth / this.image.naturalHeight
+    if (exactColor) {
+      this.resolution = 1
+      this.width = 1000
+    } else this.resolution = this.image.naturalWidth / this.image.naturalHeight
     this.update()
   }
 

@@ -10,6 +10,7 @@ export default [
       'import-x/no-unresolved': 0,
       'unicorn/prefer-query-selector': 0,
       'unicorn/explicit-length-check': 0,
+      'unicorn/prefer-at': 0,
     },
   },
 ]

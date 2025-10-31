@@ -1,4 +1,5 @@
-import { promisifyEventSource, swap } from '@softsky/utils'
+/* eslint-disable unicorn/no-await-expression-member */
+import { promisifyEventSource, retry, swap, wait } from '@softsky/utils'
 
 import { Base } from './base'
 import { WPlaceBot } from './bot'
@@ -55,6 +56,7 @@ export class Widget extends Base {
   protected readonly $progressLine!: HTMLDivElement
   protected readonly $progressText!: HTMLSpanElement
   protected readonly $images!: HTMLDivElement
+  protected readonly $pumpkinHunt!: HTMLButtonElement
 
   public constructor(protected bot: WPlaceBot) {
     super()
@@ -73,6 +75,7 @@ export class Widget extends Base {
       $progressLine: '.progress div',
       $progressText: '.progress span',
       $images: '.images',
+      $pumpkinHunt: '.pumpkin-hunt',
     })
 
     // Move/minimize
@@ -94,6 +97,7 @@ export class Widget extends Base {
 
     // Button actions
     this.$draw.addEventListener('click', () => this.bot.draw())
+    this.$pumpkinHunt.addEventListener('click', () => this.pumpkinHunt())
     this.$addImage.addEventListener('click', () => this.addImage())
     this.$strategy.addEventListener('change', () => {
       this.strategy = this.$strategy.value as BotStrategy
@@ -273,5 +277,136 @@ export class Widget extends Base {
     if (!this.moveInfo) return
     this.x = this.moveInfo.x + x - this.moveInfo.originalX
     this.y = this.moveInfo.y + y - this.moveInfo.originalY
+  }
+
+  protected async pumpkinHunt() {
+    this.$pumpkinHunt.disabled = false
+    const PUMPKIN_PATTERN =
+      '8,8,8,8,8,8,8,1,8,8,8,1,8,8,8,1,8,8,8,8,8,8_8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8_8,1,1,1,1,8,8,8,8,8,8,8,8,8,8,8,8,8,1,1,1,1_8,8,1,1,1,1,1,1,8,8,8,8,8,8,8,1,1,1,1,1,1,8_8,8,1,1,1,5,5,1,1,8,8,8,8,8,1,1,5,5,1,1,1,8_8,8,1,1,1,5,5,1,1,1,8,8,8,1,1,1,5,5,1,1,1,8_8,8,8,1,1,1,1,1,1,8,8,1,8,8,1,1,1,1,1,1,8,8_8,8,8,8,1,1,1,1,8,8,1,1,1,8,8,1,1,1,1,8,8,8_8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8_8,8,8,8,1,8,8,8,8,8,8,1,8,8,8,8,8,8,1,8,8,8_8,8,8,1,1,1,8,8,8,8,1,1,1,8,8,8,8,1,1,1,8,8_8,8,1,1,8,1,1,8,8,1,1,8,1,1,8,8,1,1,8,1,1,8_1,8,8,8,8,8,1,1,1,1,8,8,8,1,1,1,1,8,8,8,8,8_1,1,1,8,8,8,8,1,1,8,8,8,8,8,1,1,8,8,8,8,1,1_1,12,12,1,1,8,8,8,8,8,8,1,8,8,8,8,8,8,1,1,19,18_1,12,12,13,13,1,1,1,1,1,1,19,1,1,1,1,1,1,18,18,18,18_12,13,13,13,13,13,13,19,19,19,19,19,19,19,19,19,18,18,18,18,18,18_13,13,13,13,13,13,13,19,19,19,19,19,19,19,19,19,18,18,18,18,18,18_18,18,19,19,13,13,13,13,13,13,13,13,19,19,19,19,18,18,18,18,18,18_18,18,19,19,13,13,13,13,13,13,13,13,19,19,19,19,18,18,18,18,18,18_18,18,19,19,19,19,19,19,19,19,19,19,13,13,13,13,18,18,18,18,18,18_18,18,18,19,19,19,19,19,19,19,19,19,13,13,13,13,18,18,18,18,18,18_18,18,18,18,19,19,19,19,19,19,13,13,13,13,12,12,12,18,18,18,18,18_18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,18,18,18,18,18_18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,18,18,18,18,18_1,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,12,12,12,18,18_1,18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,12,12,18,18_1,18,18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,12,18,18'
+        .split('_')
+        .map((x) => x.split(',').map((x) => +x))
+    const firstColor = PUMPKIN_PATTERN[0]![0]!
+    try {
+      main: while (true) {
+        const claimed = new Set(
+          (
+            await retry(
+              () =>
+                fetch(
+                  'https://backend.wplace.live/event/hallowen/pumpkins/claimed',
+                  {
+                    credentials: 'include',
+                  },
+                ).then((x) => x.json()) as Promise<{ claimed: number[] }>,
+              10,
+              10_000,
+            )
+          ).claimed,
+        )
+        const pumpkinsFound = Object.values(
+          (await retry(
+            () =>
+              fetch('https://wplace.samuelscheit.com/tiles/pumpkin.json').then(
+                (x) => x.json(),
+              ),
+            10,
+            10_000,
+          )) as Record<
+            string,
+            {
+              foundAt: string
+              lat: number
+              lng: number
+              offsetX: number
+              offsetY: number
+              tileX: number
+              tileY: number
+            }
+          >,
+        )
+
+        for (let index = 0; index < pumpkinsFound.length; index++) {
+          if (claimed.size === 100) {
+            this.$pumpkinHunt.textContent = `Pumpkin Hunt Finished!`
+            break main
+          }
+          this.$pumpkinHunt.textContent = `⌛ Pumpkin Hunt [${claimed.size}/100]`
+          const pumpkin = pumpkinsFound[index]!
+          if (
+            claimed.has(index + 1) ||
+            Date.now() - new Date(pumpkin.foundAt).getTime() > 3_600_000
+          )
+            continue
+
+          const { pixels } = await retry(
+            () =>
+              Pixels.fromJSON(this.bot, {
+                url: `https://backend.wplace.live/files/s0/tiles/${pumpkin.tileX}/${pumpkin.tileY}.png`,
+                exactColor: true,
+              }),
+            10,
+            10_000,
+          )
+          for (let x = 0; x < 1000; x++) {
+            nextPixel: for (let y = 0; y < 1000; y++) {
+              if (pixels[y]![x] !== firstColor) continue
+              for (let offsetY = 0; offsetY < PUMPKIN_PATTERN.length; offsetY++)
+                for (
+                  let offsetX = 0;
+                  offsetX < PUMPKIN_PATTERN[offsetY]!.length;
+                  offsetX++
+                )
+                  if (
+                    pixels[y + offsetY]![x + offsetX]! !==
+                    PUMPKIN_PATTERN[offsetY]![offsetX]!
+                  )
+                    continue nextPixel
+
+              // Pattern found, check if it's real and click it
+              const info = await retry(
+                () =>
+                  fetch(
+                    `https://backend.wplace.live/s0/pixel/${pumpkin.tileX}/${pumpkin.tileY}?x=${x + 10}&y=${y + 10}`,
+                  ).then((x) => x.json()) as Promise<{
+                    paintedBy: { event?: boolean; eventClaimNumber?: number }
+                  }>,
+                3,
+                10_000,
+              )
+              if (!info.paintedBy.event) continue
+              await retry(
+                async () => {
+                  const response = await fetch(
+                    `https://backend.wplace.live/s0/event/pixel/claim`,
+                    {
+                      credentials: 'include',
+                      body: JSON.stringify({
+                        event: 'halloween',
+                        tx: pumpkin.tileX,
+                        ty: pumpkin.tileY,
+                        px: x + 10,
+                        py: y + 10,
+                      }),
+                      method: 'POST',
+                    },
+                  )
+                  if (!response.ok) throw new Error('CAN NOT CLAIM')
+                },
+                3,
+                10_000,
+              )
+              claimed.add(index + 1)
+            }
+          }
+          await wait(5000)
+        }
+        this.$pumpkinHunt.textContent = `⌛ Pumpkin Hunt (wait 10 min)`
+        await wait(10 * 1000 * 60)
+      }
+    } catch (error) {
+      console.error(error)
+      this.$pumpkinHunt.disabled = false
+      this.$pumpkinHunt.textContent = `❌ Pumpkin Hunt!`
+    }
   }
 }

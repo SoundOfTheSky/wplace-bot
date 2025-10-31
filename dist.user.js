@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.2.1
+// @version      4.3.0
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -76,6 +76,16 @@ class TimeoutError extends Error {
 // node_modules/@softsky/utils/dist/control.js
 var lastIncId = Math.floor(Math.random() * 65536);
 var SESSION_ID = Math.floor(Math.random() * 4503599627370496).toString(16).padStart(13, "0");
+async function retry(run, retries = 5, interval = 0, ignore) {
+  try {
+    return await run();
+  } catch (error) {
+    if (retries === 0 || ignore?.(error))
+      throw error;
+    await wait(typeof interval === "number" ? interval : interval[interval.length - retries]);
+    return retry(run, retries - 1, interval);
+  }
+}
 function wait(time) {
   return new Promise((r) => setTimeout(r, time));
 }
@@ -460,7 +470,11 @@ class Pixels {
     this.width = width;
     this.brightness = brightness;
     this.exactColor = exactColor;
-    this.resolution = this.image.naturalWidth / this.image.naturalHeight;
+    if (exactColor) {
+      this.resolution = 1;
+      this.width = 1000;
+    } else
+      this.resolution = this.image.naturalWidth / this.image.naturalHeight;
     this.update();
   }
   update() {
@@ -558,6 +572,7 @@ class NotInitializedError extends WPlaceBotError {
     super("❌ Not initialized", bot);
   }
 }
+
 class NoImageError extends WPlaceBotError {
   name = "NoImageError";
   constructor(bot) {
@@ -1098,6 +1113,7 @@ var widget_default = `<div class="wtopbar">
     <option value="PERCENTAGE">Percentage</option>
   </select></label>
   <div class="images"></div>
+  <button class="pumpkin-hunt" disabled>Pumpkin Hunt!</button>
   <button class="add-image" disabled>Add image</button>
 </div>
 `;
@@ -1127,6 +1143,7 @@ class Widget extends Base2 {
   $progressLine;
   $progressText;
   $images;
+  $pumpkinHunt;
   constructor(bot) {
     super();
     this.bot = bot;
@@ -1143,7 +1160,8 @@ class Widget extends Base2 {
       $strategy: ".strategy",
       $progressLine: ".progress div",
       $progressText: ".progress span",
-      $images: ".images"
+      $images: ".images",
+      $pumpkinHunt: ".pumpkin-hunt"
     });
     this.$minimize.addEventListener("click", () => {
       this.minimize();
@@ -1161,6 +1179,7 @@ class Widget extends Base2 {
     });
     this.element.style.transform = `translate(${this.x}px, ${this.y}px)`;
     this.$draw.addEventListener("click", () => this.bot.draw());
+    this.$pumpkinHunt.addEventListener("click", () => this.pumpkinHunt());
     this.$addImage.addEventListener("click", () => this.addImage());
     this.$strategy.addEventListener("change", () => {
       this.strategy = this.$strategy.value;
@@ -1295,6 +1314,75 @@ class Widget extends Base2 {
     this.x = this.moveInfo.x + x - this.moveInfo.originalX;
     this.y = this.moveInfo.y + y - this.moveInfo.originalY;
   }
+  async pumpkinHunt() {
+    this.$pumpkinHunt.disabled = false;
+    const PUMPKIN_PATTERN = "8,8,8,8,8,8,8,1,8,8,8,1,8,8,8,1,8,8,8,8,8,8_8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8_8,1,1,1,1,8,8,8,8,8,8,8,8,8,8,8,8,8,1,1,1,1_8,8,1,1,1,1,1,1,8,8,8,8,8,8,8,1,1,1,1,1,1,8_8,8,1,1,1,5,5,1,1,8,8,8,8,8,1,1,5,5,1,1,1,8_8,8,1,1,1,5,5,1,1,1,8,8,8,1,1,1,5,5,1,1,1,8_8,8,8,1,1,1,1,1,1,8,8,1,8,8,1,1,1,1,1,1,8,8_8,8,8,8,1,1,1,1,8,8,1,1,1,8,8,1,1,1,1,8,8,8_8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8_8,8,8,8,1,8,8,8,8,8,8,1,8,8,8,8,8,8,1,8,8,8_8,8,8,1,1,1,8,8,8,8,1,1,1,8,8,8,8,1,1,1,8,8_8,8,1,1,8,1,1,8,8,1,1,8,1,1,8,8,1,1,8,1,1,8_1,8,8,8,8,8,1,1,1,1,8,8,8,1,1,1,1,8,8,8,8,8_1,1,1,8,8,8,8,1,1,8,8,8,8,8,1,1,8,8,8,8,1,1_1,12,12,1,1,8,8,8,8,8,8,1,8,8,8,8,8,8,1,1,19,18_1,12,12,13,13,1,1,1,1,1,1,19,1,1,1,1,1,1,18,18,18,18_12,13,13,13,13,13,13,19,19,19,19,19,19,19,19,19,18,18,18,18,18,18_13,13,13,13,13,13,13,19,19,19,19,19,19,19,19,19,18,18,18,18,18,18_18,18,19,19,13,13,13,13,13,13,13,13,19,19,19,19,18,18,18,18,18,18_18,18,19,19,13,13,13,13,13,13,13,13,19,19,19,19,18,18,18,18,18,18_18,18,19,19,19,19,19,19,19,19,19,19,13,13,13,13,18,18,18,18,18,18_18,18,18,19,19,19,19,19,19,19,19,19,13,13,13,13,18,18,18,18,18,18_18,18,18,18,19,19,19,19,19,19,13,13,13,13,12,12,12,18,18,18,18,18_18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,18,18,18,18,18_18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,18,18,18,18,18_1,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,12,12,12,18,18_1,18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,12,12,18,18_1,18,18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,12,18,18".split("_").map((x) => x.split(",").map((x2) => +x2));
+    const firstColor = PUMPKIN_PATTERN[0][0];
+    try {
+      main:
+        while (true) {
+          const claimed = new Set((await retry(() => fetch("https://backend.wplace.live/event/hallowen/pumpkins/claimed", {
+            credentials: "include"
+          }).then((x) => x.json()), 10, 1e4)).claimed);
+          const pumpkinsFound = Object.values(await retry(() => fetch("https://wplace.samuelscheit.com/tiles/pumpkin.json").then((x) => x.json()), 10, 1e4));
+          for (let index = 0;index < pumpkinsFound.length; index++) {
+            if (claimed.size === 100) {
+              this.$pumpkinHunt.textContent = `Pumpkin Hunt Finished!`;
+              break main;
+            }
+            this.$pumpkinHunt.textContent = `⌛ Pumpkin Hunt [${claimed.size}/100]`;
+            const pumpkin = pumpkinsFound[index];
+            if (claimed.has(index + 1) || Date.now() - new Date(pumpkin.foundAt).getTime() > 3600000)
+              continue;
+            const { pixels } = await retry(() => Pixels.fromJSON(this.bot, {
+              url: `https://backend.wplace.live/files/s0/tiles/${pumpkin.tileX}/${pumpkin.tileY}.png`,
+              exactColor: true
+            }), 10, 1e4);
+            for (let x = 0;x < 1000; x++) {
+              nextPixel:
+                for (let y = 0;y < 1000; y++) {
+                  if (!pixels[y])
+                    console.log(y, x, pixels);
+                  if (pixels[y][x] !== firstColor)
+                    continue;
+                  for (let offsetY = 0;offsetY < PUMPKIN_PATTERN.length; offsetY++)
+                    for (let offsetX = 0;offsetX < PUMPKIN_PATTERN[offsetY].length; offsetX++)
+                      if (pixels[y + offsetY][x + offsetX] !== PUMPKIN_PATTERN[offsetY][offsetX])
+                        continue nextPixel;
+                  const info = await retry(() => fetch(`https://backend.wplace.live/s0/pixel/${pumpkin.tileX}/${pumpkin.tileY}?x=${x + 10}&y=${y + 10}`).then((x2) => x2.json()), 3, 1e4);
+                  if (!info.paintedBy.event) {
+                    console.log("not event");
+                    continue;
+                  }
+                  await retry(async () => {
+                    const response = await fetch(`https://backend.wplace.live/s0/event/pixel/claim`, {
+                      credentials: "include",
+                      body: JSON.stringify({
+                        event: "halloween",
+                        tx: pumpkin.tileX,
+                        ty: pumpkin.tileY,
+                        px: x + 10,
+                        py: y + 10
+                      }),
+                      method: "POST"
+                    });
+                    if (!response.ok)
+                      throw new Error("CAN NOT CLAIM");
+                  }, 3, 1e4);
+                  claimed.add(index + 1);
+                }
+            }
+            await wait(5000);
+          }
+          this.$pumpkinHunt.textContent = `⌛ Pumpkin Hunt (wait 10 min)`;
+          await wait(10 * 1000 * 60);
+        }
+    } catch (error) {
+      console.error(error);
+      this.$pumpkinHunt.disabled = false;
+      this.$pumpkinHunt.textContent = `❌ Pumpkin Hunt!`;
+    }
+  }
 }
 
 // src/bot.ts
@@ -1309,7 +1397,7 @@ class WPlaceBot {
   anchorsScreenPosition = new Array(2);
   markerPixelPositionResolvers = [];
   saveTimeout;
-  lastTasksUpdate = 0;
+  lastColor;
   constructor() {
     this.registerFetchInterceptor();
     this.widget.run("Initializing", async () => {
@@ -1350,37 +1438,41 @@ class WPlaceBot {
       this.widget.updateTasks();
       this.widget.setDisabled("draw", false);
       this.widget.setDisabled("add-image", false);
+      this.widget.setDisabled("pumpkin-hunt", false);
     });
   }
   draw() {
+    this.widget.setDisabled("draw", true);
+    this.widget.status = "";
+    this.mapsCache.clear();
     const $canvas = document.querySelector(".maplibregl-canvas");
     const prevent = (event) => {
       if (!event.shiftKey)
         event.stopPropagation();
     };
     return this.widget.run("Drawing", async () => {
-      await this.widget.run("Zooming in", async () => {
-        while (this.pixelSize < 3) {
-          $canvas.dispatchEvent(new WheelEvent("wheel", {
-            deltaY: -1000,
-            bubbles: true,
-            cancelable: true,
-            clientX: window.innerWidth / 2,
-            clientY: window.innerWidth / 2
-          }));
-          await wait(200);
-        }
-      });
-      this.widget.status = "";
+      await this.widget.run("Initializing draw", () => Promise.all([
+        this.updateColors(),
+        this.readMap(),
+        (async () => {
+          while (this.pixelSize < 3) {
+            $canvas.dispatchEvent(new WheelEvent("wheel", {
+              deltaY: -1000,
+              bubbles: true,
+              cancelable: true,
+              clientX: window.innerWidth / 2,
+              clientY: window.innerWidth / 2
+            }));
+            await wait(200);
+          }
+        })()
+      ]));
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
-      this.mapsCache.clear();
-      this.widget.setDisabled("draw", true);
-      this.save();
-      await this.updateColors();
-      await this.readMap();
       this.widget.updateTasks();
-      const n = this.widget.images.reduce((accumulator, x) => accumulator + x.tasks.length, 0);
+      let n = 0;
+      for (let index = 0;index < this.widget.images.length; index++)
+        n += this.widget.images[index].tasks.length;
       switch (this.widget.strategy) {
         case "ALL" /* ALL */: {
           while (!document.querySelector("ol")) {
@@ -1444,13 +1536,11 @@ class WPlaceBot {
       widget: this.widget.toJSON()
     };
   }
-  updateColors() {
-    return this.widget.run("Colors update", async () => {
-      await this.openColors();
-      for (const $button of document.querySelectorAll("button.btn.relative.w-full"))
-        if ($button.children.length !== 0)
-          this.unavailableColors.add(Math.abs(Number.parseInt($button.id.slice(6))));
-    });
+  async updateColors() {
+    await this.openColors();
+    for (const $button of document.querySelectorAll("button.btn.relative.w-full"))
+      if ($button.children.length !== 0)
+        this.unavailableColors.add(Math.abs(Number.parseInt($button.id.slice(6))));
   }
   moveMap(delta) {
     const canvas = document.querySelector(".maplibregl-canvas");
@@ -1487,10 +1577,11 @@ class WPlaceBot {
         url: `https://backend.wplace.live/files/s0/tiles/${x}.png`,
         exactColor: true
       }));
-      this.widget.status = `Reading map [${++done}/${imagesToDownload.size}]`;
+      this.widget.status = `⌛ Reading map [${++done}/${imagesToDownload.size}]`;
     })));
   }
   async openColors() {
+    this.lastColor = undefined;
     document.querySelector(".flex.gap-2.px-3 > .btn-circle")?.click();
     await wait(1);
     document.querySelector(".btn.btn-primary.btn-lg.relative.z-30")?.click();
@@ -1516,7 +1607,10 @@ class WPlaceBot {
     return positionPromise;
   }
   drawTask(task) {
-    document.getElementById("color-" + task.color).click();
+    if (this.lastColor !== task.color) {
+      document.getElementById("color-" + task.color).click();
+      this.lastColor = task.color;
+    }
     const position = task.position.toScreenPosition();
     document.documentElement.dispatchEvent(new MouseEvent("mousemove", {
       bubbles: true,
@@ -1661,12 +1755,21 @@ class WPlaceBot {
     return { x, y };
   }
   getStars() {
-    const $stars = [
-      ...document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")
-    ];
-    const stars = $stars.map(($star) => [$star, this.extractScreenPositionFromStar($star)]);
-    stars.sort((a, b) => a[1].x - b[1].x);
-    return [stars[0], stars.at(-1)];
+    let minX = Infinity;
+    let maxX = 0;
+    let min;
+    let max;
+    for (const $star of document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")) {
+      const pos = this.extractScreenPositionFromStar($star);
+      if (pos.x < minX) {
+        minX = pos.x;
+        min = [$star, pos];
+      } else if (pos.x > maxX) {
+        maxX = pos.x;
+        max = [$star, pos];
+      }
+    }
+    return [min, max];
   }
 }
 

@@ -15,13 +15,6 @@ export class NotInitializedError extends WPlaceBotError {
   }
 }
 
-export class StarsAreTooCloseError extends WPlaceBotError {
-  public name = 'StarsAreTooCloseError'
-  public constructor(bot: WPlaceBot) {
-    super('❌ Stars are too close', bot)
-  }
-}
-
 export class NoImageError extends WPlaceBotError {
   public name = 'NoImageError'
   public constructor(bot: WPlaceBot) {
