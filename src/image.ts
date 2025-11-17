@@ -112,8 +112,8 @@ export class BotImage extends Base {
       $export: '.export',
       $lock: '.lock',
       $opacity: '.opacity',
-      $progressLine: '.progress div',
-      $progressText: '.progress span',
+      $progressLine: '.wprogress div',
+      $progressText: '.wprogress span',
       $resetSize: '.reset-size',
       $settings: '.wsettings',
       $strategy: '.strategy',
@@ -248,17 +248,12 @@ export class BotImage extends Base {
 
   /** Update image (NOT PIXELS) */
   public update() {
-    const halfPixel = this.bot.pixelSize / 2
-    try {
-      // Might throw if no anchor. Then we just hide everything
-      const { x, y } = this.position.toScreenPosition()
-      this.element.style.transform = `translate(${x - halfPixel}px, ${y - halfPixel}px)`
-      this.element.style.width = `${this.bot.pixelSize * this.pixels.width}px`
-      this.$canvas.style.opacity = `${this.opacity}%`
-      this.element.classList.remove('hidden')
-    } catch {
-      this.element.classList.add('hidden')
-    }
+    const halfPixel = this.position.pixelSize / 2
+    const { x, y } = this.position.toScreenPosition()
+    this.element.style.transform = `translate(${x - halfPixel}px, ${y - halfPixel}px)`
+    this.element.style.width = `${this.position.pixelSize * this.pixels.width}px`
+    this.$canvas.style.opacity = `${this.opacity}%`
+    this.element.classList.remove('hidden')
 
     this.$resetSizeSpan.textContent = this.pixels.width.toString()
     this.$brightness.valueAsNumber = this.pixels.brightness
@@ -385,16 +380,19 @@ export class BotImage extends Base {
 
   protected moveStop() {
     this.moveInfo = undefined
+    this.position.updateAnchor()
+    this.pixels.update()
+    this.updateColors()
   }
 
   /** Resize/move image */
   protected move(event: MouseEvent) {
     if (!this.moveInfo) return
     const deltaX = Math.round(
-      (event.clientX - this.moveInfo.clientX) / this.bot.pixelSize,
+      (event.clientX - this.moveInfo.clientX) / this.position.pixelSize,
     )
     const deltaY = Math.round(
-      (event.clientY - this.moveInfo.clientY) / this.bot.pixelSize,
+      (event.clientY - this.moveInfo.clientY) / this.position.pixelSize,
     )
     if (this.moveInfo.globalX !== undefined) {
       this.position.globalX = deltaX + this.moveInfo.globalX
@@ -408,13 +406,6 @@ export class BotImage extends Base {
         this.pixels.height = Math.max(1, this.moveInfo.height - deltaY)
     } else if (this.moveInfo.height !== undefined)
       this.pixels.height = Math.max(1, deltaY + this.moveInfo.height)
-    if (
-      this.moveInfo.width !== undefined ||
-      this.moveInfo.height !== undefined
-    ) {
-      this.pixels.update()
-      this.updateColors()
-    }
     this.update()
     this.bot.save()
   }

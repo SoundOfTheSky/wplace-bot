@@ -1,9 +1,47 @@
-import { wait, withTimeout } from '@softsky/utils'
+import { wait } from '@softsky/utils'
 
 import { BotImage, DrawTask } from './image'
 import { Pixels } from './pixels'
 import { BotStrategy, Widget } from './widget'
-import { Position, WorldPosition } from './world-position'
+import {
+  extractScreenPositionFromStar,
+  FAVORITE_LOCATIONS,
+  FAVORITE_LOCATIONS_POSITIONS,
+  Position,
+  WorldPosition,
+} from './world-position'
+
+export type Me = {
+  allianceId: number
+  allianceRole: string
+  banned: false
+  charges: { cooldownMs: number; count: number; max: number }
+  country: string
+  discord: string
+  discordId: string
+  droplets: number
+  equippedFlag: number
+  experiments: unknown
+  extraColorsBitmap: number
+  favoriteLocations: {
+    id: number
+    name: string
+    latitude: number
+    longitude: number
+  }[]
+  flagsBitmap: string
+  id: number
+  isCustomer: boolean
+  level: number
+  maxFavoriteLocations: number
+  name: string
+  needsPhoneVerification: boolean
+  picture: string
+  pixelsPainted: number
+  showLastPixel: boolean
+  suspensionReason: string
+  timeoutUntil: string
+}
 
 const SAVE_VERSION = 1
 
@@ -17,17 +55,13 @@ export class WPlaceBot {
   /** Colors that can be bought */
   public unavailableColors = new Set<number>()
 
-  /** Estimated pixel size */
-  public pixelSize = 1
-
   /** Cache of parsed images of world map */
   public mapsCache = new Map<string, Pixels>()
 
-  /** World positions of anchors */
-  public anchorsWorldPosition = new Array(2) as WorldPosition[]
+  /** Data about account */
+  public me?: Me
 
-  /** Screen positions of anchors*/
-  public anchorsScreenPosition = new Array(2) as Position[]
+  public $stars: HTMLDivElement[] = []
 
   /** Used to wait for pixel data on marker set */
   protected markerPixelPositionResolvers: ((
@@ -71,18 +105,31 @@ export class WPlaceBot {
         'canvas',
         '.maplibregl-canvas-container',
       )
-      new MutationObserver(this.onAnchorsMutation.bind(this)).observe(
-        $canvasContainer,
-        {
-          attributes: true,
-          attributeFilter: ['style'],
-          subtree: true,
-          childList: true,
-        },
-      )
+      new MutationObserver((mutations: MutationRecord[]) => {
+        for (let index = 0; index < mutations.length; index++) {
+          if (mutations[index]!.removedNodes.length !== 0) {
+            this.$stars = [
+              ...document.querySelectorAll<HTMLDivElement>(
+                '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
+              ),
+            ].slice(0, FAVORITE_LOCATIONS.length)
+            break
+          }
+        }
+        this.widget.updateImages()
+      }).observe($canvasContainer, {
+        attributes: true,
+        childList: true,
+        subtree: true,
+      })
+      this.$stars = [
+        ...document.querySelectorAll<HTMLDivElement>(
+          '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
+        ),
+      ].slice(0, FAVORITE_LOCATIONS.length)
       await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
-      await this.loadAnchors()
       await this.updateColors()
+      // await this.generateLocations()
 
       // Load images
       if (save)
@@ -99,7 +146,7 @@ export class WPlaceBot {
       // Unblock buttons
       this.widget.setDisabled('draw', false)
       this.widget.setDisabled('add-image', false)
-      this.widget.setDisabled('pumpkin-hunt', false)
+      // this.widget.setDisabled('pumpkin-hunt', false)
     })
   }
 
@@ -118,24 +165,7 @@ export class WPlaceBot {
       'Drawing',
       async () => {
         await this.widget.run('Initializing draw', () =>
-          Promise.all([
-            this.updateColors(),
-            this.readMap(),
-            (async () => {
-              while (this.pixelSize < 3) {
-                $canvas.dispatchEvent(
-                  new WheelEvent('wheel', {
-                    deltaY: -1000,
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: window.innerWidth / 2,
-                    clientY: window.innerWidth / 2,
-                  }),
-                )
-                await wait(200)
-              }
-            })(),
-          ]),
+          Promise.all([this.updateColors(), this.readMap()]),
         )
         // Stop mouse messing with drawing by capturing event
         globalThis.addEventListener('mousemove', prevent, true)
@@ -303,6 +333,81 @@ export class WPlaceBot {
     )
   }
 
+  /** Wait until window is unfocused */
+  public waitForUnfocus() {
+    return this.widget.run(
+      'UNFOCUS WINDOW',
+      () =>
+        new Promise<void>((resolve) => {
+          if (!document.hasFocus()) resolve()
+          window.addEventListener(
+            'blur',
+            () => {
+              setTimeout(resolve, 1)
+            },
+            {
+              once: true,
+            },
+          )
+        }),
+      undefined,
+      '🖱️',
+    )
+  }
+
+  /** Find anchor data for screen postition */
+  public findAnchorsForScreen(position: Position) {
+    let anchorIndex = 0
+    let minI2 = 1
+    let min1 = Infinity
+    let min2 = Infinity
+    for (let index = 0; index < this.$stars.length; index++) {
+      const { x, y } = extractScreenPositionFromStar(this.$stars[index]!)
+      if (x < position.x && y < position.y) {
+        const delta = position.x - x + (position.y - y)
+        if (delta < min1) {
+          min1 = delta
+          anchorIndex = index
+        }
+      } else if (x > position.x && y > position.y) {
+        const delta = x - position.x + (y - position.y)
+        if (delta < min2) {
+          min2 = delta
+          minI2 = index
+        }
+      }
+    }
+    const anchorScreenPosition = extractScreenPositionFromStar(
+      this.$stars[anchorIndex]!,
+    )
+    const anchorWorldPosition = FAVORITE_LOCATIONS_POSITIONS[anchorIndex]!
+    return {
+      anchorScreenPosition,
+      anchorWorldPosition,
+      pixelSize:
+        (extractScreenPositionFromStar(this.$stars[minI2]!).x -
+          anchorScreenPosition.x) /
+        (FAVORITE_LOCATIONS_POSITIONS[minI2]!.x - anchorWorldPosition.x),
+    }
+  }
+
+  /** Only used in development to generate fav locations */
+  public async generateLocations() {
+    const data: Position[] = []
+    for (const fav of this.$stars) {
+      const promise = new Promise<WorldPosition>((resolve) => {
+        this.markerPixelPositionResolvers.push(resolve)
+      })
+      fav.click()
+      const position = await promise
+      data.push({
+        x: position.globalX,
+        y: position.globalY,
+      })
+    }
+    console.log(data)
+  }
+
   /** Opens colors and makes them visible for selection */
   protected async openColors() {
     this.lastColor = undefined
@@ -326,30 +431,6 @@ export class WPlaceBot {
       unfoldColors.click()
       await wait(1)
     }
-  }
-
-  /** Click map at the screen position */
-  protected async clickAndGetPixelWorldPosition(screenPosition: Position) {
-    await this.waitForUnfocus()
-    const positionPromise = withTimeout(
-      () =>
-        new Promise<WorldPosition>((resolve) => {
-          this.markerPixelPositionResolvers.push(resolve)
-        }),
-      1000,
-    )
-    document
-      .querySelector<HTMLCanvasElement>('.maplibregl-canvas')!
-      .dispatchEvent(
-        new MouseEvent('click', {
-          bubbles: true,
-          cancelable: true,
-          clientX: screenPosition.x,
-          clientY: screenPosition.y,
-          button: 0,
-        }),
-      )
-    return positionPromise
   }
 
   /** Draw one task */
@@ -391,130 +472,46 @@ export class WPlaceBot {
     )
   }
 
-  /** Wait until window is unfocused */
-  public waitForUnfocus() {
-    return this.widget.run(
-      'UNFOCUS WINDOW',
-      () =>
-        new Promise<void>((resolve) => {
-          if (!document.hasFocus()) resolve()
-          window.addEventListener(
-            'blur',
-            () => {
-              setTimeout(resolve, 1)
-            },
-            {
-              once: true,
-            },
-          )
-        }),
-      undefined,
-      '🖱️',
-    )
-  }
-
   /** Start listening to fetch requests */
   protected registerFetchInterceptor() {
     const originalFetch = globalThis.fetch
     const pixelRegExp =
-      /https:\/\/backend.wplace.live\/s\d+\/pixel\/(\d+)\/(\d+)\?x=(\d+)&y=(\d+)/
+      /https:\/\/backend.wplace.live\/s\d+\/pixel\/(-?\d+)\/(-?\d+)\?x=(-?\d+)&y=(-?\d+)/
     // @ts-ignore
-    globalThis.fetch = async (...arguments_) => {
-      const response = await originalFetch(...arguments_)
-      const url =
-        typeof arguments_[0] === 'string'
-          ? arguments_[0]
-          : (arguments_[0] as Request).url
-      setTimeout(() => {
-        const pixelMatch = pixelRegExp.exec(url)
-        if (pixelMatch) {
-          for (
-            let index = 0;
-            index < this.markerPixelPositionResolvers.length;
-            index++
+    globalThis.fetch = async (request, options) => {
+      const response = await originalFetch(request, options)
+      const cloned = response.clone()
+      let url = ''
+      if (typeof request == 'string') url = request
+      else if (request instanceof Request) url = request.url
+      else if (request instanceof URL) url = request.href
+      if (response.url === 'https://backend.wplace.live/me') {
+        this.me = (await cloned.json()) as Me
+        this.me.favoriteLocations.unshift(...FAVORITE_LOCATIONS)
+        this.me.maxFavoriteLocations = Infinity
+        response.json = () => Promise.resolve(this.me)
+      }
+      const pixelMatch = pixelRegExp.exec(url)
+      if (pixelMatch) {
+        console.log('MATCH', pixelMatch)
+        for (
+          let index = 0;
+          index < this.markerPixelPositionResolvers.length;
+          index++
+        )
+          this.markerPixelPositionResolvers[index]!(
+            new WorldPosition(
+              this,
+              +pixelMatch[1]!,
+              +pixelMatch[2]!,
+              +pixelMatch[3]!,
+              +pixelMatch[4]!,
+            ),
           )
-            this.markerPixelPositionResolvers[index]!(
-              new WorldPosition(
-                this,
-                +pixelMatch[1]!,
-                +pixelMatch[2]!,
-                +pixelMatch[3]!,
-                +pixelMatch[4]!,
-              ),
-            )
-          this.markerPixelPositionResolvers.length = 0
-          return
-        }
-      }, 0)
+        this.markerPixelPositionResolvers.length = 0
+      }
       return response
     }
-  }
-
-  /** Estimate size and position of map */
-  protected loadAnchors() {
-    return this.widget.run('Loading positions', async () => {
-      await this.waitForUnfocus()
-      await this.closeAll()
-      const stars = this.getStars()
-      const $canvas =
-        document.querySelector<HTMLDivElement>('.maplibregl-canvas')!
-      for (let index = 0; index < 2; index++) {
-        let star = stars[index]
-        // Select star's position or create one to put star into
-        const position = star
-          ? star[1]
-          : index === 0
-            ? { x: -20_000, y: -20_000 }
-            : { x: 20_000, y: 20_000 }
-        try {
-          this.anchorsWorldPosition[index] =
-            await this.clickAndGetPixelWorldPosition(position)
-        } catch (error) {
-          // Probably an error with zoom. Try to zoom in and retry.
-          if (document.querySelector('ol')) {
-            $canvas.dispatchEvent(
-              new WheelEvent('wheel', {
-                deltaY: -1000,
-                bubbles: true,
-                cancelable: true,
-                clientX: window.innerWidth / 2,
-                clientY: window.innerWidth / 2,
-              }),
-            )
-            index--
-            await wait(1000)
-            continue
-          } else throw error
-        }
-
-        // Check if distance is too small to serve as an anchor
-        // Rerun this loop with star removed to create new star
-        if (
-          index === 1 &&
-          this.anchorsWorldPosition[1]!.globalX -
-            this.anchorsWorldPosition[0]!.globalX <
-            500
-        ) {
-          index--
-          stars[1] = undefined
-          continue
-        }
-
-        // Add star if none found
-        if (!star) {
-          // Click "Favorite"
-          document
-            .querySelector<HTMLButtonElement>('button.btn-soft:nth-child(2)')!
-            .click()
-          // Wait for star marker to appear
-          while (!star) {
-            star = this.getStars()[index]
-            await wait(100)
-          }
-        }
-      }
-      this.onAnchorsMutation()
-    })
   }
 
   /** Closes all popups */
@@ -558,53 +555,5 @@ export class WPlaceBot {
         })
       })
     })
-  }
-
-  /** Handle anchors changes */
-  protected onAnchorsMutation() {
-    const stars = this.getStars()
-    const p1 = this.anchorsWorldPosition[0]
-    const p2 = this.anchorsWorldPosition[1]
-    if (!stars[0] || !stars[1] || !p1 || !p2) return
-    const worldDistance = p2.globalX - p1.globalX
-    this.anchorsScreenPosition[0] = stars[0][1]
-    this.anchorsScreenPosition[1] = stars[1][1]
-    const s1 = this.anchorsScreenPosition[0]
-    const s2 = this.anchorsScreenPosition[1]
-    this.pixelSize = (s2.x - s1.x) / worldDistance
-    this.widget.updateImages()
-  }
-
-  /** Extracts screen position of star */
-  protected extractScreenPositionFromStar($star: HTMLDivElement) {
-    const [x, y] = $star.style.transform
-      .slice(32, -29)
-      .split(', ')
-      .map((x) => Number.parseInt(x)) as [number, number]
-    return { x, y }
-  }
-
-  /** Get stars that can be used as anchors */
-  protected getStars(): [
-    [HTMLElement, Position] | undefined,
-    [HTMLElement, Position] | undefined,
-  ] {
-    let minX = Infinity
-    let maxX = 0
-    let min: [HTMLElement, Position] | undefined
-    let max: [HTMLElement, Position] | undefined
-    for (const $star of document.querySelectorAll<HTMLDivElement>(
-      '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
-    )) {
-      const pos = this.extractScreenPositionFromStar($star)
-      if (pos.x < minX) {
-        minX = pos.x
-        min = [$star, pos]
-      } else if (pos.x > maxX) {
-        maxX = pos.x
-        max = [$star, pos]
-      }
-    }
-    return [min, max]
   }
 }

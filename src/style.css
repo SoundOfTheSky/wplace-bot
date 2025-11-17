@@ -13,6 +13,12 @@
   --resize: 4px;
 }
 
+.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center:nth-child(
+    -n + 144
+  ) {
+  display: none;
+}
+
 /** Widget */
 .wwidget {
   position: fixed;
@@ -114,11 +120,11 @@
   width: inherit;
 }
 
-.wsettings .progress {
+.wsettings .wprogress {
   position: relative;
 }
 
-.wsettings .progress div {
+.wsettings .wprogress div {
   position: absolute;
   width: 100%;
   height: 100%;
@@ -126,7 +132,7 @@
   transform-origin: left;
 }
 
-.wsettings .progress span {
+.wsettings .wprogress span {
   z-index: 0;
 }
 

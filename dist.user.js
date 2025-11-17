@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.3.1
+// @version      4.4.0
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -65,34 +65,11 @@ class Base {
   }
 }
 
-// node_modules/@softsky/utils/dist/errors.js
-class TimeoutError extends Error {
-  name = "TimeoutError";
-  constructor() {
-    super("The operation has timed out");
-  }
-}
-
 // node_modules/@softsky/utils/dist/control.js
 var lastIncId = Math.floor(Math.random() * 65536);
 var SESSION_ID = Math.floor(Math.random() * 4503599627370496).toString(16).padStart(13, "0");
-async function retry(run, retries = 5, interval = 0, ignore) {
-  try {
-    return await run();
-  } catch (error) {
-    if (retries === 0 || ignore?.(error))
-      throw error;
-    await wait(typeof interval === "number" ? interval : interval[interval.length - retries]);
-    return retry(run, retries - 1, interval);
-  }
-}
 function wait(time) {
   return new Promise((r) => setTimeout(r, time));
-}
-function timeout(time) {
-  return new Promise((_, reject) => setTimeout(() => {
-    reject(new TimeoutError);
-  }, time));
 }
 class SimpleEventSource {
   handlers = new Map;
@@ -126,9 +103,6 @@ class SimpleEventSource {
       off: this.off.bind(this)
     };
   }
-}
-async function withTimeout(run, ms) {
-  return Promise.race([run(), timeout(ms)]);
 }
 function promisifyEventSource(target, resolveEvents, rejectEvents = ["error"], subName = "addEventListener") {
   return new Promise((resolve, reject) => {
@@ -407,7 +381,7 @@ var image_default = `<div class="wtopbar">
 </div>
 <div class="wrapper">
   <div class="wsettings">
-    <div class="progress">
+    <div class="wprogress">
       <div></div>
       <span></span>
     </div>
@@ -557,31 +531,603 @@ class Pixels {
   }
 }
 
-// src/errors.ts
-class WPlaceBotError extends Error {
-  name = "WPlaceBotError";
-  constructor(message, bot) {
-    super(message);
-    bot.widget.status = message;
-  }
-}
-
-class NotInitializedError extends WPlaceBotError {
-  name = "NotInitializedError";
-  constructor(bot) {
-    super("❌ Not initialized", bot);
-  }
-}
-
-class NoImageError extends WPlaceBotError {
-  name = "NoImageError";
-  constructor(bot) {
-    super("❌ No image is selected", bot);
-  }
-}
-
 // src/world-position.ts
+var FAVORITE_LOCATIONS_POSITIONS = [
+  {
+    x: 170666,
+    y: 1874537
+  },
+  {
+    x: 170666,
+    y: 1704430
+  },
+  {
+    x: 170666,
+    y: 1534322
+  },
+  {
+    x: 170666,
+    y: 1364215
+  },
+  {
+    x: 170666,
+    y: 1194107
+  },
+  {
+    x: 170666,
+    y: 1024000
+  },
+  {
+    x: 170666,
+    y: 853892
+  },
+  {
+    x: 170666,
+    y: 683784
+  },
+  {
+    x: 170666,
+    y: 513677
+  },
+  {
+    x: 170666,
+    y: 343569
+  },
+  {
+    x: 170666,
+    y: 173462
+  },
+  {
+    x: 170666,
+    y: 3354
+  },
+  {
+    x: 341333,
+    y: 1874537
+  },
+  {
+    x: 341333,
+    y: 1704430
+  },
+  {
+    x: 341333,
+    y: 1534322
+  },
+  {
+    x: 341333,
+    y: 1364215
+  },
+  {
+    x: 341333,
+    y: 1194107
+  },
+  {
+    x: 341333,
+    y: 1024000
+  },
+  {
+    x: 341333,
+    y: 853892
+  },
+  {
+    x: 341333,
+    y: 683784
+  },
+  {
+    x: 341333,
+    y: 513677
+  },
+  {
+    x: 341333,
+    y: 343569
+  },
+  {
+    x: 341333,
+    y: 173462
+  },
+  {
+    x: 341333,
+    y: 3354
+  },
+  {
+    x: 512000,
+    y: 1874537
+  },
+  {
+    x: 512000,
+    y: 1704430
+  },
+  {
+    x: 512000,
+    y: 1534322
+  },
+  {
+    x: 512000,
+    y: 1364215
+  },
+  {
+    x: 512000,
+    y: 1194107
+  },
+  {
+    x: 512000,
+    y: 1024000
+  },
+  {
+    x: 512000,
+    y: 853892
+  },
+  {
+    x: 512000,
+    y: 683784
+  },
+  {
+    x: 512000,
+    y: 513677
+  },
+  {
+    x: 512000,
+    y: 343569
+  },
+  {
+    x: 512000,
+    y: 173462
+  },
+  {
+    x: 512000,
+    y: 3354
+  },
+  {
+    x: 682666,
+    y: 1874537
+  },
+  {
+    x: 682666,
+    y: 1704430
+  },
+  {
+    x: 682666,
+    y: 1534322
+  },
+  {
+    x: 682666,
+    y: 1364215
+  },
+  {
+    x: 682666,
+    y: 1194107
+  },
+  {
+    x: 682666,
+    y: 1024000
+  },
+  {
+    x: 682666,
+    y: 853892
+  },
+  {
+    x: 682666,
+    y: 683784
+  },
+  {
+    x: 682666,
+    y: 513677
+  },
+  {
+    x: 682666,
+    y: 343569
+  },
+  {
+    x: 682666,
+    y: 173462
+  },
+  {
+    x: 682666,
+    y: 3354
+  },
+  {
+    x: 853333,
+    y: 1874537
+  },
+  {
+    x: 853333,
+    y: 1704430
+  },
+  {
+    x: 853333,
+    y: 1534322
+  },
+  {
+    x: 853333,
+    y: 1364215
+  },
+  {
+    x: 853333,
+    y: 1194107
+  },
+  {
+    x: 853333,
+    y: 1024000
+  },
+  {
+    x: 853333,
+    y: 853892
+  },
+  {
+    x: 853333,
+    y: 683784
+  },
+  {
+    x: 853333,
+    y: 513677
+  },
+  {
+    x: 853333,
+    y: 343569
+  },
+  {
+    x: 853333,
+    y: 173462
+  },
+  {
+    x: 853333,
+    y: 3354
+  },
+  {
+    x: 1024000,
+    y: 1874537
+  },
+  {
+    x: 1024000,
+    y: 1704430
+  },
+  {
+    x: 1024000,
+    y: 1534322
+  },
+  {
+    x: 1024000,
+    y: 1364215
+  },
+  {
+    x: 1024000,
+    y: 1194107
+  },
+  {
+    x: 1024000,
+    y: 1024000
+  },
+  {
+    x: 1024000,
+    y: 853892
+  },
+  {
+    x: 1024000,
+    y: 683784
+  },
+  {
+    x: 1024000,
+    y: 513677
+  },
+  {
+    x: 1024000,
+    y: 343569
+  },
+  {
+    x: 1024000,
+    y: 173462
+  },
+  {
+    x: 1024000,
+    y: 3354
+  },
+  {
+    x: 1194666,
+    y: 1874537
+  },
+  {
+    x: 1194666,
+    y: 1704430
+  },
+  {
+    x: 1194666,
+    y: 1534322
+  },
+  {
+    x: 1194666,
+    y: 1364215
+  },
+  {
+    x: 1194666,
+    y: 1194107
+  },
+  {
+    x: 1194666,
+    y: 1024000
+  },
+  {
+    x: 1194666,
+    y: 853892
+  },
+  {
+    x: 1194666,
+    y: 683784
+  },
+  {
+    x: 1194666,
+    y: 513677
+  },
+  {
+    x: 1194666,
+    y: 343569
+  },
+  {
+    x: 1194666,
+    y: 173462
+  },
+  {
+    x: 1194666,
+    y: 3354
+  },
+  {
+    x: 1365333,
+    y: 1874537
+  },
+  {
+    x: 1365333,
+    y: 1704430
+  },
+  {
+    x: 1365333,
+    y: 1534322
+  },
+  {
+    x: 1365333,
+    y: 1364215
+  },
+  {
+    x: 1365333,
+    y: 1194107
+  },
+  {
+    x: 1365333,
+    y: 1024000
+  },
+  {
+    x: 1365333,
+    y: 853892
+  },
+  {
+    x: 1365333,
+    y: 683784
+  },
+  {
+    x: 1365333,
+    y: 513677
+  },
+  {
+    x: 1365333,
+    y: 343569
+  },
+  {
+    x: 1365333,
+    y: 173462
+  },
+  {
+    x: 1365333,
+    y: 3354
+  },
+  {
+    x: 1535000,
+    y: 1874537
+  },
+  {
+    x: 1535000,
+    y: 1704430
+  },
+  {
+    x: 1535000,
+    y: 1534322
+  },
+  {
+    x: 1535000,
+    y: 1364215
+  },
+  {
+    x: 1535000,
+    y: 1194107
+  },
+  {
+    x: 1535000,
+    y: 1024000
+  },
+  {
+    x: 1535000,
+    y: 853892
+  },
+  {
+    x: 1535000,
+    y: 683784
+  },
+  {
+    x: 1535000,
+    y: 513677
+  },
+  {
+    x: 1535000,
+    y: 343569
+  },
+  {
+    x: 1535000,
+    y: 173462
+  },
+  {
+    x: 1535000,
+    y: 3354
+  },
+  {
+    x: 1706666,
+    y: 1874537
+  },
+  {
+    x: 1706666,
+    y: 1704430
+  },
+  {
+    x: 1706666,
+    y: 1534322
+  },
+  {
+    x: 1706666,
+    y: 1364215
+  },
+  {
+    x: 1706666,
+    y: 1194107
+  },
+  {
+    x: 1706666,
+    y: 1024000
+  },
+  {
+    x: 1706666,
+    y: 853892
+  },
+  {
+    x: 1706666,
+    y: 683784
+  },
+  {
+    x: 1706666,
+    y: 513677
+  },
+  {
+    x: 1706666,
+    y: 343569
+  },
+  {
+    x: 1706666,
+    y: 173462
+  },
+  {
+    x: 1706666,
+    y: 3354
+  },
+  {
+    x: 1877333,
+    y: 1874537
+  },
+  {
+    x: 1877333,
+    y: 1704430
+  },
+  {
+    x: 1877333,
+    y: 1534322
+  },
+  {
+    x: 1877333,
+    y: 1364215
+  },
+  {
+    x: 1877333,
+    y: 1194107
+  },
+  {
+    x: 1877333,
+    y: 1024000
+  },
+  {
+    x: 1877333,
+    y: 853892
+  },
+  {
+    x: 1877333,
+    y: 683784
+  },
+  {
+    x: 1877333,
+    y: 513677
+  },
+  {
+    x: 1877333,
+    y: 343569
+  },
+  {
+    x: 1877333,
+    y: 173462
+  },
+  {
+    x: 1877333,
+    y: 3354
+  },
+  {
+    x: 2048000,
+    y: 1874537
+  },
+  {
+    x: 2048000,
+    y: 1704430
+  },
+  {
+    x: 2048000,
+    y: 1534322
+  },
+  {
+    x: 2048000,
+    y: 1364215
+  },
+  {
+    x: 2048000,
+    y: 1194107
+  },
+  {
+    x: 2048000,
+    y: 1024000
+  },
+  {
+    x: 2048000,
+    y: 853892
+  },
+  {
+    x: 2048000,
+    y: 683784
+  },
+  {
+    x: 2048000,
+    y: 513677
+  },
+  {
+    x: 2048000,
+    y: 343569
+  },
+  {
+    x: 2048000,
+    y: 173462
+  },
+  {
+    x: 2048000,
+    y: 3354
+  }
+];
+var FAVORITE_LOCATIONS = [];
+var N = 12;
+for (let index = 0;index < N; index++) {
+  const x = ((index + 1) / N * 2 - 1) * Math.PI;
+  for (let index2 = 0;index2 < N; index2++) {
+    FAVORITE_LOCATIONS.push({
+      id: -(Date.now() + index * 1000 + index2),
+      name: "WBOT_ALIGN",
+      latitude: (2 * Math.atan(Math.exp(((index2 + 1) / N * 2 - 1) * Math.log(Math.tan(Math.PI / 4 + 85 * Math.PI / 180 / 2)))) - Math.PI / 2) * 180 / Math.PI,
+      longitude: x * 180 / Math.PI
+    });
+  }
+}
 var WORLD_TILE_SIZE = 1000;
+function extractScreenPositionFromStar($star) {
+  const [x, y] = $star.style.transform.slice(32, -31).split(", ").map((x2) => Number.parseFloat(x2));
+  return { x, y };
+}
 
 class WorldPosition {
   bot;
@@ -589,11 +1135,8 @@ class WorldPosition {
     return new WorldPosition(bot, ...data);
   }
   static fromScreenPosition(bot, position) {
-    const p = bot.anchorsWorldPosition[0];
-    const s = bot.anchorsScreenPosition[0];
-    if (!p || !s)
-      throw new NotInitializedError(bot);
-    return new WorldPosition(bot, p.globalX + (position.x - s.x) / bot.pixelSize | 0, p.globalY + (position.y - s.y) / bot.pixelSize | 0);
+    const { anchorScreenPosition, pixelSize, anchorWorldPosition } = bot.findAnchorsForScreen(position);
+    return new WorldPosition(bot, anchorWorldPosition.x + (position.x - anchorScreenPosition.x) / pixelSize | 0, anchorWorldPosition.y + (position.y - anchorScreenPosition.y) / pixelSize | 0);
   }
   globalX = 0;
   globalY = 0;
@@ -621,6 +1164,11 @@ class WorldPosition {
   set y(value) {
     this.globalY = this.tileY * WORLD_TILE_SIZE + value;
   }
+  anchor1Index;
+  anchor2Index;
+  get pixelSize() {
+    return (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]).x - extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]).x) / (FAVORITE_LOCATIONS_POSITIONS[this.anchor2Index].x - FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index].x);
+  }
   constructor(bot, tileorGlobalX, tileorGlobalY, x, y) {
     this.bot = bot;
     if (x === undefined || y === undefined) {
@@ -630,15 +1178,36 @@ class WorldPosition {
       this.globalX = tileorGlobalX * WORLD_TILE_SIZE + x;
       this.globalY = tileorGlobalY * WORLD_TILE_SIZE + y;
     }
+    this.updateAnchor();
+  }
+  updateAnchor() {
+    this.anchor1Index = 0;
+    this.anchor2Index = 1;
+    let min1 = Infinity;
+    let min2 = Infinity;
+    for (let index = 0;index < FAVORITE_LOCATIONS_POSITIONS.length; index++) {
+      const { x, y } = FAVORITE_LOCATIONS_POSITIONS[index];
+      if (x < this.globalX && y < this.globalY) {
+        const delta = this.globalX - x + (this.globalY - y);
+        if (delta < min1) {
+          min1 = delta;
+          this.anchor1Index = index;
+        }
+      } else if (x > this.globalX && y > this.globalY) {
+        const delta = x - this.globalX + (y - this.globalY);
+        if (delta < min2) {
+          min2 = delta;
+          this.anchor2Index = index;
+        }
+      }
+    }
   }
   toScreenPosition() {
-    const p = this.bot.anchorsWorldPosition[0];
-    const s = this.bot.anchorsScreenPosition[0];
-    if (!p || !s)
-      throw new NotInitializedError(this.bot);
+    const worldPosition = FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index];
+    const screenPosition = extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]);
     return {
-      x: (this.globalX - p.globalX) * this.bot.pixelSize + s.x,
-      y: (this.globalY - p.globalY) * this.bot.pixelSize + s.y
+      x: (this.globalX - worldPosition.x) * this.pixelSize + screenPosition.x,
+      y: (this.globalY - worldPosition.y) * this.pixelSize + screenPosition.y
     };
   }
   getMapColor() {
@@ -716,8 +1285,8 @@ class BotImage extends Base2 {
       $export: ".export",
       $lock: ".lock",
       $opacity: ".opacity",
-      $progressLine: ".progress div",
-      $progressText: ".progress span",
+      $progressLine: ".wprogress div",
+      $progressText: ".wprogress span",
       $resetSize: ".reset-size",
       $settings: ".wsettings",
       $strategy: ".strategy",
@@ -736,10 +1305,10 @@ class BotImage extends Base2 {
       this.update();
       this.bot.save();
     });
-    let timeout2;
+    let timeout;
     this.registerEvent(this.$brightness, "change", () => {
-      clearTimeout(timeout2);
-      timeout2 = setTimeout(() => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
         this.pixels.brightness = this.$brightness.valueAsNumber;
         this.pixels.update();
         this.updateColors();
@@ -820,16 +1389,12 @@ class BotImage extends Base2 {
     this.bot.widget.update();
   }
   update() {
-    const halfPixel = this.bot.pixelSize / 2;
-    try {
-      const { x, y } = this.position.toScreenPosition();
-      this.element.style.transform = `translate(${x - halfPixel}px, ${y - halfPixel}px)`;
-      this.element.style.width = `${this.bot.pixelSize * this.pixels.width}px`;
-      this.$canvas.style.opacity = `${this.opacity}%`;
-      this.element.classList.remove("hidden");
-    } catch {
-      this.element.classList.add("hidden");
-    }
+    const halfPixel = this.position.pixelSize / 2;
+    const { x, y } = this.position.toScreenPosition();
+    this.element.style.transform = `translate(${x - halfPixel}px, ${y - halfPixel}px)`;
+    this.element.style.width = `${this.position.pixelSize * this.pixels.width}px`;
+    this.$canvas.style.opacity = `${this.opacity}%`;
+    this.element.classList.remove("hidden");
     this.$resetSizeSpan.textContent = this.pixels.width.toString();
     this.$brightness.valueAsNumber = this.pixels.brightness;
     this.$strategy.value = this.strategy;
@@ -953,12 +1518,15 @@ class BotImage extends Base2 {
   }
   moveStop() {
     this.moveInfo = undefined;
+    this.position.updateAnchor();
+    this.pixels.update();
+    this.updateColors();
   }
   move(event) {
     if (!this.moveInfo)
       return;
-    const deltaX = Math.round((event.clientX - this.moveInfo.clientX) / this.bot.pixelSize);
-    const deltaY = Math.round((event.clientY - this.moveInfo.clientY) / this.bot.pixelSize);
+    const deltaX = Math.round((event.clientX - this.moveInfo.clientX) / this.position.pixelSize);
+    const deltaY = Math.round((event.clientY - this.moveInfo.clientY) / this.position.pixelSize);
     if (this.moveInfo.globalX !== undefined) {
       this.position.globalX = deltaX + this.moveInfo.globalX;
       if (this.moveInfo.width !== undefined)
@@ -971,10 +1539,6 @@ class BotImage extends Base2 {
         this.pixels.height = Math.max(1, this.moveInfo.height - deltaY);
     } else if (this.moveInfo.height !== undefined)
       this.pixels.height = Math.max(1, deltaY + this.moveInfo.height);
-    if (this.moveInfo.width !== undefined || this.moveInfo.height !== undefined) {
-      this.pixels.update();
-      this.updateColors();
-    }
     this.update();
     this.bot.save();
   }
@@ -1099,13 +1663,28 @@ class BotImage extends Base2 {
   }
 }
 
+// src/errors.ts
+class WPlaceBotError extends Error {
+  name = "WPlaceBotError";
+  constructor(message, bot) {
+    super(message);
+    bot.widget.status = message;
+  }
+}
+class NoImageError extends WPlaceBotError {
+  name = "NoImageError";
+  constructor(bot) {
+    super("❌ No image is selected", bot);
+  }
+}
+
 // src/widget.html
 var widget_default = `<div class="wtopbar">
   <button class="minimize">-</button>
 </div>
 <div class="wsettings">
   <div class="wp wstatus"></div>
-  <div class="progress"><div></div><span></span></div>
+  <div class="wprogress"><div></div><span></span></div>
   <button class="draw" disabled>Draw</button>
   <label>Strategy:&nbsp;<select class="strategy">
     <option value="SEQUENTIAL" selected>Sequential</option>
@@ -1113,7 +1692,7 @@ var widget_default = `<div class="wtopbar">
     <option value="PERCENTAGE">Percentage</option>
   </select></label>
   <div class="images"></div>
-  <button class="pumpkin-hunt" disabled>Pumpkin Hunt!</button>
+  <!-- <button class="pumpkin-hunt" disabled>Pumpkin Hunt!</button> -->
   <button class="add-image" disabled>Add image</button>
 </div>
 `;
@@ -1143,7 +1722,6 @@ class Widget extends Base2 {
   $progressLine;
   $progressText;
   $images;
-  $pumpkinHunt;
   constructor(bot) {
     super();
     this.bot = bot;
@@ -1158,10 +1736,9 @@ class Widget extends Base2 {
       $draw: ".draw",
       $addImage: ".add-image",
       $strategy: ".strategy",
-      $progressLine: ".progress div",
-      $progressText: ".progress span",
-      $images: ".images",
-      $pumpkinHunt: ".pumpkin-hunt"
+      $progressLine: ".wprogress div",
+      $progressText: ".wprogress span",
+      $images: ".images"
     });
     this.$minimize.addEventListener("click", () => {
       this.minimize();
@@ -1179,7 +1756,6 @@ class Widget extends Base2 {
     });
     this.element.style.transform = `translate(${this.x}px, ${this.y}px)`;
     this.$draw.addEventListener("click", () => this.bot.draw());
-    this.$pumpkinHunt.addEventListener("click", () => this.pumpkinHunt());
     this.$addImage.addEventListener("click", () => this.addImage());
     this.$strategy.addEventListener("change", () => {
       this.strategy = this.$strategy.value;
@@ -1314,70 +1890,6 @@ class Widget extends Base2 {
     this.x = this.moveInfo.x + x - this.moveInfo.originalX;
     this.y = this.moveInfo.y + y - this.moveInfo.originalY;
   }
-  async pumpkinHunt() {
-    this.$pumpkinHunt.disabled = false;
-    const PUMPKIN_PATTERN = "8,8,8,8,8,8,8,1,8,8,8,1,8,8,8,1,8,8,8,8,8,8_8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8_8,1,1,1,1,8,8,8,8,8,8,8,8,8,8,8,8,8,1,1,1,1_8,8,1,1,1,1,1,1,8,8,8,8,8,8,8,1,1,1,1,1,1,8_8,8,1,1,1,5,5,1,1,8,8,8,8,8,1,1,5,5,1,1,1,8_8,8,1,1,1,5,5,1,1,1,8,8,8,1,1,1,5,5,1,1,1,8_8,8,8,1,1,1,1,1,1,8,8,1,8,8,1,1,1,1,1,1,8,8_8,8,8,8,1,1,1,1,8,8,1,1,1,8,8,1,1,1,1,8,8,8_8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8_8,8,8,8,1,8,8,8,8,8,8,1,8,8,8,8,8,8,1,8,8,8_8,8,8,1,1,1,8,8,8,8,1,1,1,8,8,8,8,1,1,1,8,8_8,8,1,1,8,1,1,8,8,1,1,8,1,1,8,8,1,1,8,1,1,8_1,8,8,8,8,8,1,1,1,1,8,8,8,1,1,1,1,8,8,8,8,8_1,1,1,8,8,8,8,1,1,8,8,8,8,8,1,1,8,8,8,8,1,1_1,12,12,1,1,8,8,8,8,8,8,1,8,8,8,8,8,8,1,1,19,18_1,12,12,13,13,1,1,1,1,1,1,19,1,1,1,1,1,1,18,18,18,18_12,13,13,13,13,13,13,19,19,19,19,19,19,19,19,19,18,18,18,18,18,18_13,13,13,13,13,13,13,19,19,19,19,19,19,19,19,19,18,18,18,18,18,18_18,18,19,19,13,13,13,13,13,13,13,13,19,19,19,19,18,18,18,18,18,18_18,18,19,19,13,13,13,13,13,13,13,13,19,19,19,19,18,18,18,18,18,18_18,18,19,19,19,19,19,19,19,19,19,19,13,13,13,13,18,18,18,18,18,18_18,18,18,19,19,19,19,19,19,19,19,19,13,13,13,13,18,18,18,18,18,18_18,18,18,18,19,19,19,19,19,19,13,13,13,13,12,12,12,18,18,18,18,18_18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,18,18,18,18,18_18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,18,18,18,18,18_1,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,12,12,12,18,18_1,18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,12,12,18,18_1,18,18,18,18,18,18,18,18,18,18,18,12,12,12,12,12,12,12,12,18,18".split("_").map((x) => x.split(",").map((x2) => +x2));
-    const firstColor = PUMPKIN_PATTERN[0][0];
-    try {
-      main:
-        while (true) {
-          const claimed = new Set((await retry(() => fetch("https://backend.wplace.live/event/hallowen/pumpkins/claimed", {
-            credentials: "include"
-          }).then((x) => x.json()), 10, 1e4)).claimed);
-          const pumpkinsFound = Object.entries(await retry(() => fetch("https://wplace.samuelscheit.com/tiles/pumpkin.json").then((x) => x.json()), 10, 1e4));
-          for (const [index, pumpkin] of pumpkinsFound) {
-            if (claimed.size === 100) {
-              this.$pumpkinHunt.textContent = `Pumpkin Hunt Finished!`;
-              break main;
-            }
-            this.$pumpkinHunt.textContent = `⌛ Pumpkin Hunt [${claimed.size}/100]`;
-            if (claimed.has(+index) || Date.now() - new Date(pumpkin.foundAt).getTime() > 3600000)
-              continue;
-            const { pixels } = await retry(() => Pixels.fromJSON(this.bot, {
-              url: `https://backend.wplace.live/files/s0/tiles/${pumpkin.tileX}/${pumpkin.tileY}.png`,
-              exactColor: true
-            }), 10, 1e4);
-            for (let x = 0;x < 1000; x++) {
-              nextPixel:
-                for (let y = 0;y < 1000; y++) {
-                  if (pixels[y][x] !== firstColor)
-                    continue;
-                  for (let offsetY = 0;offsetY < PUMPKIN_PATTERN.length; offsetY++)
-                    for (let offsetX = 0;offsetX < PUMPKIN_PATTERN[offsetY].length; offsetX++)
-                      if (pixels[y + offsetY][x + offsetX] !== PUMPKIN_PATTERN[offsetY][offsetX])
-                        continue nextPixel;
-                  const info = await retry(() => fetch(`https://backend.wplace.live/s0/pixel/${pumpkin.tileX}/${pumpkin.tileY}?x=${x + 10}&y=${y + 10}`).then((x2) => x2.json()), 3, 1e4);
-                  if (!info.paintedBy.event)
-                    continue;
-                  await retry(async () => {
-                    const response = await fetch(`https://backend.wplace.live/s0/event/pixel/claim`, {
-                      credentials: "include",
-                      body: JSON.stringify({
-                        event: "halloween",
-                        tx: pumpkin.tileX,
-                        ty: pumpkin.tileY,
-                        px: x + 10,
-                        py: y + 10
-                      }),
-                      method: "POST"
-                    });
-                    if (!response.ok)
-                      throw new Error("CAN NOT CLAIM");
-                  }, 3, 1e4);
-                  claimed.add(+index);
-                }
-            }
-            await wait(5000);
-          }
-          this.$pumpkinHunt.textContent = `⌛ Pumpkin Hunt (wait 10 min)`;
-          await wait(10 * 1000 * 60);
-        }
-    } catch (error) {
-      console.error(error);
-      this.$pumpkinHunt.disabled = false;
-      this.$pumpkinHunt.textContent = `❌ Pumpkin Hunt!`;
-    }
-  }
 }
 
 // src/bot.ts
@@ -1386,10 +1898,9 @@ var SAVE_VERSION = 1;
 class WPlaceBot {
   widget = new Widget(this);
   unavailableColors = new Set;
-  pixelSize = 1;
   mapsCache = new Map;
-  anchorsWorldPosition = new Array(2);
-  anchorsScreenPosition = new Array(2);
+  me;
+  $stars = [];
   markerPixelPositionResolvers = [];
   saveTimeout;
   lastColor;
@@ -1414,14 +1925,25 @@ class WPlaceBot {
       await this.waitForElement("login", ".avatar.center-absolute.absolute");
       await this.waitForElement("pixel count", ".btn.btn-primary.btn-lg.relative.z-30 canvas");
       const $canvasContainer = await this.waitForElement("canvas", ".maplibregl-canvas-container");
-      new MutationObserver(this.onAnchorsMutation.bind(this)).observe($canvasContainer, {
+      new MutationObserver((mutations) => {
+        for (let index = 0;index < mutations.length; index++) {
+          if (mutations[index].removedNodes.length !== 0) {
+            this.$stars = [
+              ...document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")
+            ].slice(0, FAVORITE_LOCATIONS.length);
+            break;
+          }
+        }
+        this.widget.updateImages();
+      }).observe($canvasContainer, {
         attributes: true,
-        attributeFilter: ["style"],
-        subtree: true,
-        childList: true
+        childList: true,
+        subtree: true
       });
+      this.$stars = [
+        ...document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")
+      ].slice(0, FAVORITE_LOCATIONS.length);
       await wait(500);
-      await this.loadAnchors();
       await this.updateColors();
       if (save)
         for (let index = 0;index < save.widget.images.length; index++) {
@@ -1433,7 +1955,6 @@ class WPlaceBot {
       this.widget.updateTasks();
       this.widget.setDisabled("draw", false);
       this.widget.setDisabled("add-image", false);
-      this.widget.setDisabled("pumpkin-hunt", false);
     });
   }
   draw() {
@@ -1446,22 +1967,7 @@ class WPlaceBot {
         event.stopPropagation();
     };
     return this.widget.run("Drawing", async () => {
-      await this.widget.run("Initializing draw", () => Promise.all([
-        this.updateColors(),
-        this.readMap(),
-        (async () => {
-          while (this.pixelSize < 3) {
-            $canvas.dispatchEvent(new WheelEvent("wheel", {
-              deltaY: -1000,
-              bubbles: true,
-              cancelable: true,
-              clientX: window.innerWidth / 2,
-              clientY: window.innerWidth / 2
-            }));
-            await wait(200);
-          }
-        })()
-      ]));
+      await this.widget.run("Initializing draw", () => Promise.all([this.updateColors(), this.readMap()]));
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
       this.widget.updateTasks();
@@ -1575,6 +2081,61 @@ class WPlaceBot {
       this.widget.status = `⌛ Reading map [${++done}/${imagesToDownload.size}]`;
     })));
   }
+  waitForUnfocus() {
+    return this.widget.run("UNFOCUS WINDOW", () => new Promise((resolve) => {
+      if (!document.hasFocus())
+        resolve();
+      window.addEventListener("blur", () => {
+        setTimeout(resolve, 1);
+      }, {
+        once: true
+      });
+    }), undefined, "\uD83D\uDDB1️");
+  }
+  findAnchorsForScreen(position) {
+    let anchorIndex = 0;
+    let minI2 = 1;
+    let min1 = Infinity;
+    let min2 = Infinity;
+    for (let index = 0;index < this.$stars.length; index++) {
+      const { x, y } = extractScreenPositionFromStar(this.$stars[index]);
+      if (x < position.x && y < position.y) {
+        const delta = position.x - x + (position.y - y);
+        if (delta < min1) {
+          min1 = delta;
+          anchorIndex = index;
+        }
+      } else if (x > position.x && y > position.y) {
+        const delta = x - position.x + (y - position.y);
+        if (delta < min2) {
+          min2 = delta;
+          minI2 = index;
+        }
+      }
+    }
+    const anchorScreenPosition = extractScreenPositionFromStar(this.$stars[anchorIndex]);
+    const anchorWorldPosition = FAVORITE_LOCATIONS_POSITIONS[anchorIndex];
+    return {
+      anchorScreenPosition,
+      anchorWorldPosition,
+      pixelSize: (extractScreenPositionFromStar(this.$stars[minI2]).x - anchorScreenPosition.x) / (FAVORITE_LOCATIONS_POSITIONS[minI2].x - anchorWorldPosition.x)
+    };
+  }
+  async generateLocations() {
+    const data = [];
+    for (const fav of this.$stars) {
+      const promise = new Promise((resolve) => {
+        this.markerPixelPositionResolvers.push(resolve);
+      });
+      fav.click();
+      const position = await promise;
+      data.push({
+        x: position.globalX,
+        y: position.globalY
+      });
+    }
+    console.log(data);
+  }
   async openColors() {
     this.lastColor = undefined;
     document.querySelector(".flex.gap-2.px-3 > .btn-circle")?.click();
@@ -1586,20 +2147,6 @@ class WPlaceBot {
       unfoldColors.click();
       await wait(1);
     }
-  }
-  async clickAndGetPixelWorldPosition(screenPosition) {
-    await this.waitForUnfocus();
-    const positionPromise = withTimeout(() => new Promise((resolve) => {
-      this.markerPixelPositionResolvers.push(resolve);
-    }), 1000);
-    document.querySelector(".maplibregl-canvas").dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      clientX: screenPosition.x,
-      clientY: screenPosition.y,
-      button: 0
-    }));
-    return positionPromise;
   }
   drawTask(task) {
     if (this.lastColor !== task.color) {
@@ -1630,76 +2177,34 @@ class WPlaceBot {
       cancelable: true
     }));
   }
-  waitForUnfocus() {
-    return this.widget.run("UNFOCUS WINDOW", () => new Promise((resolve) => {
-      if (!document.hasFocus())
-        resolve();
-      window.addEventListener("blur", () => {
-        setTimeout(resolve, 1);
-      }, {
-        once: true
-      });
-    }), undefined, "\uD83D\uDDB1️");
-  }
   registerFetchInterceptor() {
     const originalFetch = globalThis.fetch;
-    const pixelRegExp = /https:\/\/backend.wplace.live\/s\d+\/pixel\/(\d+)\/(\d+)\?x=(\d+)&y=(\d+)/;
-    globalThis.fetch = async (...arguments_) => {
-      const response = await originalFetch(...arguments_);
-      const url = typeof arguments_[0] === "string" ? arguments_[0] : arguments_[0].url;
-      setTimeout(() => {
-        const pixelMatch = pixelRegExp.exec(url);
-        if (pixelMatch) {
-          for (let index = 0;index < this.markerPixelPositionResolvers.length; index++)
-            this.markerPixelPositionResolvers[index](new WorldPosition(this, +pixelMatch[1], +pixelMatch[2], +pixelMatch[3], +pixelMatch[4]));
-          this.markerPixelPositionResolvers.length = 0;
-          return;
-        }
-      }, 0);
+    const pixelRegExp = /https:\/\/backend.wplace.live\/s\d+\/pixel\/(-?\d+)\/(-?\d+)\?x=(-?\d+)&y=(-?\d+)/;
+    globalThis.fetch = async (request, options) => {
+      const response = await originalFetch(request, options);
+      const cloned = response.clone();
+      let url = "";
+      if (typeof request == "string")
+        url = request;
+      else if (request instanceof Request)
+        url = request.url;
+      else if (request instanceof URL)
+        url = request.href;
+      if (response.url === "https://backend.wplace.live/me") {
+        this.me = await cloned.json();
+        this.me.favoriteLocations.unshift(...FAVORITE_LOCATIONS);
+        this.me.maxFavoriteLocations = Infinity;
+        response.json = () => Promise.resolve(this.me);
+      }
+      const pixelMatch = pixelRegExp.exec(url);
+      if (pixelMatch) {
+        console.log("MATCH", pixelMatch);
+        for (let index = 0;index < this.markerPixelPositionResolvers.length; index++)
+          this.markerPixelPositionResolvers[index](new WorldPosition(this, +pixelMatch[1], +pixelMatch[2], +pixelMatch[3], +pixelMatch[4]));
+        this.markerPixelPositionResolvers.length = 0;
+      }
       return response;
     };
-  }
-  loadAnchors() {
-    return this.widget.run("Loading positions", async () => {
-      await this.waitForUnfocus();
-      await this.closeAll();
-      const stars = this.getStars();
-      const $canvas = document.querySelector(".maplibregl-canvas");
-      for (let index = 0;index < 2; index++) {
-        let star = stars[index];
-        const position = star ? star[1] : index === 0 ? { x: -20000, y: -20000 } : { x: 20000, y: 20000 };
-        try {
-          this.anchorsWorldPosition[index] = await this.clickAndGetPixelWorldPosition(position);
-        } catch (error) {
-          if (document.querySelector("ol")) {
-            $canvas.dispatchEvent(new WheelEvent("wheel", {
-              deltaY: -1000,
-              bubbles: true,
-              cancelable: true,
-              clientX: window.innerWidth / 2,
-              clientY: window.innerWidth / 2
-            }));
-            index--;
-            await wait(1000);
-            continue;
-          } else
-            throw error;
-        }
-        if (index === 1 && this.anchorsWorldPosition[1].globalX - this.anchorsWorldPosition[0].globalX < 500) {
-          index--;
-          stars[1] = undefined;
-          continue;
-        }
-        if (!star) {
-          document.querySelector("button.btn-soft:nth-child(2)").click();
-          while (!star) {
-            star = this.getStars()[index];
-            await wait(100);
-          }
-        }
-      }
-      this.onAnchorsMutation();
-    });
   }
   async closeAll() {
     for (const button of document.querySelectorAll("button")) {
@@ -1731,41 +2236,6 @@ class WPlaceBot {
       });
     });
   }
-  onAnchorsMutation() {
-    const stars = this.getStars();
-    const p1 = this.anchorsWorldPosition[0];
-    const p2 = this.anchorsWorldPosition[1];
-    if (!stars[0] || !stars[1] || !p1 || !p2)
-      return;
-    const worldDistance = p2.globalX - p1.globalX;
-    this.anchorsScreenPosition[0] = stars[0][1];
-    this.anchorsScreenPosition[1] = stars[1][1];
-    const s1 = this.anchorsScreenPosition[0];
-    const s2 = this.anchorsScreenPosition[1];
-    this.pixelSize = (s2.x - s1.x) / worldDistance;
-    this.widget.updateImages();
-  }
-  extractScreenPositionFromStar($star) {
-    const [x, y] = $star.style.transform.slice(32, -29).split(", ").map((x2) => Number.parseInt(x2));
-    return { x, y };
-  }
-  getStars() {
-    let minX = Infinity;
-    let maxX = 0;
-    let min;
-    let max;
-    for (const $star of document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")) {
-      const pos = this.extractScreenPositionFromStar($star);
-      if (pos.x < minX) {
-        minX = pos.x;
-        min = [$star, pos];
-      } else if (pos.x > maxX) {
-        maxX = pos.x;
-        max = [$star, pos];
-      }
-    }
-    return [min, max];
-  }
 }
 
 // src/style.css
@@ -1782,6 +2252,12 @@ var style_default = `/* stylelint-disable declaration-no-important */
   --text: #394e6a;
   --error: #f00;
   --resize: 4px;
+}
+
+.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center:nth-child(
+    -n + 144
+  ) {
+  display: none;
 }
 
 /** Widget */
@@ -1885,11 +2361,11 @@ var style_default = `/* stylelint-disable declaration-no-important */
   width: inherit;
 }
 
-.wsettings .progress {
+.wsettings .wprogress {
   position: relative;
 }
 
-.wsettings .progress div {
+.wsettings .wprogress div {
   position: absolute;
   width: 100%;
   height: 100%;
@@ -1897,7 +2373,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
   transform-origin: left;
 }
 
-.wsettings .progress span {
+.wsettings .wprogress span {
   z-index: 0;
 }
 
