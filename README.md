@@ -20,22 +20,15 @@
 
 ## How to use
 
-1. Click here to unfocus window.
-2. Add raw or exported image.
-3. Drag image and it's edges to position it.
-4. Click "Draw" to draw :)
-5. How to distribute pixels between images.
-6. Change brightness of the image.
-7. How to draw image.
-8. Export image with it's position and settings.
-9. Lock image to prevent accidental edits.
-10. Delete image.
-11. Click to disable color.
-12. It's a substitute color automatically replaced. Click right to disable it.
-13. Click left to try to buy recommended color.
-14. Drag colors to change order. Don't forget to check "Draw color in order".
-15. Move image up
-16. Move image down
+1. Add your image or exported "###.wbot" files.
+2. Drag image and it's edges to position it.
+3. Change order of images.
+4. This is colors bar. Colors can be dragged. Don't forget to check "Draw color in order".
+5. It's a substitution color. Top button to buy, lower button to disable.
+6. Export an image. Exports file with brightness and resize applied and "###.wbot" file with all settings.
+7. Lock image to prevent accidental edits and allow click-through.
+8. Delete image.
+9. Finally click "Draw" to start drawing :)
 
 ![Instruction1](https://github.com/SoundOfTheSky/wplace-bot/raw/refs/heads/main/Instruction.png)
 

@@ -67,8 +67,10 @@ export class Pixels {
     this.canvas.height = this.height
     this.colors.clear()
     const colorCache = new Map<string, [number, number]>() // cache for already processed colors
-    for (let index = 1; index < 64; index++)
-      colorCache.set(COLORS_RGB[index]!, [index, index])
+    for (let index = 1; index < 64; index++) {
+      if (this.exactColor || !this.bot.unavailableColors.has(index))
+        colorCache.set(COLORS_RGB[index]!, [index, index])
+    }
 
     this.context.imageSmoothingEnabled = false
     this.context.imageSmoothingQuality = 'low'

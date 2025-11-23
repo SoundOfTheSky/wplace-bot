@@ -5,6 +5,7 @@ import { WPlaceBot } from './bot'
 import { NoImageError, WPlaceBotError } from './errors'
 import { BotImage } from './image'
 import { Pixels } from './pixels'
+import { save } from './save'
 // @ts-ignore
 import html from './widget.html' with { type: 'text' }
 import { WorldPosition } from './world-position'
@@ -19,10 +20,6 @@ export enum BotStrategy {
 export class Widget extends Base {
   public readonly element = document.createElement('div')
 
-  public x = 64
-
-  public y = 64
-
   public get status(): string {
     return this.$status.innerHTML
   }
@@ -31,18 +28,12 @@ export class Widget extends Base {
     this.$status.innerHTML = value
   }
 
-  /** Strategy how to distribute draw calls between images */
-  public strategy = BotStrategy.SEQUENTIAL
-
-  /** Images on canvas */
-  public images: BotImage[] = []
-
-  /** Moving widget */
-  protected moveInfo?: {
-    x: number
-    y: number
-    originalX: number
-    originalY: number
+  public get open() {
+    return this.element.classList.contains('wopen')
+  }
+  public set open(value) {
+    if (value) this.element.classList.add('wopen')
+    else this.element.classList.remove('wopen')
   }
 
   protected readonly $settings!: HTMLDivElement
@@ -55,6 +46,8 @@ export class Widget extends Base {
   protected readonly $progressLine!: HTMLDivElement
   protected readonly $progressText!: HTMLSpanElement
   protected readonly $images!: HTMLDivElement
+  protected readonly $wopenButton!: HTMLButtonElement
+
   // protected readonly $pumpkinHunt!: HTMLButtonElement
 
   public constructor(protected bot: WPlaceBot) {
@@ -64,7 +57,8 @@ export class Widget extends Base {
     document.body.append(this.element)
 
     this.populateElementsWithSelector(this.element, {
-      $settings: '.wsettings',
+      $wopenButton: '.wopen-button',
+      $settings: '.wform',
       $status: '.wstatus',
       $minimize: '.minimize',
       $topbar: '.wtopbar',
@@ -77,32 +71,17 @@ export class Widget extends Base {
       // $pumpkinHunt: '.pumpkin-hunt',
     })
 
-    // Move/minimize
-    this.$minimize.addEventListener('click', () => {
-      this.minimize()
-    })
-    this.$topbar.addEventListener('mousedown', (event) => {
-      this.moveStart(event.clientX, event.clientY)
-    })
-    this.registerEvent(document, 'mouseup', () => {
-      this.moveStop()
-    })
-    this.registerEvent(document, 'mousemove', (event) => {
-      if (this.moveInfo)
-        this.move((event as MouseEvent).clientX, (event as MouseEvent).clientY)
-      this.element.style.transform = `translate(${this.x}px, ${this.y}px)`
-    })
-    this.element.style.transform = `translate(${this.x}px, ${this.y}px)`
-
     // Button actions
+    this.$wopenButton.addEventListener('click', () => (this.open = !this.open))
     this.$draw.addEventListener('click', () => this.bot.draw())
     // this.$pumpkinHunt.addEventListener('click', () => this.pumpkinHunt())
     this.$addImage.addEventListener('click', () => this.addImage())
     this.$strategy.addEventListener('change', () => {
-      this.strategy = this.$strategy.value as BotStrategy
+      this.bot.strategy = this.$strategy.value as BotStrategy
     })
 
     this.update()
+    this.open = true
   }
 
   /** Add image handler */
@@ -141,10 +120,11 @@ export class Widget extends Base {
             new Pixels(this.bot, image),
           )
         }
-        this.images.push(botImage)
+        this.bot.images.push(botImage)
         await this.bot.readMap()
         botImage.updateTasks()
-        this.bot.save()
+        save(this.bot, true)
+        document.location.reload()
       },
       () => {
         this.setDisabled('add-image', false)
@@ -154,12 +134,12 @@ export class Widget extends Base {
 
   /** Update widget position and contents */
   public update() {
-    this.$strategy.value = this.strategy
+    this.$strategy.value = this.bot.strategy
     // Progress
     let maxTasks = 0
     let totalTasks = 0
-    for (let index = 0; index < this.images.length; index++) {
-      const image = this.images[index]!
+    for (let index = 0; index < this.bot.images.length; index++) {
+      const image = this.bot.images[index]!
       maxTasks += image.pixels.pixels.length * image.pixels.pixels[0]!.length
       totalTasks += image.tasks.length
     }
@@ -170,14 +150,14 @@ export class Widget extends Base {
 
     // Images
     this.$images.innerHTML = ''
-    for (let index = 0; index < this.images.length; index++) {
-      const image = this.images[index]!
+    for (let index = 0; index < this.bot.images.length; index++) {
+      const image = this.bot.images[index]!
       const $image = document.createElement('div')
       this.$images.append($image)
       $image.className = 'image'
       $image.innerHTML = `<img src="${image.pixels.image.src}">
   <button class="up" title="Move up" ${index === 0 ? 'disabled' : ''}>▴</button>
-  <button class="down" title="Move down" ${index === this.images.length - 1 ? 'disabled' : ''}>▾</button>`
+  <button class="down" title="Move down" ${index === this.bot.images.length - 1 ? 'disabled' : ''}>▾</button>`
       $image
         .querySelector<HTMLButtonElement>('img')!
         .addEventListener('click', () => {
@@ -186,30 +166,18 @@ export class Widget extends Base {
       $image
         .querySelector<HTMLButtonElement>('.up')!
         .addEventListener('click', () => {
-          swap(this.images, index, index - 1)
+          swap(this.bot.images, index, index - 1)
           this.update()
-          this.bot.save()
+          save(this.bot)
         })
       $image
         .querySelector<HTMLButtonElement>('.down')!
         .addEventListener('click', () => {
-          swap(this.images, index, index + 1)
+          swap(this.bot.images, index, index + 1)
           this.update()
-          this.bot.save()
+          save(this.bot)
         })
     }
-  }
-
-  /** Update images position and contents */
-  public updateImages() {
-    for (let index = 0; index < this.images.length; index++)
-      this.images[index]!.update()
-  }
-
-  /** Update tasks of all images */
-  public updateTasks() {
-    for (let index = 0; index < this.images.length; index++)
-      this.images[index]!.updateTasks()
   }
 
   /** Disable/enable element by class name */
@@ -242,40 +210,9 @@ export class Widget extends Base {
     }
   }
 
-  public toJSON() {
-    return {
-      x: this.x,
-      y: this.y,
-      images: this.images.map((x) => x.toJSON()),
-      strategy: this.strategy,
-    }
-  }
-
   /** Hides content */
   protected minimize() {
     this.$settings.classList.toggle('hidden')
-  }
-
-  /** movestart handler */
-  protected moveStart(x: number, y: number) {
-    this.moveInfo = {
-      x: this.x,
-      y: this.y,
-      originalX: x,
-      originalY: y,
-    }
-  }
-
-  /** movestop handler */
-  protected moveStop() {
-    this.moveInfo = undefined
-  }
-
-  /** move handler */
-  protected move(x: number, y: number) {
-    if (!this.moveInfo) return
-    this.x = this.moveInfo.x + x - this.moveInfo.originalX
-    this.y = this.moveInfo.y + y - this.moveInfo.originalY
   }
 
   // protected async pumpkinHunt() {

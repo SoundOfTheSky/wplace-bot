@@ -5,11 +5,12 @@
   "type": "module",
   "sideEffects": false,
   "scripts": {
-    "start": "bun build ./src/index.ts --outfile=dist.user.js && (cat script.txt dist.user.js) > tmp && mv tmp dist.user.js",
+    "start": "bun src/build.ts",
     "lint": "stylelint \"src/**/*.{css,scss,sass}\" --fix && eslint \"src/**/*{.js,.ts}\" --fix && tsc"
   },
   "devDependencies": {
-    "@softsky/configs": "^1.3.4"
+    "@softsky/configs": "^1.3.5",
+    "@types/bun": "^1.3.3"
   },
   "dependencies": {
     "@softsky/utils": "^2.8.0"

@@ -1,20 +1,24 @@
 /* stylelint-disable declaration-no-important */
 /* stylelint-disable plugin/no-low-performance-animation-properties */
 /* stylelint-disable no-descending-specificity */
+@import 'https://fonts.googleapis.com/css2?family=Tiny5&display=swap';
+
 :root {
-  --background: #fff;
-  --disabled: #c2c2c2;
   --hover: #dfdfdf;
-  --main-hover: #2580ff;
-  --main: #0069ff;
   --text-invert: #fff;
-  --text: #394e6a;
   --error: #f00;
-  --resize: 4px;
+  --resize: 8px;
+  --asdadsasdasdasdasdasdasdasd: 1px;
+  --text: #422e2c;
+  --background: #fbe3cb;
+  --background-hover: #f0d1b3;
+  --background-disabled: #a37648;
+  --main: #66bbb4;
+  --main-hover: #48a19a;
 }
 
 .text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center:nth-child(
-    -n + 144
+    -n + FAKE_FAVORITE_LOCATIONS
   ) {
   display: none;
 }
@@ -24,10 +28,48 @@
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 10;
+  z-index: 1000;
   width: 256px;
+  height: 100dvh;
+  border-right: var(--text) 2px solid;
   background-color: var(--background);
   color: var(--text);
+  font-family: 'Tiny5', sans-serif;
+  transition: transform 0.5s;
+  transform: translateX(-100%);
+}
+
+.wwidget .title {
+  border-bottom: var(--text) 2px solid;
+  background-color: var(--main);
+  font-size: 32px;
+  text-align: center;
+}
+
+.wwidget.wopen .wopen-button div {
+  transform: rotate(180deg);
+}
+
+.wwidget.wopen {
+  box-shadow: 8px 0 16px -8px var(--main);
+  transform: translateX(0);
+}
+
+.wwidget .wopen-button div {
+  transition: transform 0.5s;
+}
+
+.wwidget .wopen-button {
+  position: absolute;
+  top: calc(50% - 24px);
+  right: -24px;
+  width: 24px;
+  height: 48px;
+  border: var(--text) 2px solid;
+  border-left: none;
+  background-color: var(--background);
+  color: var(--text);
+  cursor: pointer;
 }
 
 .wwidget .images {
@@ -68,76 +110,109 @@
 
 .wimage canvas {
   width: 100%;
-  box-shadow: inset var(--main) 0 0 0 1px;
+  box-shadow: inset var(--text) 0 0 0 2px;
   cursor: all-scroll;
   image-rendering: pixelated;
 }
 
-.wimage .wsettings {
+.wimage .wform {
   position: absolute;
   display: none;
   width: 100%;
   min-width: 256px;
+  border: var(--text) 2px solid;
   background-color: var(--background);
   color: var(--text);
 }
 
-.wimage .wrapper:hover .wsettings {
+.wimage:hover .wrapper .wform {
   display: block;
 }
 
 /* Settings */
-.wsettings > * {
+.wform {
+  font-family: 'Tiny5', sans-serif;
+}
+
+.wform > * {
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
-  width: 100%;
-  height: 24px;
+  width: calc(100% - 8px);
+  margin: 4px;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.wsettings button,
-.wsettings input {
+.wform button,
+.wform input,
+.wform select,
+.wform textarea,
+.wform label:has(input[type='checkbox']) {
+  padding: 0 8px;
+  border: var(--text) 2px solid;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
-.wsettings button:hover,
-.wsettings input:hover {
-  background-color: var(--hover);
+.wform input[type='range'] {
+  width: 100%;
+  height: 32px;
+  background: linear-gradient(
+    to right,
+    var(--main) var(--val),
+    var(--background-disabled) var(--val)
+  );
+  cursor: ew-resize;
+  appearance: none;
 }
 
-.wsettings button:disabled,
-.wsettings input:disabled {
-  background-color: var(--disabled);
+.wform input[type='range']::-moz-range-thumb {
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.wform button:hover,
+.wform input:hover {
+  background-color: var(--background-hover);
+}
+
+.wform button:disabled,
+.wform input:disabled {
+  background-color: var(--background-disabled);
   cursor: no-drop;
 }
 
-.wsettings label input:not([type='checkbox']) {
+.wform label input:not([type='checkbox']) {
   width: inherit;
 }
 
-.wsettings .wprogress {
+.wform .wprogress {
   position: relative;
+  width: 100%;
+  margin: 0;
 }
 
-.wsettings .wprogress div {
+.wform .wprogress div {
   position: absolute;
   width: 100%;
   height: 100%;
-  background-color: var(--main-hover);
+  background-color: var(--main);
   transform-origin: left;
 }
 
-.wsettings .wprogress span {
+.wform .wprogress span {
   z-index: 0;
 }
 
-.wsettings .colors {
+.wform .colors {
   position: relative;
+  width: 100%;
+  height: 32px;
+  margin: 0;
   background: repeating-linear-gradient(
     25deg,
     var(--background),
@@ -148,12 +223,13 @@
   cursor: ew-resize;
 }
 
-.wsettings .colors > button {
+.wform .colors > button {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  border: none;
   cursor: grab;
   transition:
     0.2s left,
@@ -161,11 +237,11 @@
     0.2s filter;
 }
 
-.wsettings .colors > button:hover {
+.wform .colors > button:hover {
   filter: brightness(0.6);
 }
 
-.wsettings .colors > button.color-disabled::before {
+.wform .colors > button.color-disabled::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -174,7 +250,7 @@
   pointer-events: none;
 }
 
-.wsettings .colors > button.substitution button {
+.wform .colors > button.substitution button {
   position: absolute;
   top: 0;
   left: 0;
@@ -185,27 +261,27 @@
   transition: 0.2s filter;
 }
 
-.wsettings .colors > button.substitution button:hover {
+.wform .colors > button.substitution button:hover {
   filter: brightness(0.6);
 }
 
-.wsettings .colors > button.substitution button:first-child {
+.wform .colors > button.substitution button:first-child {
   background: var(--wreal-color);
   text-align: left;
   clip-path: polygon(0 0, 80% 0, 20% 100%, 0 100%);
 }
 
-.wsettings .colors > button.substitution button:last-child {
+.wform .colors > button.substitution button:last-child {
   background: var(--wsubstitution-color);
   text-align: right;
   clip-path: polygon(100% 100%, 100% 0, 80% 0, 20% 100%);
 }
 
-.wsettings .colors > button.substitution:hover {
+.wform .colors > button.substitution:hover {
   filter: none;
 }
 
-.wsettings .colors:hover > button {
+.wform .colors:hover > button {
   left: var(--wleft) !important;
   width: var(--wwidth) !important;
 }
@@ -221,13 +297,18 @@
   width: 100%;
   min-width: min-content;
   min-width: 256px;
+  border: var(--text) 2px solid;
   background-color: var(--main);
   color: var(--text-invert);
   cursor: all-scroll;
 }
 
 .wtopbar button {
-  min-width: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 24px;
+  height: 24px;
 }
 
 .wtopbar button:hover {
