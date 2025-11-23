@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.5.0
+// @version      4.5.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -1832,7 +1832,6 @@ class WPlaceBot {
     for (const $button of document.querySelectorAll("button.btn.relative.w-full"))
       if ($button.children.length !== 0)
         this.unavailableColors.add(Math.abs(Number.parseInt($button.id.slice(6))));
-    this.unavailableColors.add(1);
     this.updateImageColors();
   }
   moveMap(delta) {

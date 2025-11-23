@@ -276,7 +276,6 @@ export class WPlaceBot {
         this.unavailableColors.add(
           Math.abs(Number.parseInt($button.id.slice(6))),
         )
-    this.unavailableColors.add(1)
     this.updateImageColors()
   }
 
