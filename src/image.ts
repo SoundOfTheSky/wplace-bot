@@ -34,6 +34,7 @@ export class BotImage extends Base {
     bot: WPlaceBot,
     data: ReturnType<BotImage['toJSON']>,
   ) {
+      console.log("botimage")
     return new BotImage(
       bot,
       WorldPosition.fromJSON(bot, data.position),
@@ -179,8 +180,12 @@ export class BotImage extends Base {
     // Lock
     this.registerEvent(this.$lock, 'click', () => {
       this.lock = !this.lock
+      console.time("update")
       this.update()
+      console.timeEnd("update")
+      console.time("save")
       save(this.bot)
+      console.timeEnd("save")
     })
 
     this.registerEvent(this.$delete, 'click', this.destroy.bind(this))
@@ -191,8 +196,15 @@ export class BotImage extends Base {
     // Move
     this.registerEvent(this.$topbar, 'mousedown', this.moveStart.bind(this))
     this.registerEvent(this.$canvas, 'mousedown', this.moveStart.bind(this))
-    this.registerEvent(document, 'mouseup', this.moveStop.bind(this))
-    this.registerEvent(document, 'mousemove', this.move.bind(this))
+    this.registerEvent(document, 'mouseup', function(e) {
+    const start = performance.now();
+    this.moveStop(e);
+    requestAnimationFrame(() => {
+        const end = performance.now();
+        console.log(`Post-mouseup frame delay: ${end - start}ms`);
+    });
+}.bind(this));
+this.registerEvent(document, 'mousemove', this.move.bind(this))
 
     // Resize
     for (const $resize of this.element.querySelectorAll<HTMLDivElement>(
@@ -201,6 +213,14 @@ export class BotImage extends Base {
       this.registerEvent($resize, 'mousedown', this.resizeStart.bind(this))
     this.update()
     this.updateColors()
+
+    const observer = new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    console.log("Long task:", entry.duration, entry);
+  }
+});
+
+observer.observe({ entryTypes: ["longtask"] });
   }
 
   public toJSON() {
@@ -218,6 +238,7 @@ export class BotImage extends Base {
 
   /** Calculates everything we need to do. Very expensive task! */
   public updateTasks() {
+      console.time("task")
     this.tasks.length = 0
     const position = this.position.clone()
     const skipColors = new Set<number>()
@@ -247,10 +268,12 @@ export class BotImage extends Base {
       )
     this.update()
     this.bot.widget.update()
+    console.timeEnd("task")
   }
 
   /** Update image (NOT PIXELS) */
   public update() {
+      console.time("update image")
     const { x, y } = this.position.toScreenPosition()
     this.element.style.transform = `translate(${x}px, ${y}px)`
     this.element.style.width = `${this.position.pixelSize * this.pixels.width}px`
@@ -270,6 +293,7 @@ export class BotImage extends Base {
     this.$progressLine.style.transform = `scaleX(${percent}%)`
     this.$wrapper.classList[this.lock ? 'add' : 'remove']('no-pointer-events')
     this.$lock.textContent = this.lock ? '🔒' : '🔓'
+    console.timeEnd("update image")
   }
 
   /** Removes image. Don't forget to remove from array inside widget. */
@@ -347,6 +371,7 @@ export class BotImage extends Base {
 
       // Drag functionality
       const startDrag = (startEvent: MouseEvent) => {
+          console.time("drag")
         let newIndex = index
         const buttonWidth = $button.getBoundingClientRect().width
         const mouseMoveHandler = (event: MouseEvent) => {
@@ -386,6 +411,7 @@ export class BotImage extends Base {
             once: true,
           },
         )
+        console.timeEnd("drag")
       }
       $button.addEventListener('mousedown', startDrag)
       if (color.realColor === color.color)
@@ -483,21 +509,26 @@ export class BotImage extends Base {
   }
 
   protected moveStart(event: MouseEvent) {
+      console.log("move start")
     if (!this.lock)
       this.moveInfo = {
         globalX: this.position.globalX,
         globalY: this.position.globalY,
         clientX: event.clientX,
         clientY: event.clientY,
-      }
-  }
+      c }
 
-  protected moveStop() {
+  protected async moveStop() {
+      console.log("move stop")
     if (this.moveInfo) {
       this.moveInfo = undefined
+      console.time("updateAnchor")
       this.position.updateAnchor()
-      this.pixels.update()
+      console.timeEnd("updateAnchor")
+
+      console.time("updateColors")
       this.updateColors()
+      console.timeEnd("updateColors")
     }
   }
 

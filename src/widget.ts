@@ -117,7 +117,7 @@ export class Widget extends Base {
               x: 256,
               y: 32,
             }),
-            new Pixels(this.bot, image),
+            await Pixels.create(this.bot, image),
           )
         }
         this.bot.images.push(botImage)

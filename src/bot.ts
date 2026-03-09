@@ -90,6 +90,7 @@ export class WPlaceBot {
     if (save) {
       for (let index = 0; index < save.images.length; index++) {
         const image = save.images[index]!
+        console.log(image)
         addFavoriteLocation({
           x: image.position[0] - 1000,
           y: image.position[1] - 1000,
@@ -139,16 +140,23 @@ export class WPlaceBot {
       this.updateStars()
       await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
       await this.updateColors()
-
+console.log("load")
       // Load images
       if (save)
         for (let index = 0; index < save.images.length; index++) {
+            console.time('loading image')
+            console.log(save)
           const image = await BotImage.fromJSON(this, save.images[index]!)
           this.images.push(image)
           image.update()
+            console.timeEnd('loading image')
         }
+        console.time('loading map')
       await this.readMap()
+        console.timeEnd('loading map')
+        console.time('updating tasks')
       this.updateTasks()
+        console.timeEnd('updating tasks')
       // Unblock buttons
       this.widget.setDisabled('draw', false)
       this.widget.setDisabled('add-image', false)
@@ -304,6 +312,7 @@ export class WPlaceBot {
 
   /** Read and cache the map */
   public readMap() {
+      console.log("map")
     this.mapsCache.clear()
     const imagesToDownload = new Set<string>()
     for (let index = 0; index < this.images.length; index++) {
@@ -318,6 +327,7 @@ export class WPlaceBot {
           imagesToDownload.add(`${tileX}/${tileY}`)
     }
     let done = 0
+    console.log("Images to download:", [...imagesToDownload])
     return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, () =>
       Promise.all(
         [...imagesToDownload].map(async (x) => {
@@ -419,6 +429,9 @@ export class WPlaceBot {
 
   /** Draw one task */
   protected drawTask(task: DrawTask) {
+
+    if (this.unavailableColors.has(task.color)) return
+
     if (this.lastColor !== task.color) {
       ;(
         document.getElementById('color-' + task.color) as HTMLButtonElement
@@ -552,6 +565,7 @@ export class WPlaceBot {
 
   /** Update images position and contents */
   protected updateImages() {
+      console.log("ka")
     for (let index = 0; index < this.images.length; index++)
       this.images[index]!.update()
   }

@@ -421,12 +421,87 @@ class Pixels {
   width;
   brightness;
   exactColor;
+  static db = null;
+  static DB_NAME = "PixelBotCache";
+  static STORE_NAME = "pixelData";
+  static DB_VERSION = 1;
+  static async initDB() {
+    if (this.db)
+      return this.db;
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve(this.db);
+      };
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+          db.createObjectStore(this.STORE_NAME, { keyPath: "cacheKey" });
+        }
+      };
+    });
+  }
+  static async hashImage(image) {
+    console.time("hashtest");
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(image, 0, 0);
+    const dataURL = canvas.toDataURL();
+    let hash = 0;
+    for (let i = 0;i < dataURL.length; i++) {
+      const char = dataURL.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+    console.timeEnd("hashtest");
+    return `img_${Math.abs(hash)}`;
+  }
+  static async loadFromCache(key) {
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([this.STORE_NAME], "readonly");
+        const store = transaction.objectStore(this.STORE_NAME);
+        const request = store.get(JSON.stringify(key));
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result || null);
+      });
+    } catch {
+      console.warn("Failed to load from IndexedDB cache, will recompute");
+      return null;
+    }
+  }
+  static async saveToCache(key, data) {
+    try {
+      const db = await this.initDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([this.STORE_NAME], "readwrite");
+        const store = transaction.objectStore(this.STORE_NAME);
+        const request = store.put({
+          cacheKey: JSON.stringify(key),
+          ...data
+        });
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve();
+      });
+    } catch (error) {
+      console.warn("Failed to save to IndexedDB cache:", error);
+    }
+  }
   static async fromJSON(bot, data) {
+    console.log("test");
     const image = new Image;
     image.src = data.url.startsWith("http") ? await fetch(data.url, { cache: "no-store" }).then((x) => x.blob()).then((X) => URL.createObjectURL(X)) : data.url;
     await promisifyEventSource(image, ["load"], ["error"]);
-    return new Pixels(bot, image, data.width, data.brightness, data.exactColor);
+    let pixels = new Pixels(bot, image, data.width, data.brightness, data.exactColor);
+    await pixels.update();
+    return pixels;
   }
+  _cachedDataURL;
   canvas = document.createElement("canvas");
   context = this.canvas.getContext("2d");
   pixels;
@@ -447,17 +522,75 @@ class Pixels {
     if (exactColor) {
       this.resolution = 1;
       this.width = 1000;
-    } else
+    } else {
       this.resolution = this.image.naturalWidth / this.image.naturalHeight;
-    this.update();
+    }
   }
-  update() {
+  static async create(bot, image, width = image.naturalWidth, brightness = 0, exactColor = false) {
+    console.log("ka2");
+    const instance = new Pixels(bot, image, width, brightness, exactColor);
+    await instance.update();
+    return instance;
+  }
+  async update() {
+    console.trace("Called from:");
+    const imageHash = await Pixels.hashImage(this.image);
+    const cacheKey = {
+      imageHash,
+      width: this.width,
+      brightness: this.brightness,
+      exactColor: this.exactColor
+    };
+    const cached = await Pixels.loadFromCache(cacheKey);
+    if (cached) {
+      console.log("Loaded pixel data from cache");
+      this.pixels = cached.pixels;
+      this.colors.clear();
+      for (const [key, value] of Object.entries(cached.colors)) {
+        this.colors.set(Number(key), value);
+      }
+      console.time("draw");
+      this.drawCachedPixels();
+      console.timeEnd("draw");
+      return;
+    }
+    console.time("compute");
+    await this.computePixels();
+    console.timeEnd("compute");
+    const dataToCache = {
+      pixels: this.pixels,
+      colors: Object.fromEntries(this.colors),
+      width: this.width,
+      brightness: this.brightness,
+      exactColor: this.exactColor,
+      timestamp: Date.now()
+    };
+    console.time("cache");
+    await Pixels.saveToCache(cacheKey, dataToCache);
+    console.timeEnd("cache");
+  }
+  drawCachedPixels() {
+    this.canvas.width = this.width;
+    this.canvas.height = this.height;
+    this.context.imageSmoothingEnabled = false;
+    this.context.imageSmoothingQuality = "low";
+    for (let y = 0;y < this.pixels.length; y++) {
+      for (let x = 0;x < this.pixels[y].length; x++) {
+        const colorIndex = this.pixels[y][x];
+        if (colorIndex !== 0) {
+          this.context.fillStyle = `oklab(${COLORS[colorIndex][0] * 100}% ${COLORS[colorIndex][1]} ${COLORS[colorIndex][2]})`;
+          this.context.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+  }
+  async computePixels(batchSize = 1000) {
     this.canvas.width = this.width;
     this.canvas.height = this.height;
     this.colors.clear();
     const colorCache = new Map;
     for (let index = 1;index < 64; index++) {
-      if (this.exactColor || !this.bot.unavailableColors.has(index))
+      if (this.exactColor)
         colorCache.set(COLORS_RGB[index], [index, index]);
     }
     this.context.imageSmoothingEnabled = false;
@@ -465,20 +598,24 @@ class Pixels {
     this.context.drawImage(this.image, 0, 0, this.canvas.width, this.canvas.height);
     this.pixels = Array.from({ length: this.canvas.height }, () => new Array(this.canvas.width));
     const data = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height).data;
-    for (let y = 0;y < this.canvas.height; y++) {
-      for (let x = 0;x < this.canvas.width; x++) {
-        const index = (y * this.canvas.width + x) * 4;
+    const totalPixels = this.canvas.width * this.canvas.height;
+    for (let start = 0;start < totalPixels; start += batchSize) {
+      const end = Math.min(start + batchSize, totalPixels);
+      for (let i = start;i < end; i++) {
+        const y = Math.floor(i / this.canvas.width);
+        const x = i % this.canvas.width;
+        const index = i * 4;
         const r = data[index];
         const g = data[index + 1];
         const b = data[index + 2];
         const a = data[index + 3];
         const key = `${r},${g},${b}`;
+        let min;
+        let minReal;
         if (this.exactColor) {
           this.pixels[y][x] = a < 100 ? 0 : COLORS_RGB.indexOf(key);
           continue;
         }
-        let min;
-        let minReal;
         if (a < 100)
           min = minReal = 0;
         else if (colorCache.has(key))
@@ -489,7 +626,7 @@ class Pixels {
           for (let colorIndex = 0;colorIndex < COLORS.length; colorIndex++) {
             const color = COLORS[colorIndex];
             const delta = deltaE2000(rgbToOklab(r, g, b), color, this.brightness);
-            if (!this.bot.unavailableColors.has(colorIndex) && delta < minDelta) {
+            if (delta < minDelta) {
               minDelta = delta;
               min = colorIndex;
             }
@@ -508,28 +645,43 @@ class Pixels {
         const stat = this.colors.get(minReal);
         if (stat)
           stat.amount++;
-        else {
-          this.colors.set(minReal, {
-            color: min,
-            amount: 1,
-            realColor: minReal
-          });
-        }
+        else
+          this.colors.set(minReal, { color: min, amount: 1, realColor: minReal });
       }
+      const percent = Math.floor(end / totalPixels * 100);
+      this.bot.widget.status = `Computing pixels: ${percent}%`;
+      await new Promise((r) => setTimeout(r, 0));
     }
   }
   toJSON() {
-    const canvas = document.createElement("canvas");
-    canvas.width = this.image.naturalWidth;
-    canvas.height = this.image.naturalHeight;
-    const context = canvas.getContext("2d");
-    context.drawImage(this.image, 0, 0);
+    if (!this._cachedDataURL) {
+      const canvas = document.createElement("canvas");
+      canvas.width = this.image.naturalWidth;
+      canvas.height = this.image.naturalHeight;
+      const context = canvas.getContext("2d");
+      context.drawImage(this.image, 0, 0);
+      this._cachedDataURL = canvas.toDataURL("image/webp", 1);
+    }
     return {
-      url: canvas.toDataURL("image/webp", 1),
+      url: this._cachedDataURL,
       width: this.width,
       brightness: this.brightness,
       exactColor: this.exactColor
     };
+  }
+  static async clearCache() {
+    try {
+      const db = await Pixels.initDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([this.STORE_NAME], "readwrite");
+        const store = transaction.objectStore(this.STORE_NAME);
+        const request = store.clear();
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve();
+      });
+    } catch (error) {
+      console.warn("Failed to clear cache:", error);
+    }
   }
 }
 
@@ -704,6 +856,7 @@ class BotImage extends Base2 {
   colors;
   lock;
   static async fromJSON(bot, data) {
+    console.log("botimage");
     return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels, data.drawColorsInOrder, data.colors, data.lock);
   }
   element = document.createElement("div");
@@ -799,19 +952,36 @@ class BotImage extends Base2 {
     });
     this.registerEvent(this.$lock, "click", () => {
       this.lock = !this.lock;
+      console.time("update");
       this.update();
+      console.timeEnd("update");
+      console.time("save");
       save(this.bot);
+      console.timeEnd("save");
     });
     this.registerEvent(this.$delete, "click", this.destroy.bind(this));
     this.registerEvent(this.$export, "click", this.export.bind(this));
     this.registerEvent(this.$topbar, "mousedown", this.moveStart.bind(this));
     this.registerEvent(this.$canvas, "mousedown", this.moveStart.bind(this));
-    this.registerEvent(document, "mouseup", this.moveStop.bind(this));
+    this.registerEvent(document, "mouseup", function(e) {
+      const start = performance.now();
+      this.moveStop(e);
+      requestAnimationFrame(() => {
+        const end = performance.now();
+        console.log(`Post-mouseup frame delay: ${end - start}ms`);
+      });
+    }.bind(this));
     this.registerEvent(document, "mousemove", this.move.bind(this));
     for (const $resize of this.element.querySelectorAll(".resize"))
       this.registerEvent($resize, "mousedown", this.resizeStart.bind(this));
     this.update();
     this.updateColors();
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        console.log("Long task:", entry.duration, entry);
+      }
+    });
+    observer.observe({ entryTypes: ["longtask"] });
   }
   toJSON() {
     return {
@@ -826,6 +996,7 @@ class BotImage extends Base2 {
     };
   }
   updateTasks() {
+    console.time("task");
     this.tasks.length = 0;
     const position = this.position.clone();
     const skipColors = new Set;
@@ -853,8 +1024,10 @@ class BotImage extends Base2 {
       this.tasks.sort((a, b) => (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0));
     this.update();
     this.bot.widget.update();
+    console.timeEnd("task");
   }
   update() {
+    console.time("update image");
     const { x, y } = this.position.toScreenPosition();
     this.element.style.transform = `translate(${x}px, ${y}px)`;
     this.element.style.width = `${this.position.pixelSize * this.pixels.width}px`;
@@ -873,6 +1046,7 @@ class BotImage extends Base2 {
     this.$progressLine.style.transform = `scaleX(${percent}%)`;
     this.$wrapper.classList[this.lock ? "add" : "remove"]("no-pointer-events");
     this.$lock.textContent = this.lock ? "\uD83D\uDD12" : "\uD83D\uDD13";
+    console.timeEnd("update image");
   }
   destroy() {
     super.destroy();
@@ -932,6 +1106,7 @@ class BotImage extends Base2 {
       $button.style.setProperty("--wwidth", itemWidth + "%");
       this.$colors.append($button);
       const startDrag = (startEvent) => {
+        console.time("drag");
         let newIndex = index;
         const buttonWidth = $button.getBoundingClientRect().width;
         const mouseMoveHandler = (event) => {
@@ -962,6 +1137,7 @@ class BotImage extends Base2 {
         }, {
           once: true
         });
+        console.timeEnd("drag");
       };
       $button.addEventListener("mousedown", startDrag);
       if (color.realColor === color.color)
@@ -1060,6 +1236,7 @@ class BotImage extends Base2 {
     }
   }
   moveStart(event) {
+    console.log("move start");
     if (!this.lock)
       this.moveInfo = {
         globalX: this.position.globalX,
@@ -1068,12 +1245,16 @@ class BotImage extends Base2 {
         clientY: event.clientY
       };
   }
-  moveStop() {
+  async moveStop() {
+    console.log("move stop");
     if (this.moveInfo) {
       this.moveInfo = undefined;
+      console.time("updateAnchor");
       this.position.updateAnchor();
-      this.pixels.update();
+      console.timeEnd("updateAnchor");
+      console.time("updateColors");
       this.updateColors();
+      console.timeEnd("updateColors");
     }
   }
   move(event) {
@@ -1614,7 +1795,7 @@ class Widget extends Base2 {
         botImage = new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
           x: 256,
           y: 32
-        }), new Pixels(this.bot, image));
+        }), await Pixels.create(this.bot, image));
       }
       this.bot.images.push(botImage);
       await this.bot.readMap();
@@ -1705,6 +1886,7 @@ class WPlaceBot {
     if (save2) {
       for (let index = 0;index < save2.images.length; index++) {
         const image = save2.images[index];
+        console.log(image);
         addFavoriteLocation({
           x: image.position[0] - 1000,
           y: image.position[1] - 1000
@@ -1739,14 +1921,22 @@ class WPlaceBot {
       this.updateStars();
       await wait(500);
       await this.updateColors();
+      console.log("load");
       if (save2)
         for (let index = 0;index < save2.images.length; index++) {
+          console.time("loading image");
+          console.log(save2);
           const image = await BotImage.fromJSON(this, save2.images[index]);
           this.images.push(image);
           image.update();
+          console.timeEnd("loading image");
         }
+      console.time("loading map");
       await this.readMap();
+      console.timeEnd("loading map");
+      console.time("updating tasks");
       this.updateTasks();
+      console.timeEnd("updating tasks");
       this.widget.setDisabled("draw", false);
       this.widget.setDisabled("add-image", false);
     });
@@ -1854,6 +2044,7 @@ class WPlaceBot {
     fire("mouseup", endX, endY);
   }
   readMap() {
+    console.log("map");
     this.mapsCache.clear();
     const imagesToDownload = new Set;
     for (let index = 0;index < this.images.length; index++) {
@@ -1864,6 +2055,7 @@ class WPlaceBot {
           imagesToDownload.add(`${tileX}/${tileY}`);
     }
     let done = 0;
+    console.log("Images to download:", [...imagesToDownload]);
     return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, () => Promise.all([...imagesToDownload].map(async (x) => {
       this.mapsCache.set(x, await Pixels.fromJSON(this, {
         url: `https://backend.wplace.live/files/s0/tiles/${x}.png`,
@@ -1925,6 +2117,8 @@ class WPlaceBot {
     }
   }
   drawTask(task) {
+    if (this.unavailableColors.has(task.color))
+      return;
     if (this.lastColor !== task.color) {
       document.getElementById("color-" + task.color).click();
       this.lastColor = task.color;
@@ -2018,6 +2212,7 @@ class WPlaceBot {
     ].slice(0, FAVORITE_LOCATIONS.length);
   }
   updateImages() {
+    console.log("ka");
     for (let index = 0;index < this.images.length; index++)
       this.images[index].update();
   }
