@@ -181,6 +181,31 @@ console.log("load")
         await this.widget.run('Initializing draw', () =>
           Promise.all([this.updateColors(), this.readMap()]),
         )
+
+        const canvas = document.querySelector(".maplibregl-canvas")
+        const firstTask = this.images[0].tasks[0]
+
+        function waitForZoom(minPixelSize: number) {
+          return new Promise<void>(resolve => {
+            function step() {
+              if (firstTask.position.pixelSize >= minPixelSize) {
+                resolve()
+                return
+              }
+              canvas.dispatchEvent(new WheelEvent("wheel",{
+                deltaY:-500,
+                clientX:canvas.clientWidth/2,
+                clientY:canvas.clientHeight/2,
+                bubbles:true
+              }))
+              requestAnimationFrame(step)
+            }
+            step()
+          })
+        }
+
+        await waitForZoom(2)
+
         // Stop mouse messing with drawing by capturing event
         globalThis.addEventListener('mousemove', prevent, true)
         $canvas.addEventListener('wheel', prevent, true)
