@@ -516,7 +516,8 @@ observer.observe({ entryTypes: ["longtask"] });
         globalY: this.position.globalY,
         clientX: event.clientX,
         clientY: event.clientY,
-      c }
+      }
+  }
 
   protected async moveStop() {
       console.log("move stop")
