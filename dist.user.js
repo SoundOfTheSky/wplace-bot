@@ -533,7 +533,6 @@ class Pixels {
     return instance;
   }
   async update() {
-    console.trace("Called from:");
     const imageHash = await Pixels.hashImage(this.image);
     const cacheKey = {
       imageHash,
@@ -605,10 +604,10 @@ class Pixels {
         const y = Math.floor(i / this.canvas.width);
         const x = i % this.canvas.width;
         const index = i * 4;
-        const r = data[index];
-        const g = data[index + 1];
-        const b = data[index + 2];
-        const a = data[index + 3];
+        const r = Math.round(data[index]);
+        const g = Math.round(data[index + 1]);
+        const b = Math.round(data[index + 2]);
+        const a = Math.round(data[index + 3]);
         const key = `${r},${g},${b}`;
         let min;
         let minReal;
@@ -1677,6 +1676,57 @@ var style_default = `/* stylelint-disable declaration-no-important */
   height: 1px;
   pointer-events: none;
 }
+
+dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: var(--text) 2px solid;
+  background: var(--background);
+  color: var(--text);
+  font-family: 'Tiny5', sans-serif;
+  padding: 16px;
+  min-width: 220px;
+}
+
+dialog::backdrop {
+  background: rgba(0,0,0,0.45);
+}
+
+dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+dialog label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+dialog input[type='number'] {
+  width: 100px;
+  padding: 4px 6px;
+  border: var(--text) 2px solid;
+  background: var(--background);
+  color: var(--text);
+  font-family: 'Tiny5', sans-serif;
+}
+
+dialog button {
+  padding: 4px 8px;
+  border: var(--text) 2px solid;
+  background: var(--main);
+  color: var(--text-invert);
+  font-family: 'Tiny5', sans-serif;
+  cursor: pointer;
+}
+
+dialog button:hover {
+  background: var(--main-hover);
+}
 `;
 
 // src/errors.ts
@@ -1792,16 +1842,40 @@ class Widget extends Base2 {
         const image = new Image;
         image.src = reader.result;
         await promisifyEventSource(image, ["load"], ["error"]);
+        const width = await new Promise((resolve, reject) => {
+          const dialog = document.createElement("dialog");
+          const form = document.createElement("form");
+          const label = document.createElement("label");
+          const number = document.createElement("input");
+          const ok = document.createElement("button");
+          form.method = "dialog";
+          label.textContent = "Width: ";
+          number.type = "number";
+          number.value = String(image.width);
+          number.min = "1";
+          ok.textContent = "OK";
+          ok.value = "ok";
+          label.appendChild(number);
+          form.appendChild(label);
+          form.appendChild(ok);
+          dialog.appendChild(form);
+          document.body.appendChild(dialog);
+          dialog.addEventListener("close", () => {
+            const value = dialog.returnValue === "ok" ? Number(number.value) : image.width;
+            dialog.remove();
+            resolve(value);
+          });
+          dialog.showModal();
+        });
         botImage = new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
           x: 256,
           y: 32
-        }), await Pixels.create(this.bot, image));
+        }), await Pixels.create(this.bot, image, width));
       }
       this.bot.images.push(botImage);
       await this.bot.readMap();
       botImage.updateTasks();
       save(this.bot, true);
-      document.location.reload();
     }, () => {
       this.setDisabled("add-image", false);
     });

@@ -191,7 +191,6 @@ export class Pixels {
 
   /** Update pixels of image. Checks cache first, then computes if needed. */
   public async update() {
-      console.trace("Called from:");
     // Try to load from cache first
     const imageHash = await Pixels.hashImage(this.image)
     const cacheKey: CacheKey = {
@@ -276,10 +275,10 @@ export class Pixels {
       const y = Math.floor(i / this.canvas.width)
       const x = i % this.canvas.width
       const index = i * 4
-      const r = data[index]!
-      const g = data[index + 1]!
-      const b = data[index + 2]!
-      const a = data[index + 3]!
+      const r = Math.round(data[index])
+      const g = Math.round(data[index + 1])
+      const b = Math.round(data[index + 2])
+      const a = Math.round(data[index + 3])
 
       const key = `${r},${g},${b}`
       let min!: number

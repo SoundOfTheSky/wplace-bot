@@ -363,3 +363,54 @@
   height: 1px;
   pointer-events: none;
 }
+
+dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: var(--text) 2px solid;
+  background: var(--background);
+  color: var(--text);
+  font-family: 'Tiny5', sans-serif;
+  padding: 16px;
+  min-width: 220px;
+}
+
+dialog::backdrop {
+  background: rgba(0,0,0,0.45);
+}
+
+dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+dialog label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+dialog input[type='number'] {
+  width: 100px;
+  padding: 4px 6px;
+  border: var(--text) 2px solid;
+  background: var(--background);
+  color: var(--text);
+  font-family: 'Tiny5', sans-serif;
+}
+
+dialog button {
+  padding: 4px 8px;
+  border: var(--text) 2px solid;
+  background: var(--main);
+  color: var(--text-invert);
+  font-family: 'Tiny5', sans-serif;
+  cursor: pointer;
+}
+
+dialog button:hover {
+  background: var(--main-hover);
+}

@@ -111,20 +111,52 @@ export class Widget extends Base {
           const image = new Image()
           image.src = reader.result as string
           await promisifyEventSource(image, ['load'], ['error'])
+
+          const width = await new Promise<number>((resolve, reject) => {
+            const dialog = document.createElement('dialog')
+            const form = document.createElement('form')
+            const label = document.createElement('label')
+            const number = document.createElement('input')
+            const ok = document.createElement('button')
+
+            form.method = 'dialog'
+
+            label.textContent = 'Width: '
+            number.type = 'number'
+            number.value = String(image.width)
+            number.min = '1'
+
+            ok.textContent = 'OK'
+            ok.value = 'ok'
+
+            label.appendChild(number)
+            form.appendChild(label)
+            form.appendChild(ok)
+            dialog.appendChild(form)
+            document.body.appendChild(dialog)
+
+            dialog.addEventListener('close', () => {
+                const value = dialog.returnValue === 'ok' ? Number(number.value) : image.width
+                dialog.remove()
+                resolve(value)
+            })
+
+              dialog.showModal()
+          })
+
           botImage = new BotImage(
             this.bot,
             WorldPosition.fromScreenPosition(this.bot, {
               x: 256,
               y: 32,
             }),
-            await Pixels.create(this.bot, image),
+            await Pixels.create(this.bot, image, width),
           )
         }
         this.bot.images.push(botImage)
         await this.bot.readMap()
         botImage.updateTasks()
         save(this.bot, true)
-        document.location.reload()
       },
       () => {
         this.setDisabled('add-image', false)
