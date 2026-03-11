@@ -113,10 +113,14 @@ export class BotImage extends Base {
       $drawTransparent: '.draw-transparent',
       $export: '.export',
       $lock: '.lock',
+      $settingsButton: '.settings',
+      $popup: '.wform.popup',
+      $closePopup: '.close-popup',
       $opacity: '.opacity',
       $progressLine: '.wprogress div',
       $progressText: '.wprogress span',
       $resetSize: '.reset-size',
+      $resizeNumber: '.resize-number',
       $settings: '.wform',
       $strategy: '.strategy',
       $topbar: '.wtopbar',
@@ -165,6 +169,17 @@ export class BotImage extends Base {
       save(this.bot)
     })
 
+    this.registerEvent(this.$resizeNumber, 'change', () => {
+        const newSize = Number(this.$resizeNumber.value)
+        if (newSize > 0) {
+            this.pixels.width = newSize
+            this.pixels.update()
+            this.updateColors()
+            this.update()
+            save(this.bot)
+        }
+    })
+
     // drawTransparent
     this.registerEvent(this.$drawTransparent, 'click', () => {
       this.drawTransparentPixels = this.$drawTransparent.checked
@@ -186,6 +201,15 @@ export class BotImage extends Base {
       console.time("save")
       save(this.bot)
       console.timeEnd("save")
+    })
+
+    // Settings
+    this.registerEvent(this.$settingsButton, 'click', () => {
+        this.$popup.classList.add('show')
+    })
+
+    this.registerEvent(this.$closePopup, 'click', () => {
+        this.$popup.classList.remove('show')
     })
 
     this.registerEvent(this.$delete, 'click', this.destroy.bind(this))

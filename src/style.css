@@ -414,3 +414,36 @@ dialog button {
 dialog button:hover {
   background: var(--main-hover);
 }
+
+.wform.popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid #ccc;
+  padding: 1rem;
+  box-shadow: 0 0 15px rgba(0,0,0,0.3);
+  display: none;
+  z-index: 999;
+}
+
+.wform.popup.show {
+  display: block;
+}
+
+.wform.popup .close-popup {
+  border: none;
+  background: #f00;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 24px;
+  text-align: center;
+  float: right;
+}
+
+.wform.popup .close-popup:hover {
+  background: #c00;
+}

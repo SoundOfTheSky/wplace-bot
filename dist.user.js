@@ -378,39 +378,46 @@ var image_default = `<div class="wtopbar">
   <button class="export">📤</button>
   <button class="lock">🔓</button>
   <button class="delete">❌</button>
+  <button class="settings">⚙️</button>
 </div>
+
 <div class="wrapper">
-  <div class="wform">
-    <div class="wprogress">
-      <div></div>
-      <span></span>
-    </div>
-    <div class="colors"></div>
-    <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>
-    <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
-    <label>
-      Strategy:&nbsp;<select class="strategy">
-        <option value="RANDOM" selected>Random</option>
-        <option value="DOWN">Down</option>
-        <option value="UP">Up</option>
-        <option value="LEFT">Left</option>
-        <option value="RIGHT">Right</option>
-        <option value="SPIRAL_FROM_CENTER">Spiral out</option>
-        <option value="SPIRAL_TO_CENTER">Spiral in</option>
-      </select>
-    </label>
-    <button class="reset-size">Reset size [<span></span>px]</button>
-    <label>
-      <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels
-    </label>
-    <label>
-      <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order
-    </label>
-  </div>
   <div class="resize n"></div>
   <div class="resize e"></div>
   <div class="resize s"></div>
   <div class="resize w"></div>
+</div>
+
+<div class="wform popup">
+   <button class="close-popup">✖</button>
+  <div class="wprogress">
+    <div></div>
+    <span></span>
+  </div>
+  <div class="colors"></div>
+  <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>
+  <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
+  <label>
+    Strategy:&nbsp;<select class="strategy">
+      <option value="RANDOM" selected>Random</option>
+      <option value="DOWN">Down</option>
+      <option value="UP">Up</option>
+      <option value="LEFT">Left</option>
+      <option value="RIGHT">Right</option>
+      <option value="SPIRAL_FROM_CENTER">Spiral out</option>
+      <option value="SPIRAL_TO_CENTER">Spiral in</option>
+    </select>
+  </label>
+  <label>
+      Resize to:&nbsp;<input type="number" class="resize-number" min="1" />
+  </label>
+  <button class="reset-size">Reset size [<span></span>px]</button>
+  <label>
+    <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels
+  </label>
+  <label>
+    <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order
+  </label>
 </div>
 `;
 
@@ -900,10 +907,14 @@ class BotImage extends Base2 {
       $drawTransparent: ".draw-transparent",
       $export: ".export",
       $lock: ".lock",
+      $settingsButton: ".settings",
+      $popup: ".wform.popup",
+      $closePopup: ".close-popup",
       $opacity: ".opacity",
       $progressLine: ".wprogress div",
       $progressText: ".wprogress span",
       $resetSize: ".reset-size",
+      $resizeNumber: ".resize-number",
       $settings: ".wform",
       $strategy: ".strategy",
       $topbar: ".wtopbar",
@@ -941,6 +952,16 @@ class BotImage extends Base2 {
       this.update();
       save(this.bot);
     });
+    this.registerEvent(this.$resizeNumber, "change", () => {
+      const newSize = Number(this.$resizeNumber.value);
+      if (newSize > 0) {
+        this.pixels.width = newSize;
+        this.pixels.update();
+        this.updateColors();
+        this.update();
+        save(this.bot);
+      }
+    });
     this.registerEvent(this.$drawTransparent, "click", () => {
       this.drawTransparentPixels = this.$drawTransparent.checked;
       save(this.bot);
@@ -957,6 +978,12 @@ class BotImage extends Base2 {
       console.time("save");
       save(this.bot);
       console.timeEnd("save");
+    });
+    this.registerEvent(this.$settingsButton, "click", () => {
+      this.$popup.classList.add("show");
+    });
+    this.registerEvent(this.$closePopup, "click", () => {
+      this.$popup.classList.remove("show");
     });
     this.registerEvent(this.$delete, "click", this.destroy.bind(this));
     this.registerEvent(this.$export, "click", this.export.bind(this));
@@ -1728,6 +1755,39 @@ dialog button {
 
 dialog button:hover {
   background: var(--main-hover);
+}
+
+.wform.popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid #ccc;
+  padding: 1rem;
+  box-shadow: 0 0 15px rgba(0,0,0,0.3);
+  display: none;
+  z-index: 999;
+}
+
+.wform.popup.show {
+  display: block;
+}
+
+.wform.popup .close-popup {
+  border: none;
+  background: #f00;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 24px;
+  text-align: center;
+  float: right;
+}
+
+.wform.popup .close-popup:hover {
+  background: #c00;
 }
 `;
 
