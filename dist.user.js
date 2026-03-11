@@ -1010,6 +1010,8 @@ class BotImage extends Base2 {
       const color = this.pixels.pixels[y][x];
       if (skipColors.has(color))
         continue;
+      if (this.bot.unavailableColors.has(color))
+        continue;
       position.globalX = this.position.globalX + x;
       position.globalY = this.position.globalY + y;
       const mapColor = position.getMapColor();
@@ -2212,8 +2214,6 @@ class WPlaceBot {
     }
   }
   drawTask(task) {
-    if (this.unavailableColors.has(task.color))
-      return;
     if (this.lastColor !== task.color) {
       document.getElementById("color-" + task.color).click();
       this.lastColor = task.color;

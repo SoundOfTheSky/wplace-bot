@@ -251,6 +251,7 @@ observer.observe({ entryTypes: ["longtask"] });
     for (const { x, y } of this.strategyPositionIterator()) {
       const color = this.pixels.pixels[y]![x]!
       if (skipColors.has(color)) continue
+      if (this.bot.unavailableColors.has(color)) continue
       position.globalX = this.position.globalX + x
       position.globalY = this.position.globalY + y
       const mapColor = position.getMapColor()

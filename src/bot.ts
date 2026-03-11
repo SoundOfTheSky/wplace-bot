@@ -454,9 +454,6 @@ console.log("load")
 
   /** Draw one task */
   protected drawTask(task: DrawTask) {
-
-    if (this.unavailableColors.has(task.color)) return
-
     if (this.lastColor !== task.color) {
       ;(
         document.getElementById('color-' + task.color) as HTMLButtonElement
