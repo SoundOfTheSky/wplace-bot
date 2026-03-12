@@ -923,6 +923,12 @@ class BotImage extends Base2 {
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
     this.$canvas = this.pixels.canvas;
     this.$wrapper.prepend(this.pixels.canvas);
+    const dirs = ["n", "e", "s", "w"];
+    for (const d of dirs) {
+      const el = document.createElement("div");
+      el.className = "resize " + d;
+      this.$canvas.appendChild(el);
+    }
     this.registerEvent(this.$strategy, "change", () => {
       this.strategy = this.$strategy.value;
       save(this.bot);
@@ -953,14 +959,17 @@ class BotImage extends Base2 {
       save(this.bot);
     });
     this.registerEvent(this.$resizeNumber, "change", () => {
-      const newSize = Number(this.$resizeNumber.value);
-      if (newSize > 0) {
-        this.pixels.width = newSize;
-        this.pixels.update();
-        this.updateColors();
-        this.update();
-        save(this.bot);
-      }
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        const newSize = Number(this.$resizeNumber.value);
+        if (newSize > 0) {
+          this.pixels.width = newSize;
+          this.pixels.update();
+          this.updateColors();
+          this.update();
+          save(this.bot);
+        }
+      }, 1000);
     });
     this.registerEvent(this.$drawTransparent, "click", () => {
       this.drawTransparentPixels = this.$drawTransparent.checked;
@@ -1706,7 +1715,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
   pointer-events: none;
 }
 
-dialog {
+.custom-dialog {
   position: fixed;
   top: 50%;
   left: 50%;
@@ -1719,23 +1728,23 @@ dialog {
   min-width: 220px;
 }
 
-dialog::backdrop {
+.custom-dialog::backdrop {
   background: rgba(0,0,0,0.45);
 }
 
-dialog form {
+.custom-dialog form {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-dialog label {
+.custom-dialog label {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-dialog input[type='number'] {
+.custom-dialog input[type='number'] {
   width: 100px;
   padding: 4px 6px;
   border: var(--text) 2px solid;
@@ -1744,7 +1753,7 @@ dialog input[type='number'] {
   font-family: 'Tiny5', sans-serif;
 }
 
-dialog button {
+.custom-dialog button {
   padding: 4px 8px;
   border: var(--text) 2px solid;
   background: var(--main);
@@ -1753,10 +1762,9 @@ dialog button {
   cursor: pointer;
 }
 
-dialog button:hover {
+.custom-dialog button:hover {
   background: var(--main-hover);
 }
-
 .wform.popup {
   position: fixed;
   top: 50%;
@@ -1910,6 +1918,7 @@ class Widget extends Base2 {
           const label = document.createElement("label");
           const number = document.createElement("input");
           const ok = document.createElement("button");
+          dialog.classList.add("custom-dialog");
           form.method = "dialog";
           label.textContent = "Width: ";
           number.type = "number";

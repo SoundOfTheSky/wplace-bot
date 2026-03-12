@@ -119,6 +119,8 @@ export class Widget extends Base {
             const number = document.createElement('input')
             const ok = document.createElement('button')
 
+            dialog.classList.add('custom-dialog')
+
             form.method = 'dialog'
 
             label.textContent = 'Width: '

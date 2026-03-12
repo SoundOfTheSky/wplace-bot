@@ -170,14 +170,17 @@ export class BotImage extends Base {
     })
 
     this.registerEvent(this.$resizeNumber, 'change', () => {
-        const newSize = Number(this.$resizeNumber.value)
-        if (newSize > 0) {
-            this.pixels.width = newSize
-            this.pixels.update()
-            this.updateColors()
-            this.update()
-            save(this.bot)
-        }
+        clearTimeout(timeout)
+        timeout = setTimeout(() => {
+            const newSize = Number(this.$resizeNumber.value)
+            if (newSize > 0) {
+                this.pixels.width = newSize
+                this.pixels.update()
+                this.updateColors()
+                this.update()
+                save(this.bot)
+            }
+        }, 1000)
     })
 
     // drawTransparent
