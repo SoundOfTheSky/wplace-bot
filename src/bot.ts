@@ -82,88 +82,89 @@ export class WPlaceBot {
   /** Last color drawn */
   protected lastColor?: number
 
-  public constructor() {
-    // Try to load save
-    const save = loadSave()
+public constructor() {
+    void this.bootstrap()
+}
 
-    // Preinit save data before page has loaded
+private async bootstrap() {
+    const save = await loadSave()
+
     if (save) {
-      for (let index = 0; index < save.images.length; index++) {
-        const image = save.images[index]!
-        console.log(image)
-        addFavoriteLocation({
-          x: image.position[0] - 1000,
-          y: image.position[1] - 1000,
-        })
-        addFavoriteLocation({
-          x: image.position[0] + 1000,
-          y: image.position[1] + 1000,
-        })
-      }
-      this.strategy = save.strategy
+        for (let index = 0; index < save.images.length; index++) {
+            const image = save.images[index]!
+                addFavoriteLocation({
+                    x: image.position[0] - 1000,
+                    y: image.position[1] - 1000,
+                })
+                addFavoriteLocation({
+                    x: image.position[0] + 1000,
+                    y: image.position[1] + 1000,
+                })
+        }
+        this.strategy = save.strategy
     }
 
     this.registerFetchInterceptor()
 
-    // Embed styles
     const style = document.createElement('style')
-    style.textContent = (css as string).replace(
-      'FAKE_FAVORITE_LOCATIONS',
-      FAVORITE_LOCATIONS.length.toString(),
-    )
+        style.textContent = (css as string).replace(
+            'FAKE_FAVORITE_LOCATIONS',
+            FAVORITE_LOCATIONS.length.toString(),
+        )
     document.head.append(style)
 
     void this.widget.run('Initializing', async () => {
-      // Waiting for all of website to load
-      await this.waitForElement('login', '.avatar.center-absolute.absolute')
-      await this.waitForElement(
-        'pixel count',
-        '.btn.btn-primary.btn-lg.relative.z-30 canvas',
-      )
-      const $canvasContainer = await this.waitForElement(
-        'canvas',
-        '.maplibregl-canvas-container',
-      )
-      new MutationObserver((mutations: MutationRecord[]) => {
-        // If elements were removed, update stars
-        for (let index = 0; index < mutations.length; index++)
-          if (mutations[index]!.removedNodes.length !== 0) {
-            this.updateStars()
-            break
-          }
-        this.updateImages()
-      }).observe($canvasContainer, {
-        attributes: true,
-        childList: true,
-        subtree: true,
-      })
-      this.updateStars()
-      await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
-      await this.updateColors()
-console.log("load")
-      // Load images
-      if (save)
-        for (let index = 0; index < save.images.length; index++) {
+        await this.waitForElement('login', '.avatar.center-absolute.absolute')
+        await this.waitForElement(
+            'pixel count',
+            '.btn.btn-primary.btn-lg.relative.z-30 canvas',
+        )
+
+        const $canvasContainer = await this.waitForElement(
+            'canvas',
+            '.maplibregl-canvas-container',
+        )
+
+        new MutationObserver((mutations: MutationRecord[]) => {
+            for (let index = 0; index < mutations.length; index++)
+                if (mutations[index]!.removedNodes.length !== 0) {
+                    this.updateStars()
+                    break
+                }
+                this.updateImages()
+        }).observe($canvasContainer, {
+            attributes: true,
+            childList: true,
+            subtree: true,
+        })
+
+        this.updateStars()
+        console.log(this.$stars)
+
+        await wait(500)
+        await this.updateColors()
+
+        if (save)
+            for (let index = 0; index < save.images.length; index++) {
             console.time('loading image')
-            console.log(save)
-          const image = await BotImage.fromJSON(this, save.images[index]!)
-          this.images.push(image)
-          image.update()
+            const image = await BotImage.fromJSON(this, save.images[index]!)
+            this.images.push(image)
+            image.update()
             console.timeEnd('loading image')
         }
-        console.time('loading map')
-      await this.readMap()
-        console.timeEnd('loading map')
-        console.time('updating tasks')
-      this.updateTasks()
-        console.timeEnd('updating tasks')
-      // Unblock buttons
-      this.widget.setDisabled('draw', false)
-      this.widget.setDisabled('add-image', false)
-      // this.widget.setDisabled('pumpkin-hunt', false)
-    })
-  }
 
+        console.time('loading map')
+        await this.readMap()
+        console.timeEnd('loading map')
+
+        console.time('updating tasks')
+        this.updateTasks()
+        console.timeEnd('updating tasks')
+
+        this.widget.setDisabled('draw', false)
+        this.widget.setDisabled('add-image', false)
+    })
+}
   /** Start drawing */
   public draw() {
     this.widget.setDisabled('draw', true)
@@ -397,6 +398,7 @@ console.log("load")
     let minI2 = 1
     let min1 = Infinity
     let min2 = Infinity
+    console.log(this.$stars)
     for (let index = 0; index < this.$stars.length; index++) {
       const { x, y } = extractScreenPositionFromStar(this.$stars[index]!)
       if (x < position.x && y < position.y) {

@@ -158,7 +158,7 @@ export class Widget extends Base {
         this.bot.images.push(botImage)
         await this.bot.readMap()
         botImage.updateTasks()
-        save(this.bot, true)
+        await save(this.bot, true)
       },
       () => {
         this.setDisabled('add-image', false)

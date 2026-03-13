@@ -377,8 +377,8 @@ function colorToCSS(colorId) {
 var image_default = `<div class="wtopbar">
   <button class="export">📤</button>
   <button class="lock">🔓</button>
-  <button class="delete">❌</button>
   <button class="settings">⚙️</button>
+  <button class="delete">❌</button>
 </div>
 
 <div class="wrapper">
@@ -692,34 +692,45 @@ class Pixels {
 }
 
 // src/save.ts
-function loadSave() {
-  const json = localStorage.getItem("wbot");
-  let save;
-  try {
-    save = JSON.parse(json);
-    if (typeof save !== "object")
-      throw new Error("NOT VALID SAVE");
-    if (save.version === 1) {
-      const _save = save;
-      save.images = _save.widget.images;
-      save.strategy = _save.widget.strategy;
-      delete _save.widget;
-    }
-  } catch {
-    localStorage.removeItem("wbot");
-    save = undefined;
-  }
-  return save;
+var DB_NAME = "wbotDB";
+var STORE_NAME = "botStore";
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
 }
-var saveTimeout;
-function save(bot, immediate = false) {
-  clearTimeout(saveTimeout);
-  if (immediate)
-    localStorage.setItem("wbot", JSON.stringify(bot));
-  else
-    saveTimeout = setTimeout(() => {
-      localStorage.setItem("wbot", JSON.stringify(bot));
-    }, 1000);
+async function save(bot, immediate = false) {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const store = tx.objectStore(STORE_NAME);
+  const data = JSON.stringify(bot);
+  store.put(data, "wbot");
+  await tx.complete;
+}
+async function loadSave() {
+  const db = await openDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.get("wbot");
+    request.onsuccess = () => {
+      try {
+        const save2 = JSON.parse(request.result);
+        resolve(save2);
+      } catch {
+        resolve(undefined);
+      }
+    };
+    request.onerror = () => resolve(undefined);
+  });
 }
 
 // src/world-position.ts
@@ -923,12 +934,6 @@ class BotImage extends Base2 {
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
     this.$canvas = this.pixels.canvas;
     this.$wrapper.prepend(this.pixels.canvas);
-    const dirs = ["n", "e", "s", "w"];
-    for (const d of dirs) {
-      const el = document.createElement("div");
-      el.className = "resize " + d;
-      this.$canvas.appendChild(el);
-    }
     this.registerEvent(this.$strategy, "change", () => {
       this.strategy = this.$strategy.value;
       save(this.bot);
@@ -1938,15 +1943,17 @@ class Widget extends Base2 {
           });
           dialog.showModal();
         });
+        console.log("test123");
         botImage = new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
           x: 256,
           y: 32
         }), await Pixels.create(this.bot, image, width));
+        console.log("test123");
       }
       this.bot.images.push(botImage);
       await this.bot.readMap();
       botImage.updateTasks();
-      save(this.bot, true);
+      await save(this.bot, true);
     }, () => {
       this.setDisabled("add-image", false);
     });
@@ -2027,11 +2034,13 @@ class WPlaceBot {
   markerPixelPositionResolvers = [];
   lastColor;
   constructor() {
-    const save2 = loadSave();
+    this.bootstrap();
+  }
+  async bootstrap() {
+    const save2 = await loadSave();
     if (save2) {
       for (let index = 0;index < save2.images.length; index++) {
         const image = save2.images[index];
-        console.log(image);
         addFavoriteLocation({
           x: image.position[0] - 1000,
           y: image.position[1] - 1000
@@ -2064,13 +2073,12 @@ class WPlaceBot {
         subtree: true
       });
       this.updateStars();
+      console.log(this.$stars);
       await wait(500);
       await this.updateColors();
-      console.log("load");
       if (save2)
         for (let index = 0;index < save2.images.length; index++) {
           console.time("loading image");
-          console.log(save2);
           const image = await BotImage.fromJSON(this, save2.images[index]);
           this.images.push(image);
           image.update();
@@ -2246,6 +2254,7 @@ class WPlaceBot {
     let minI2 = 1;
     let min1 = Infinity;
     let min2 = Infinity;
+    console.log(this.$stars);
     for (let index = 0;index < this.$stars.length; index++) {
       const { x, y } = extractScreenPositionFromStar(this.$stars[index]);
       if (x < position.x && y < position.y) {
