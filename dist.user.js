@@ -2221,7 +2221,6 @@ class WPlaceBot {
         const response = await fetch(url, { method: "HEAD", cache: "no-store" });
         const lastModified = response.headers.get("last-modified") || "";
         const cached = this.mapsCache.get(x);
-        console.log(this.mapsCache);
         if (!cached || cached.lastModified !== lastModified) {
           const newPixels = await Pixels.fromJSON(this, { url, exactColor: true }, { skipCache: true });
           newPixels.lastModified = lastModified;
