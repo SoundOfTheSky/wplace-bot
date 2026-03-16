@@ -146,20 +146,13 @@ private async bootstrap() {
 
         if (save)
             for (let index = 0; index < save.images.length; index++) {
-            console.time('loading image')
             const image = await BotImage.fromJSON(this, save.images[index]!)
             this.images.push(image)
             image.update()
-            console.timeEnd('loading image')
         }
 
-        console.time('loading map')
         await this.readMap()
-        console.timeEnd('loading map')
-
-        console.time('updating tasks')
         this.updateTasks()
-        console.timeEnd('updating tasks')
 
         this.widget.setDisabled('draw', false)
         this.widget.setDisabled('add-image', false)
@@ -169,8 +162,6 @@ private async bootstrap() {
   public draw() {
     this.widget.setDisabled('draw', true)
     this.widget.status = ''
-    // Clear maps cache to refetch pixels
-    this.mapsCache.clear()
     const $canvas =
       document.querySelector<HTMLDivElement>('.maplibregl-canvas')!
     const prevent = (event: MouseEvent | WheelEvent) => {
@@ -205,7 +196,7 @@ private async bootstrap() {
           })
         }
 
-        await waitForZoom(2)
+        await waitForZoom(4)
 
         // Stop mouse messing with drawing by capturing event
         globalThis.addEventListener('mousemove', prevent, true)
@@ -337,39 +328,41 @@ private async bootstrap() {
   }
 
   /** Read and cache the map */
-  public readMap() {
-      console.log("map")
-    this.mapsCache.clear()
-    const imagesToDownload = new Set<string>()
-    for (let index = 0; index < this.images.length; index++) {
-      const image = this.images[index]!
-      const { tileX: tileXEnd, tileY: tileYEnd } = new WorldPosition(
-        this,
-        image.position.globalX + image.pixels.pixels[0]!.length,
-        image.position.globalY + image.pixels.pixels.length,
-      )
-      for (let tileX = image.position.tileX; tileX <= tileXEnd; tileX++)
-        for (let tileY = image.position.tileY; tileY <= tileYEnd; tileY++)
-          imagesToDownload.add(`${tileX}/${tileY}`)
-    }
-    let done = 0
-    console.log("Images to download:", [...imagesToDownload])
-    return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, () =>
-      Promise.all(
-        [...imagesToDownload].map(async (x) => {
-          this.mapsCache.set(
-            x,
-            await Pixels.fromJSON(this, {
-              url: `https://backend.wplace.live/files/s0/tiles/${x}.png`,
-              exactColor: true,
-            }),
-          )
-          this.widget.status = `⌛ Reading map [${++done}/${imagesToDownload.size}]`
-        }),
-      ),
+public async readMap() {
+  const imagesToDownload = new Set<string>()
+  for (let image of this.images) {
+    const { tileX: tileXEnd, tileY: tileYEnd } = new WorldPosition(
+      this,
+      image.position.globalX + image.pixels.pixels[0]!.length,
+      image.position.globalY + image.pixels.pixels.length,
     )
+    for (let tileX = image.position.tileX; tileX <= tileXEnd; tileX++)
+      for (let tileY = image.position.tileY; tileY <= tileYEnd; tileY++)
+        imagesToDownload.add(`${tileX}/${tileY}`)
   }
 
+  let done = 0
+  console.log("Images to download:", [...imagesToDownload])
+
+  return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, async () => {
+    await Promise.all(
+      [...imagesToDownload].map(async (x) => {
+        const url = `https://backend.wplace.live/files/s0/tiles/${x}.png`
+        const response = await fetch(url, { method: 'HEAD', cache: 'no-store' })
+        const lastModified = response.headers.get('last-modified') || ''
+        const cached = this.mapsCache.get(x)
+
+        if (!cached || cached.lastModified !== lastModified) {
+          const newPixels = await Pixels.fromJSON(this, { url, exactColor: true }, { skipCache: true })
+          newPixels.lastModified = lastModified
+          this.mapsCache.set(x, newPixels)
+        }
+
+        this.widget.status = `⌛ Reading map [${++done}/${imagesToDownload.size}]`
+      }),
+    )
+  })
+}
   /** Wait until window is unfocused */
   public waitForUnfocus() {
     return this.widget.run(
@@ -589,7 +582,6 @@ private async bootstrap() {
 
   /** Update images position and contents */
   protected updateImages() {
-      console.log("ka")
     for (let index = 0; index < this.images.length; index++)
       this.images[index]!.update()
   }

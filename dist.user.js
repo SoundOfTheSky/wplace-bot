@@ -499,13 +499,13 @@ class Pixels {
       console.warn("Failed to save to IndexedDB cache:", error);
     }
   }
-  static async fromJSON(bot, data) {
-    console.log("test");
+  static async fromJSON(bot, data, options) {
+    const skipCache = options?.skipCache ?? false;
     const image = new Image;
     image.src = data.url.startsWith("http") ? await fetch(data.url, { cache: "no-store" }).then((x) => x.blob()).then((X) => URL.createObjectURL(X)) : data.url;
     await promisifyEventSource(image, ["load"], ["error"]);
     let pixels = new Pixels(bot, image, data.width, data.brightness, data.exactColor);
-    await pixels.update();
+    await pixels.update(skipCache);
     return pixels;
   }
   _cachedDataURL;
@@ -534,46 +534,43 @@ class Pixels {
     }
   }
   static async create(bot, image, width = image.naturalWidth, brightness = 0, exactColor = false) {
-    console.log("ka2");
     const instance = new Pixels(bot, image, width, brightness, exactColor);
     await instance.update();
     return instance;
   }
-  async update() {
-    const imageHash = await Pixels.hashImage(this.image);
-    const cacheKey = {
-      imageHash,
-      width: this.width,
-      brightness: this.brightness,
-      exactColor: this.exactColor
-    };
-    const cached = await Pixels.loadFromCache(cacheKey);
-    if (cached) {
-      console.log("Loaded pixel data from cache");
-      this.pixels = cached.pixels;
-      this.colors.clear();
-      for (const [key, value] of Object.entries(cached.colors)) {
-        this.colors.set(Number(key), value);
+  async update(skipCache = false) {
+    if (!skipCache) {
+      const imageHash = await Pixels.hashImage(this.image);
+      const cacheKey2 = {
+        imageHash,
+        width: this.width,
+        brightness: this.brightness,
+        exactColor: this.exactColor
+      };
+      const cached = await Pixels.loadFromCache(cacheKey2);
+      if (cached) {
+        console.log("Loaded pixel data from cache");
+        this.pixels = cached.pixels;
+        this.colors.clear();
+        for (const [key, value] of Object.entries(cached.colors)) {
+          this.colors.set(Number(key), value);
+        }
+        this.drawCachedPixels();
+        return;
       }
-      console.time("draw");
-      this.drawCachedPixels();
-      console.timeEnd("draw");
-      return;
     }
-    console.time("compute");
     await this.computePixels();
-    console.timeEnd("compute");
-    const dataToCache = {
-      pixels: this.pixels,
-      colors: Object.fromEntries(this.colors),
-      width: this.width,
-      brightness: this.brightness,
-      exactColor: this.exactColor,
-      timestamp: Date.now()
-    };
-    console.time("cache");
-    await Pixels.saveToCache(cacheKey, dataToCache);
-    console.timeEnd("cache");
+    if (!skipCache) {
+      const dataToCache = {
+        pixels: this.pixels,
+        colors: Object.fromEntries(this.colors),
+        width: this.width,
+        brightness: this.brightness,
+        exactColor: this.exactColor,
+        timestamp: Date.now()
+      };
+      await Pixels.saveToCache(cacheKey, dataToCache);
+    }
   }
   drawCachedPixels() {
     this.canvas.width = this.width;
@@ -1943,12 +1940,10 @@ class Widget extends Base2 {
           });
           dialog.showModal();
         });
-        console.log("test123");
         botImage = new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
           x: 256,
           y: 32
         }), await Pixels.create(this.bot, image, width));
-        console.log("test123");
       }
       this.bot.images.push(botImage);
       await this.bot.readMap();
@@ -2078,18 +2073,12 @@ class WPlaceBot {
       await this.updateColors();
       if (save2)
         for (let index = 0;index < save2.images.length; index++) {
-          console.time("loading image");
           const image = await BotImage.fromJSON(this, save2.images[index]);
           this.images.push(image);
           image.update();
-          console.timeEnd("loading image");
         }
-      console.time("loading map");
       await this.readMap();
-      console.timeEnd("loading map");
-      console.time("updating tasks");
       this.updateTasks();
-      console.timeEnd("updating tasks");
       this.widget.setDisabled("draw", false);
       this.widget.setDisabled("add-image", false);
     });
@@ -2097,7 +2086,6 @@ class WPlaceBot {
   draw() {
     this.widget.setDisabled("draw", true);
     this.widget.status = "";
-    this.mapsCache.clear();
     const $canvas = document.querySelector(".maplibregl-canvas");
     const prevent = (event) => {
       if (!event.shiftKey)
@@ -2125,7 +2113,7 @@ class WPlaceBot {
           step();
         });
       }
-      await waitForZoom(2);
+      await waitForZoom(4);
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
       this.updateTasks();
@@ -2217,12 +2205,9 @@ class WPlaceBot {
     fire("mousemove", endX, endY);
     fire("mouseup", endX, endY);
   }
-  readMap() {
-    console.log("map");
-    this.mapsCache.clear();
+  async readMap() {
     const imagesToDownload = new Set;
-    for (let index = 0;index < this.images.length; index++) {
-      const image = this.images[index];
+    for (let image of this.images) {
       const { tileX: tileXEnd, tileY: tileYEnd } = new WorldPosition(this, image.position.globalX + image.pixels.pixels[0].length, image.position.globalY + image.pixels.pixels.length);
       for (let tileX = image.position.tileX;tileX <= tileXEnd; tileX++)
         for (let tileY = image.position.tileY;tileY <= tileYEnd; tileY++)
@@ -2230,13 +2215,21 @@ class WPlaceBot {
     }
     let done = 0;
     console.log("Images to download:", [...imagesToDownload]);
-    return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, () => Promise.all([...imagesToDownload].map(async (x) => {
-      this.mapsCache.set(x, await Pixels.fromJSON(this, {
-        url: `https://backend.wplace.live/files/s0/tiles/${x}.png`,
-        exactColor: true
+    return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, async () => {
+      await Promise.all([...imagesToDownload].map(async (x) => {
+        const url = `https://backend.wplace.live/files/s0/tiles/${x}.png`;
+        const response = await fetch(url, { method: "HEAD", cache: "no-store" });
+        const lastModified = response.headers.get("last-modified") || "";
+        const cached = this.mapsCache.get(x);
+        console.log(this.mapsCache);
+        if (!cached || cached.lastModified !== lastModified) {
+          const newPixels = await Pixels.fromJSON(this, { url, exactColor: true }, { skipCache: true });
+          newPixels.lastModified = lastModified;
+          this.mapsCache.set(x, newPixels);
+        }
+        this.widget.status = `⌛ Reading map [${++done}/${imagesToDownload.size}]`;
       }));
-      this.widget.status = `⌛ Reading map [${++done}/${imagesToDownload.size}]`;
-    })));
+    });
   }
   waitForUnfocus() {
     return this.widget.run("UNFOCUS WINDOW", () => new Promise((resolve) => {
@@ -2385,7 +2378,6 @@ class WPlaceBot {
     ].slice(0, FAVORITE_LOCATIONS.length);
   }
   updateImages() {
-    console.log("ka");
     for (let index = 0;index < this.images.length; index++)
       this.images[index].update();
   }

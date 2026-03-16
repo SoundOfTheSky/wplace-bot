@@ -121,8 +121,9 @@ export class Pixels {
   public static async fromJSON(
     bot: WPlaceBot,
     data: ReturnType<Pixels['toJSON']>,
+    options?: { skipCache?: boolean },
   ) {
-      console.log("test")
+    const skipCache = options?.skipCache ?? false
     const image = new Image()
     image.src = data.url.startsWith('http')
       ? await fetch(data.url, { cache: 'no-store' })
@@ -131,7 +132,7 @@ export class Pixels {
       : data.url
     await promisifyEventSource(image, ['load'], ['error'])
     let pixels = new Pixels(bot, image, data.width, data.brightness, data.exactColor)
-    await pixels.update()
+    await pixels.update(skipCache)
 
 
     return pixels
@@ -183,42 +184,41 @@ export class Pixels {
     brightness = 0,
     exactColor = false
   ) {
-      console.log("ka2")
     const instance = new Pixels(bot, image, width, brightness, exactColor)
     await instance.update()
     return instance
   }
 
   /** Update pixels of image. Checks cache first, then computes if needed. */
-  public async update() {
-    // Try to load from cache first
-    const imageHash = await Pixels.hashImage(this.image)
-    const cacheKey: CacheKey = {
-      imageHash,
-      width: this.width,
-      brightness: this.brightness,
-      exactColor: this.exactColor,
-    }
+  public async update(skipCache = false) {
 
-    const cached = await Pixels.loadFromCache(cacheKey)
-    if (cached) {
-      console.log('Loaded pixel data from cache')
-      this.pixels = cached.pixels
-      this.colors.clear()
-      for (const [key, value] of Object.entries(cached.colors)) {
-        this.colors.set(Number(key), value)
-      }
-      console.time("draw")
-      this.drawCachedPixels()
-      console.timeEnd("draw")
-      return
+    if (!skipCache) {
+        // Try to load from cache first
+        const imageHash = await Pixels.hashImage(this.image)
+        const cacheKey: CacheKey = {
+          imageHash,
+          width: this.width,
+          brightness: this.brightness,
+          exactColor: this.exactColor,
+        }
+
+        const cached = await Pixels.loadFromCache(cacheKey)
+        if (cached) {
+          console.log('Loaded pixel data from cache')
+          this.pixels = cached.pixels
+          this.colors.clear()
+          for (const [key, value] of Object.entries(cached.colors)) {
+            this.colors.set(Number(key), value)
+          }
+          this.drawCachedPixels()
+          return
+        }
     }
 
     // If not cached, compute as before
-    console.time("compute");
     await this.computePixels()
-    console.timeEnd("compute");
 
+    if (!skipCache) {
     // Save to cache for next time
     const dataToCache: CachedPixelData = {
       pixels: this.pixels,
@@ -228,9 +228,8 @@ export class Pixels {
       exactColor: this.exactColor,
       timestamp: Date.now(),
     }
-    console.time("cache");
     await Pixels.saveToCache(cacheKey, dataToCache)
-    console.timeEnd("cache");
+    }
   }
 
   /** Draw pixels that were loaded from cache */
