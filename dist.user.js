@@ -539,15 +539,17 @@ class Pixels {
     return instance;
   }
   async update(skipCache = false) {
+    let cacheKey;
     if (!skipCache) {
       const imageHash = await Pixels.hashImage(this.image);
-      const cacheKey2 = {
-        imageHash,
-        width: this.width,
-        brightness: this.brightness,
-        exactColor: this.exactColor
-      };
-      const cached = await Pixels.loadFromCache(cacheKey2);
+      cacheKey:
+        CacheKey = {
+          imageHash,
+          width: this.width,
+          brightness: this.brightness,
+          exactColor: this.exactColor
+        };
+      const cached = await Pixels.loadFromCache(cacheKey);
       if (cached) {
         console.log("Loaded pixel data from cache");
         this.pixels = cached.pixels;

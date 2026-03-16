@@ -191,11 +191,12 @@ export class Pixels {
 
   /** Update pixels of image. Checks cache first, then computes if needed. */
   public async update(skipCache = false) {
+    let cacheKey;
 
     if (!skipCache) {
         // Try to load from cache first
         const imageHash = await Pixels.hashImage(this.image)
-        const cacheKey: CacheKey = {
+        cacheKey: CacheKey = {
           imageHash,
           width: this.width,
           brightness: this.brightness,
