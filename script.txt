@@ -1,18 +1,19 @@
 // ==UserScript==
-// @name         wplace-bot
-// @namespace    https://github.com/SoundOfTheSky
-// @version      4.5.1
+// @name         wplace-bot fixed
+// @namespace    https://github.com/Readixyee
+// @version      1
 // @description  Bot to automate painting on website https://wplace.live
-// @author       SoundOfTheSky
+// @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
-// @homepageURL  https://github.com/SoundOfTheSky/wplace-bot
-// @updateURL    https://raw.githubusercontent.com/SoundOfTheSky/wplace-bot/refs/heads/main/dist.user.js
-// @downloadURL  https://raw.githubusercontent.com/SoundOfTheSky/wplace-bot/refs/heads/main/dist.user.js
+// @homepageURL  https://github.com/Readixyee/wplace-bot
+// @updateURL    https://raw.githubusercontent.com/Readixyee/wplace-bot/refs/heads/main/dist.user.js
+// @downloadURL  https://raw.githubusercontent.com/Readixyee/wplace-bot/refs/heads/main/dist.user.js
 // @run-at       document-start
 // @match        *://*.wplace.live/*
 // @grant        none
 // ==/UserScript==
 
+// Forked from: https://github.com/SoundOfTheSky/wplace-bot
 // Wplace  --> https://wplace.live
 // License --> https://www.mozilla.org/en-US/MPL/2.0/
 
