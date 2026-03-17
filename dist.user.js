@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot fixed
 // @namespace    https://github.com/Readixyee
-// @version      1.1
+// @version      1.2
 // @description  Bot to automate painting on website https://wplace.live
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
@@ -2040,6 +2040,7 @@ class WPlaceBot {
     this.widget.run("Initializing", async () => {
       await this.waitForElement("login", ".avatar.center-absolute.absolute");
       await this.waitForElement("pixel count", ".btn.btn-primary.btn-lg.relative.z-30 canvas");
+      await this.waitForElement("favorite stars", ".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center");
       const $canvasContainer = await this.waitForElement("canvas", ".maplibregl-canvas-container");
       new MutationObserver((mutations) => {
         for (let index = 0;index < mutations.length; index++)

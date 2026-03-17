@@ -119,6 +119,10 @@ private async bootstrap() {
             'pixel count',
             '.btn.btn-primary.btn-lg.relative.z-30 canvas',
         )
+        await this.waitForElement(
+            'favorite stars',
+            '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center'
+        )
 
         const $canvasContainer = await this.waitForElement(
             'canvas',
