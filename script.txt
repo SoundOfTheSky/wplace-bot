@@ -6,8 +6,8 @@
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
 // @homepageURL  https://github.com/Readixyee/wplace-bot
-// @updateURL    https://raw.githubusercontent.com/Readixyee/wplace-bot/refs/heads/main/dist.user.js
-// @downloadURL  https://raw.githubusercontent.com/Readixyee/wplace-bot/refs/heads/main/dist.user.js
+// @updateURL    https://raw.githubusercontent.com/Readixyee/wplace-bot/main/dist.user.js
+// @downloadURL  https://raw.githubusercontent.com/Readixyee/wplace-bot/main/dist.user.js
 // @run-at       document-start
 // @match        *://*.wplace.live/*
 // @grant        none

@@ -12,7 +12,7 @@
 ## Installation
 
 1. Install TamperMonkey browser extension: [Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=en)|[Firefox](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/)
-2. [Open this link](https://github.com/Readixyee/wplace-bot/raw/refs/heads/main/dist.user.js)
+2. [Open this link](https://github.com/Readixyee/wplace-bot/main/dist.user.js)
 3. Press install
 4. Allow user scripts
    1. Chrome: Settings>Extensions>Manage Extensions>Tampermonkey>Details>Allow User Scripts
@@ -30,7 +30,7 @@
 8. Delete image.
 9. Finally click "Draw" to start drawing :)
 
-![Instruction1](https://github.com/Readixyee/wplace-bot/raw/refs/heads/main/Instruction.png)
+![Instruction1](https://github.com/Readixyee/wplace-bot/main/Instruction.png)
 
 ## Captcha bypass
 
