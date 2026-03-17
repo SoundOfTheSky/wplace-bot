@@ -55,7 +55,6 @@ export class Pixels {
 
   /** Generate a hash of the image data for cache key */
   private static async hashImage(image: HTMLImageElement): Promise<string> {
-      console.time("hashtest")
     const canvas = document.createElement('canvas')
     canvas.width = image.naturalWidth
     canvas.height = image.naturalHeight
@@ -70,7 +69,6 @@ export class Pixels {
       hash = (hash << 5) - hash + char
       hash = hash & hash // Convert to 32bit integer
     }
-    console.timeEnd("hashtest")
     return `img_${Math.abs(hash)}`
   }
 
@@ -196,7 +194,7 @@ export class Pixels {
     if (!skipCache) {
         // Try to load from cache first
         const imageHash = await Pixels.hashImage(this.image)
-        cacheKey: CacheKey = {
+        cacheKey = {
           imageHash,
           width: this.width,
           brightness: this.brightness,

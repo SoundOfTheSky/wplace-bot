@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot fixed
 // @namespace    https://github.com/Readixyee
-// @version      1
+// @version      1.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
@@ -452,7 +452,6 @@ class Pixels {
     });
   }
   static async hashImage(image) {
-    console.time("hashtest");
     const canvas = document.createElement("canvas");
     canvas.width = image.naturalWidth;
     canvas.height = image.naturalHeight;
@@ -465,7 +464,6 @@ class Pixels {
       hash = (hash << 5) - hash + char;
       hash = hash & hash;
     }
-    console.timeEnd("hashtest");
     return `img_${Math.abs(hash)}`;
   }
   static async loadFromCache(key) {
@@ -543,13 +541,12 @@ class Pixels {
     let cacheKey;
     if (!skipCache) {
       const imageHash = await Pixels.hashImage(this.image);
-      cacheKey:
-        CacheKey = {
-          imageHash,
-          width: this.width,
-          brightness: this.brightness,
-          exactColor: this.exactColor
-        };
+      cacheKey = {
+        imageHash,
+        width: this.width,
+        brightness: this.brightness,
+        exactColor: this.exactColor
+      };
       const cached = await Pixels.loadFromCache(cacheKey);
       if (cached) {
         console.log("Loaded pixel data from cache");
@@ -986,12 +983,8 @@ class BotImage extends Base2 {
     });
     this.registerEvent(this.$lock, "click", () => {
       this.lock = !this.lock;
-      console.time("update");
       this.update();
-      console.timeEnd("update");
-      console.time("save");
       save(this.bot);
-      console.timeEnd("save");
     });
     this.registerEvent(this.$settingsButton, "click", () => {
       this.$popup.classList.add("show");
@@ -1036,7 +1029,6 @@ class BotImage extends Base2 {
     };
   }
   updateTasks() {
-    console.time("task");
     this.tasks.length = 0;
     const position = this.position.clone();
     const skipColors = new Set;
@@ -1066,10 +1058,8 @@ class BotImage extends Base2 {
       this.tasks.sort((a, b) => (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0));
     this.update();
     this.bot.widget.update();
-    console.timeEnd("task");
   }
   update() {
-    console.time("update image");
     const { x, y } = this.position.toScreenPosition();
     this.element.style.transform = `translate(${x}px, ${y}px)`;
     this.element.style.width = `${this.position.pixelSize * this.pixels.width}px`;
@@ -1088,7 +1078,6 @@ class BotImage extends Base2 {
     this.$progressLine.style.transform = `scaleX(${percent}%)`;
     this.$wrapper.classList[this.lock ? "add" : "remove"]("no-pointer-events");
     this.$lock.textContent = this.lock ? "\uD83D\uDD12" : "\uD83D\uDD13";
-    console.timeEnd("update image");
   }
   destroy() {
     super.destroy();
@@ -1148,7 +1137,6 @@ class BotImage extends Base2 {
       $button.style.setProperty("--wwidth", itemWidth + "%");
       this.$colors.append($button);
       const startDrag = (startEvent) => {
-        console.time("drag");
         let newIndex = index;
         const buttonWidth = $button.getBoundingClientRect().width;
         const mouseMoveHandler = (event) => {
@@ -1179,7 +1167,6 @@ class BotImage extends Base2 {
         }, {
           once: true
         });
-        console.timeEnd("drag");
       };
       $button.addEventListener("mousedown", startDrag);
       if (color.realColor === color.color)
@@ -1291,12 +1278,8 @@ class BotImage extends Base2 {
     console.log("move stop");
     if (this.moveInfo) {
       this.moveInfo = undefined;
-      console.time("updateAnchor");
       this.position.updateAnchor();
-      console.timeEnd("updateAnchor");
-      console.time("updateColors");
       this.updateColors();
-      console.timeEnd("updateColors");
     }
   }
   move(event) {

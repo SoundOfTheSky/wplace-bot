@@ -198,12 +198,8 @@ export class BotImage extends Base {
     // Lock
     this.registerEvent(this.$lock, 'click', () => {
       this.lock = !this.lock
-      console.time("update")
       this.update()
-      console.timeEnd("update")
-      console.time("save")
       save(this.bot)
-      console.timeEnd("save")
     })
 
     // Settings
@@ -265,7 +261,6 @@ observer.observe({ entryTypes: ["longtask"] });
 
   /** Calculates everything we need to do. Very expensive task! */
   public updateTasks() {
-      console.time("task")
     this.tasks.length = 0
     const position = this.position.clone()
     const skipColors = new Set<number>()
@@ -296,12 +291,10 @@ observer.observe({ entryTypes: ["longtask"] });
       )
     this.update()
     this.bot.widget.update()
-    console.timeEnd("task")
   }
 
   /** Update image (NOT PIXELS) */
   public update() {
-      console.time("update image")
     const { x, y } = this.position.toScreenPosition()
     this.element.style.transform = `translate(${x}px, ${y}px)`
     this.element.style.width = `${this.position.pixelSize * this.pixels.width}px`
@@ -321,7 +314,6 @@ observer.observe({ entryTypes: ["longtask"] });
     this.$progressLine.style.transform = `scaleX(${percent}%)`
     this.$wrapper.classList[this.lock ? 'add' : 'remove']('no-pointer-events')
     this.$lock.textContent = this.lock ? '🔒' : '🔓'
-    console.timeEnd("update image")
   }
 
   /** Removes image. Don't forget to remove from array inside widget. */
@@ -399,7 +391,6 @@ observer.observe({ entryTypes: ["longtask"] });
 
       // Drag functionality
       const startDrag = (startEvent: MouseEvent) => {
-          console.time("drag")
         let newIndex = index
         const buttonWidth = $button.getBoundingClientRect().width
         const mouseMoveHandler = (event: MouseEvent) => {
@@ -439,7 +430,6 @@ observer.observe({ entryTypes: ["longtask"] });
             once: true,
           },
         )
-        console.timeEnd("drag")
       }
       $button.addEventListener('mousedown', startDrag)
       if (color.realColor === color.color)
@@ -551,13 +541,8 @@ observer.observe({ entryTypes: ["longtask"] });
       console.log("move stop")
     if (this.moveInfo) {
       this.moveInfo = undefined
-      console.time("updateAnchor")
       this.position.updateAnchor()
-      console.timeEnd("updateAnchor")
-
-      console.time("updateColors")
       this.updateColors()
-      console.timeEnd("updateColors")
     }
   }
 
