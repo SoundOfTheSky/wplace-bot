@@ -206,12 +206,20 @@ private async bootstrap() {
         globalThis.addEventListener('mousemove', prevent, true)
         $canvas.addEventListener('wheel', prevent, true)
         this.updateTasks()
+
+        const res = await fetch('https://backend.wplace.live/me', {
+            credentials: 'include'
+        })
+        const data = await res.json()
+
+        let charges = Math.floor(data.charges.count);
+
         let n = 0
         for (let index = 0; index < this.images.length; index++)
           n += this.images[index]!.tasks.length
         switch (this.strategy) {
           case BotStrategy.ALL: {
-            while (!document.querySelector('ol')) {
+            while (charges > 0) {
               let end = true
               for (
                 let imageIndex = 0;
@@ -221,6 +229,7 @@ private async bootstrap() {
                 const task = this.images[imageIndex]!.tasks.shift()
                 if (!task) continue
                 this.drawTask(task)
+                charges -= 1
                 await wait(1)
                 end = false
               }
@@ -231,7 +240,7 @@ private async bootstrap() {
           case BotStrategy.PERCENTAGE: {
             for (
               let taskIndex = 0;
-              taskIndex < n && !document.querySelector('ol');
+              taskIndex < n && charges > 0;
               taskIndex++
             ) {
               let minPercent = 1
@@ -253,6 +262,7 @@ private async bootstrap() {
                 }
               }
               this.drawTask(minImage.tasks.shift()!)
+              charges -= 1
               await wait(1)
             }
             break
@@ -266,10 +276,11 @@ private async bootstrap() {
               const image = this.images[imageIndex]!
               for (
                 let task = image.tasks.shift();
-                task && !document.querySelector('ol');
+                task && charges > 0;
                 task = image.tasks.shift()
               ) {
                 this.drawTask(task)
+                charges -= 1
                 await wait(1)
               }
             }
