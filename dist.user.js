@@ -543,7 +543,6 @@ class Pixels {
       };
       const cached = await Pixels.loadFromCache(cacheKey);
       if (cached) {
-        console.log("Loaded pixel data from cache");
         this.pixels = cached.pixels;
         this.colors.clear();
         for (const [key, value] of Object.entries(cached.colors)) {
@@ -989,25 +988,11 @@ class BotImage extends Base2 {
     this.registerEvent(this.$export, "click", this.export.bind(this));
     this.registerEvent(this.$topbar, "mousedown", this.moveStart.bind(this));
     this.registerEvent(this.$canvas, "mousedown", this.moveStart.bind(this));
-    this.registerEvent(document, "mouseup", function(e) {
-      const start = performance.now();
-      this.moveStop(e);
-      requestAnimationFrame(() => {
-        const end = performance.now();
-        console.log(`Post-mouseup frame delay: ${end - start}ms`);
-      });
-    }.bind(this));
     this.registerEvent(document, "mousemove", this.move.bind(this));
     for (const $resize of this.element.querySelectorAll(".resize"))
       this.registerEvent($resize, "mousedown", this.resizeStart.bind(this));
     this.update();
     this.updateColors();
-    const observer = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        console.log("Long task:", entry.duration, entry);
-      }
-    });
-    observer.observe({ entryTypes: ["longtask"] });
   }
   toJSON() {
     return {
@@ -1258,7 +1243,6 @@ class BotImage extends Base2 {
     }
   }
   moveStart(event) {
-    console.log("move start");
     if (!this.lock)
       this.moveInfo = {
         globalX: this.position.globalX,
@@ -1268,7 +1252,6 @@ class BotImage extends Base2 {
       };
   }
   async moveStop() {
-    console.log("move stop");
     if (this.moveInfo) {
       this.moveInfo = undefined;
       this.position.updateAnchor();
@@ -2049,7 +2032,6 @@ class WPlaceBot {
         subtree: true
       });
       this.updateStars();
-      console.log(this.$stars);
       await wait(500);
       await this.updateColors();
       if (save2)
@@ -2210,9 +2192,6 @@ class WPlaceBot {
         const response = await fetch(url, { method: "HEAD", cache: "no-store" });
         const lastModified = response.headers.get("last-modified") || "";
         let cached = this.mapsCache.get(x);
-        if (cached) {
-          console.log(`Cached lastModified: ${cached.lastModified}, Server lastModified: ${lastModified}`);
-        }
         if (!cached || cached.lastModified !== lastModified) {
           const newPixels = await Pixels.fromJSON(this, { url, exactColor: true }, { skipCache: true });
           const tileData = { pixels: newPixels.pixels, lastModified };
@@ -2289,7 +2268,6 @@ class WPlaceBot {
     let minI2 = 1;
     let min1 = Infinity;
     let min2 = Infinity;
-    console.log(this.$stars);
     for (let index = 0;index < this.$stars.length; index++) {
       const { x, y } = extractScreenPositionFromStar(this.$stars[index]);
       if (x < position.x && y < position.y) {
