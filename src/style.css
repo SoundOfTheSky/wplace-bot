@@ -4,146 +4,146 @@
 @import 'https://fonts.googleapis.com/css2?family=Tiny5&display=swap';
 
 :root {
-  --hover: #dfdfdf;
-  --text-invert: #fff;
-  --error: #f00;
-  --resize: 8px;
-  --asdadsasdasdasdasdasdasdasd: 1px;
-  --text: #422e2c;
-  --background: #fbe3cb;
-  --background-hover: #f0d1b3;
-  --background-disabled: #a37648;
-  --main: #66bbb4;
-  --main-hover: #48a19a;
+	--hover: #dfdfdf;
+	--text-invert: #fff;
+	--error: #f00;
+	--resize: 8px;
+	--asdadsasdasdasdasdasdasdasd: 1px;
+	--text: #422e2c;
+	--background: #fbe3cb;
+	--background-hover: #f0d1b3;
+	--background-disabled: #a37648;
+	--main: #66bbb4;
+	--main-hover: #48a19a;
 }
 
 .text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center:nth-child(
-    -n + FAKE_FAVORITE_LOCATIONS
-  ) {
-  display: none;
+		-n + FAKE_FAVORITE_LOCATIONS
+	) {
+	display: none;
 }
 
 /** Widget */
 .wwidget {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 1000;
-  width: 256px;
-  height: 100dvh;
-  border-right: var(--text) 2px solid;
-  background-color: var(--background);
-  color: var(--text);
-  font-family: 'Tiny5', sans-serif;
-  transition: transform 0.5s;
-  transform: translateX(-100%);
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: 1000;
+	width: 256px;
+	height: 100dvh;
+	border-right: var(--text) 2px solid;
+	background-color: var(--background);
+	color: var(--text);
+	font-family: 'Tiny5', sans-serif;
+	transition: transform 0.5s;
+	transform: translateX(-100%);
 }
 
 .wwidget .title {
-  border-bottom: var(--text) 2px solid;
-  background-color: var(--main);
-  font-size: 32px;
-  text-align: center;
+	border-bottom: var(--text) 2px solid;
+	background-color: var(--main);
+	font-size: 32px;
+	text-align: center;
 }
 
 .wwidget.wopen .wopen-button div {
-  transform: rotate(180deg);
+	transform: rotate(180deg);
 }
 
 .wwidget.wopen {
-  box-shadow: 8px 0 16px -8px var(--main);
-  transform: translateX(0);
+	box-shadow: 8px 0 16px -8px var(--main);
+	transform: translateX(0);
 }
 
 .wwidget .wopen-button div {
-  transition: transform 0.5s;
+	transition: transform 0.5s;
 }
 
 .wwidget .wopen-button {
-  position: absolute;
-  top: calc(50% - 24px);
-  right: -24px;
-  width: 24px;
-  height: 48px;
-  border: var(--text) 2px solid;
-  border-left: none;
-  background-color: var(--background);
-  color: var(--text);
-  cursor: pointer;
+	position: absolute;
+	top: calc(50% - 24px);
+	right: -24px;
+	width: 24px;
+	height: 48px;
+	border: var(--text) 2px solid;
+	border-left: none;
+	background-color: var(--background);
+	color: var(--text);
+	cursor: pointer;
 }
 
 .wwidget .images {
-  display: block;
-  overflow-y: auto;
-  height: auto;
-  max-height: 240px;
+	display: block;
+	overflow-y: auto;
+	height: auto;
+	max-height: 240px;
 }
 
 .wwidget .images .image {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 64px;
+	display: flex;
+	align-items: center;
+	width: 100%;
+	height: 64px;
 }
 
 .wwidget .images .image img {
-  max-width: 100%;
-  max-height: 100%;
-  margin: 0 auto;
-  cursor: pointer;
+	max-width: 100%;
+	max-height: 100%;
+	margin: 0 auto;
+	cursor: pointer;
 }
 
 .wwidget .images .image button {
-  width: 32px;
-  height: 64px;
-  font-weight: bolder;
-  font-size: 24px;
+	width: 32px;
+	height: 64px;
+	font-weight: bolder;
+	font-size: 24px;
 }
 
 /** Image */
 .wimage {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 9;
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: 9;
 }
 
 .wimage canvas {
-  width: 100%;
-  box-shadow: inset var(--text) 0 0 0 2px;
-  cursor: all-scroll;
-  image-rendering: pixelated;
+	width: 100%;
+	box-shadow: inset var(--text) 0 0 0 2px;
+	cursor: all-scroll;
+	image-rendering: pixelated;
 }
 
 .wimage .wform {
-  position: absolute;
-  display: none;
-  width: 100%;
-  min-width: 256px;
-  border: var(--text) 2px solid;
-  background-color: var(--background);
-  color: var(--text);
+	position: absolute;
+	display: none;
+	width: 100%;
+	min-width: 256px;
+	border: var(--text) 2px solid;
+	background-color: var(--background);
+	color: var(--text);
 }
 
 .wimage:hover .wrapper .wform {
-  display: block;
+	display: block;
 }
 
 /* Settings */
 .wform {
-  font-family: 'Tiny5', sans-serif;
+	font-family: 'Tiny5', sans-serif;
 }
 
 .wform > * {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  overflow: hidden;
-  width: calc(100% - 8px);
-  margin: 4px;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	overflow: hidden;
+	width: calc(100% - 8px);
+	margin: 4px;
+	text-align: center;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .wform button,
@@ -151,298 +151,294 @@
 .wform select,
 .wform textarea,
 .wform label:has(input[type='checkbox']) {
-  padding: 0 8px;
-  border: var(--text) 2px solid;
-  cursor: pointer;
-  transition: background-color 0.2s;
+	padding: 0 8px;
+	border: var(--text) 2px solid;
+	cursor: pointer;
+	transition: background-color 0.2s;
 }
 
 .wform input[type='range'] {
-  width: 100%;
-  height: 32px;
-  background: linear-gradient(
-    to right,
-    var(--main) var(--val),
-    var(--background-disabled) var(--val)
-  );
-  cursor: ew-resize;
-  appearance: none;
+	width: 100%;
+	height: 32px;
+	background: linear-gradient(to right, var(--main) var(--val), var(--background-disabled) var(--val));
+	cursor: ew-resize;
+	appearance: none;
 }
 
 .wform input[type='range']::-moz-range-thumb {
-  width: 0;
-  height: 0;
-  opacity: 0;
+	width: 0;
+	height: 0;
+	opacity: 0;
 }
 
 .wform button:hover,
 .wform input:hover {
-  background-color: var(--background-hover);
+	background-color: var(--background-hover);
 }
 
 .wform button:disabled,
 .wform input:disabled {
-  background-color: var(--background-disabled);
-  cursor: no-drop;
+	background-color: var(--background-disabled);
+	cursor: no-drop;
 }
 
 .wform label input:not([type='checkbox']) {
-  width: inherit;
+	width: inherit;
 }
 
 .wform .wprogress {
-  position: relative;
-  width: 100%;
-  margin: 0;
+	position: relative;
+	width: 100%;
+	margin: 0;
 }
 
 .wform .wprogress div {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  background-color: var(--main);
-  transform-origin: left;
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	background-color: var(--main);
+	transform-origin: left;
 }
 
 .wform .wprogress span {
-  z-index: 0;
+	z-index: 0;
 }
 
 .wform .colors {
-  position: relative;
-  width: 100%;
-  height: 32px;
-  margin: 0;
-  background: repeating-linear-gradient(
-    25deg,
-    var(--background),
-    var(--background),
-    var(--hover) 8px,
-    var(--hover) 12px
-  );
-  cursor: ew-resize;
+	position: relative;
+	width: 100%;
+	height: 32px;
+	margin: 0;
+	background: repeating-linear-gradient(
+		25deg,
+		var(--background),
+		var(--background),
+		var(--hover) 8px,
+		var(--hover) 12px
+	);
+	cursor: ew-resize;
 }
 
 .wform .colors > button {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border: none;
-  cursor: grab;
-  transition:
-    0.2s left,
-    0.2s width,
-    0.2s filter;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	border: none;
+	cursor: grab;
+	transition:
+		0.2s left,
+		0.2s width,
+		0.2s filter;
 }
 
 .wform .colors > button:hover {
-  filter: brightness(0.6);
+	filter: brightness(0.6);
 }
 
 .wform .colors > button.color-disabled::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  box-shadow: inset 0 0 0 2px var(--error);
-  pointer-events: none;
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	box-shadow: inset 0 0 0 2px var(--error);
+	pointer-events: none;
 }
 
 .wform .colors > button.substitution button {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  padding: 0 4px;
-  color: var(--background);
-  transition: 0.2s filter;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	padding: 0 4px;
+	color: var(--background);
+	transition: 0.2s filter;
 }
 
 .wform .colors > button.substitution button:hover {
-  filter: brightness(0.6);
+	filter: brightness(0.6);
 }
 
 .wform .colors > button.substitution button:first-child {
-  background: var(--wreal-color);
-  text-align: left;
-  clip-path: polygon(0 0, 80% 0, 20% 100%, 0 100%);
+	background: var(--wreal-color);
+	text-align: left;
+	clip-path: polygon(0 0, 80% 0, 20% 100%, 0 100%);
 }
 
 .wform .colors > button.substitution button:last-child {
-  background: var(--wsubstitution-color);
-  text-align: right;
-  clip-path: polygon(100% 100%, 100% 0, 80% 0, 20% 100%);
+	background: var(--wsubstitution-color);
+	text-align: right;
+	clip-path: polygon(100% 100%, 100% 0, 80% 0, 20% 100%);
 }
 
 .wform .colors > button.substitution:hover {
-  filter: none;
+	filter: none;
 }
 
 .wform .colors:hover > button {
-  left: var(--wleft) !important;
-  width: var(--wwidth) !important;
+	left: var(--wleft) !important;
+	width: var(--wwidth) !important;
 }
 
 /* Move */
 .wtopbar {
-  position: absolute;
-  top: -24px;
-  left: 0;
-  display: flex;
-  justify-content: end;
-  align-items: center;
-  width: 100%;
-  min-width: min-content;
-  min-width: 256px;
-  border: var(--text) 2px solid;
-  background-color: var(--main);
-  color: var(--text-invert);
-  cursor: all-scroll;
+	position: absolute;
+	top: -24px;
+	left: 0;
+	display: flex;
+	justify-content: end;
+	align-items: center;
+	width: 100%;
+	min-width: min-content;
+	min-width: 256px;
+	border: var(--text) 2px solid;
+	background-color: var(--main);
+	color: var(--text-invert);
+	cursor: all-scroll;
 }
 
 .wtopbar button {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 24px;
-  height: 24px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	width: 24px;
+	height: 24px;
 }
 
 .wtopbar button:hover {
-  background-color: var(--main-hover);
+	background-color: var(--main-hover);
 }
 
 /* Resize */
 .resize {
-  position: absolute;
-  width: calc(100% - var(--resize) - var(--resize));
-  height: calc(100% - var(--resize) - var(--resize));
+	position: absolute;
+	width: calc(100% - var(--resize) - var(--resize));
+	height: calc(100% - var(--resize) - var(--resize));
 }
 
 .resize.n {
-  top: 0;
-  left: var(--resize);
-  height: var(--resize);
-  cursor: n-resize;
+	top: 0;
+	left: var(--resize);
+	height: var(--resize);
+	cursor: n-resize;
 }
 
 .resize.e {
-  top: var(--resize);
-  right: 0;
-  width: var(--resize);
-  cursor: e-resize;
+	top: var(--resize);
+	right: 0;
+	width: var(--resize);
+	cursor: e-resize;
 }
 
 .resize.s {
-  bottom: 0;
-  left: var(--resize);
-  height: var(--resize);
-  cursor: s-resize;
+	bottom: 0;
+	left: var(--resize);
+	height: var(--resize);
+	cursor: s-resize;
 }
 
 .resize.w {
-  top: var(--resize);
-  left: 0;
-  width: var(--resize);
-  cursor: w-resize;
+	top: var(--resize);
+	left: 0;
+	width: var(--resize);
+	cursor: w-resize;
 }
 
 /* Utility */
 .wp {
-  padding: 0 8px;
+	padding: 0 8px;
 }
 
 .hidden {
-  display: none;
+	display: none;
 }
 
 .no-pointer-events {
-  height: 1px;
-  pointer-events: none;
+	height: 1px;
+	pointer-events: none;
 }
 
 .custom-dialog {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  border: var(--text) 2px solid;
-  background: var(--background);
-  color: var(--text);
-  font-family: 'Tiny5', sans-serif;
-  padding: 16px;
-  min-width: 220px;
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	border: var(--text) 2px solid;
+	background: var(--background);
+	color: var(--text);
+	font-family: 'Tiny5', sans-serif;
+	padding: 16px;
+	min-width: 220px;
 }
 
 .custom-dialog::backdrop {
-  background: rgba(0,0,0,0.45);
+	background: rgba(0, 0, 0, 0.45);
 }
 
 .custom-dialog form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .custom-dialog label {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
 }
 
 .custom-dialog input[type='number'] {
-  width: 100px;
-  padding: 4px 6px;
-  border: var(--text) 2px solid;
-  background: var(--background);
-  color: var(--text);
-  font-family: 'Tiny5', sans-serif;
+	width: 100px;
+	padding: 4px 6px;
+	border: var(--text) 2px solid;
+	background: var(--background);
+	color: var(--text);
+	font-family: 'Tiny5', sans-serif;
 }
 
 .custom-dialog button {
-  padding: 4px 8px;
-  border: var(--text) 2px solid;
-  background: var(--main);
-  color: var(--text-invert);
-  font-family: 'Tiny5', sans-serif;
-  cursor: pointer;
+	padding: 4px 8px;
+	border: var(--text) 2px solid;
+	background: var(--main);
+	color: var(--text-invert);
+	font-family: 'Tiny5', sans-serif;
+	cursor: pointer;
 }
 
 .custom-dialog button:hover {
-  background: var(--main-hover);
+	background: var(--main-hover);
 }
 .wform.popup {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  border: 2px solid #ccc;
-  padding: 1rem;
-  box-shadow: 0 0 15px rgba(0,0,0,0.3);
-  display: none;
-  z-index: 999;
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	border: 2px solid #ccc;
+	padding: 1rem;
+	box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+	display: none;
+	z-index: 999;
 }
 
 .wform.popup.show {
-  display: block;
+	display: block;
 }
 
 .wform.popup .close-popup {
-  border: none;
-  background: #f00;
-  color: #fff;
-  width: 24px;
-  height: 24px;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 24px;
-  text-align: center;
-  float: right;
+	border: none;
+	background: #f00;
+	color: #fff;
+	width: 24px;
+	height: 24px;
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 24px;
+	text-align: center;
+	float: right;
 }
 
 .wform.popup .close-popup:hover {
-  background: #c00;
+	background: #c00;
 }

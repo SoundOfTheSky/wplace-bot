@@ -1,5 +1,7 @@
-// @ts-check
-import skyPrettierConfig from '@softsky/configs/prettier.config.mjs';
-
-/** @type {import("prettier").Config} */
-export default {...skyPrettierConfig};
+export default {
+	trailingComma: "es5",
+	useTabs: true,
+	singleQuote: true,
+	printWidth: 120,
+	tabWidth: 4
+}
