@@ -198,7 +198,6 @@ export class Pixels {
 
 			const cached = await Pixels.loadFromCache(cacheKey);
 			if (cached) {
-				console.log('Loaded pixel data from cache');
 				this.pixels = cached.pixels;
 				this.colors.clear();
 				for (const [key, value] of Object.entries(cached.colors)) {

@@ -214,18 +214,6 @@ export class BotImage extends Base {
 		// Move
 		this.registerEvent(this.$topbar, 'mousedown', this.moveStart.bind(this));
 		this.registerEvent(this.$canvas, 'mousedown', this.moveStart.bind(this));
-		this.registerEvent(
-			document,
-			'mouseup',
-			function (e) {
-				const start = performance.now();
-				this.moveStop(e);
-				requestAnimationFrame(() => {
-					const end = performance.now();
-					console.log(`Post-mouseup frame delay: ${end - start}ms`);
-				});
-			}.bind(this)
-		);
 		this.registerEvent(document, 'mousemove', this.move.bind(this));
 
 		// Resize
@@ -233,14 +221,6 @@ export class BotImage extends Base {
 			this.registerEvent($resize, 'mousedown', this.resizeStart.bind(this));
 		this.update();
 		this.updateColors();
-
-		const observer = new PerformanceObserver((list) => {
-			for (const entry of list.getEntries()) {
-				console.log('Long task:', entry.duration, entry);
-			}
-		});
-
-		observer.observe({ entryTypes: ['longtask'] });
 	}
 
 	public toJSON() {
@@ -502,7 +482,6 @@ export class BotImage extends Base {
 	}
 
 	protected moveStart(event: MouseEvent) {
-		console.log('move start');
 		if (!this.lock)
 			this.moveInfo = {
 				globalX: this.position.globalX,
@@ -513,7 +492,6 @@ export class BotImage extends Base {
 	}
 
 	protected async moveStop() {
-		console.log('move stop');
 		if (this.moveInfo) {
 			this.moveInfo = undefined;
 			this.position.updateAnchor();

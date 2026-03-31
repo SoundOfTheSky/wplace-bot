@@ -132,7 +132,6 @@ export class WPlaceBot {
 			});
 
 			this.updateStars();
-			console.log(this.$stars);
 
 			await wait(500);
 			await this.updateColors();
@@ -328,11 +327,6 @@ export class WPlaceBot {
 					const response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
 					const lastModified = response.headers.get('last-modified') || '';
 					let cached = this.mapsCache.get(x);
-					if (cached) {
-						console.log(
-							`Cached lastModified: ${cached.lastModified}, Server lastModified: ${lastModified}`
-						);
-					}
 
 					if (!cached || cached.lastModified !== lastModified) {
 						const newPixels = await Pixels.fromJSON(this, { url, exactColor: true }, { skipCache: true });
@@ -353,7 +347,7 @@ export class WPlaceBot {
 			request.onupgradeneeded = () => {
 				const db = request.result;
 				if (!db.objectStoreNames.contains('tiles')) {
-					db.createObjectStore('tiles'); // key = tileX/tileY
+					db.createObjectStore('tiles');
 				}
 			};
 			request.onsuccess = () => resolve(request.result);
@@ -431,7 +425,6 @@ export class WPlaceBot {
 		let minI2 = 1;
 		let min1 = Infinity;
 		let min2 = Infinity;
-		console.log(this.$stars);
 		for (let index = 0; index < this.$stars.length; index++) {
 			const { x, y } = extractScreenPositionFromStar(this.$stars[index]!);
 			if (x < position.x && y < position.y) {
