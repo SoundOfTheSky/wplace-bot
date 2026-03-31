@@ -214,6 +214,18 @@ export class BotImage extends Base {
 		// Move
 		this.registerEvent(this.$topbar, 'mousedown', this.moveStart.bind(this));
 		this.registerEvent(this.$canvas, 'mousedown', this.moveStart.bind(this));
+		this.registerEvent(
+			document,
+			'mouseup',
+			function (e) {
+				const start = performance.now();
+				this.moveStop(e);
+				requestAnimationFrame(() => {
+					const end = performance.now();
+					console.log(`Post-mouseup frame delay: ${end - start}ms`);
+				});
+			}.bind(this)
+		);
 		this.registerEvent(document, 'mousemove', this.move.bind(this));
 
 		// Resize
