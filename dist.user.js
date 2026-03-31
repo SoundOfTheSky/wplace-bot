@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot fixed
 // @namespace    https://github.com/Readixyee
-// @version      1.3
+// @version      1.4
 // @description  Bot to automate painting on website https://wplace.live
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
@@ -403,8 +403,8 @@ var image_default = `<div class="wtopbar">
 			<option value="RANDOM" selected>Random</option>
 			<option value="DOWN">Down</option>
 			<option value="UP">Up</option>
-			<option value="LEFT">Left</option>
-			<option value="RIGHT">Right</option>
+			<option value="LEFT">from Left to Right</option>
+			<option value="RIGHT">from Right to Left</option>
 			<option value="SPIRAL_FROM_CENTER">Spiral out</option>
 			<option value="SPIRAL_TO_CENTER">Spiral in</option>
 		</select>
@@ -2195,6 +2195,7 @@ class WPlaceBot {
     fire("mouseup", endX, endY);
   }
   async readMap() {
+    await this.loadCacheFromDB();
     const imagesToDownload = new Set;
     for (let image of this.images) {
       const { tileX: tileXEnd, tileY: tileYEnd } = new WorldPosition(this, image.position.globalX + image.pixels.pixels[0].length, image.position.globalY + image.pixels.pixels.length);
@@ -2203,21 +2204,74 @@ class WPlaceBot {
           imagesToDownload.add(`${tileX}/${tileY}`);
     }
     let done = 0;
-    console.log("Images to download:", [...imagesToDownload]);
     return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, async () => {
       await Promise.all([...imagesToDownload].map(async (x) => {
         const url = `https://backend.wplace.live/files/s0/tiles/${x}.png`;
         const response = await fetch(url, { method: "HEAD", cache: "no-store" });
         const lastModified = response.headers.get("last-modified") || "";
-        const cached = this.mapsCache.get(x);
+        let cached = this.mapsCache.get(x);
+        if (cached) {
+          console.log(`Cached lastModified: ${cached.lastModified}, Server lastModified: ${lastModified}`);
+        }
         if (!cached || cached.lastModified !== lastModified) {
           const newPixels = await Pixels.fromJSON(this, { url, exactColor: true }, { skipCache: true });
-          newPixels.lastModified = lastModified;
-          this.mapsCache.set(x, newPixels);
+          const tileData = { pixels: newPixels.pixels, lastModified };
+          this.mapsCache.set(x, tileData);
+          await this.saveTileToDB(x, tileData);
         }
         this.widget.status = `⌛ Reading map [${++done}/${imagesToDownload.size}]`;
       }));
     });
+  }
+  async initDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("mapsDB", 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("tiles")) {
+          db.createObjectStore("tiles");
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  async setTile(db, key, value) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("tiles", "readwrite");
+      const store = tx.objectStore("tiles");
+      const req = store.put(value, key);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async getTile(db, key) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("tiles", "readonly");
+      const store = tx.objectStore("tiles");
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async loadCacheFromDB() {
+    const db = await this.initDB();
+    this.mapsCache = new Map;
+    const keys = await new Promise((resolve, reject) => {
+      const tx = db.transaction("tiles", "readonly");
+      const store = tx.objectStore("tiles");
+      const req = store.getAllKeys();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    for (const key of keys) {
+      const tile = await this.getTile(db, key);
+      this.mapsCache.set(key, tile);
+    }
+  }
+  async saveTileToDB(key, value) {
+    const db = await this.initDB();
+    await this.setTile(db, key, value);
   }
   waitForUnfocus() {
     return this.widget.run("UNFOCUS WINDOW", () => new Promise((resolve) => {

@@ -305,6 +305,8 @@ export class WPlaceBot {
 
 	/** Read and cache the map */
 	public async readMap() {
+		await this.loadCacheFromDB();
+
 		const imagesToDownload = new Set<string>();
 		for (let image of this.images) {
 			const { tileX: tileXEnd, tileY: tileYEnd } = new WorldPosition(
@@ -318,7 +320,6 @@ export class WPlaceBot {
 		}
 
 		let done = 0;
-		console.log('Images to download:', [...imagesToDownload]);
 
 		return this.widget.run(`Reading map [0/${imagesToDownload.size}]`, async () => {
 			await Promise.all(
@@ -326,12 +327,18 @@ export class WPlaceBot {
 					const url = `https://backend.wplace.live/files/s0/tiles/${x}.png`;
 					const response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
 					const lastModified = response.headers.get('last-modified') || '';
-					const cached = this.mapsCache.get(x);
+					let cached = this.mapsCache.get(x);
+					if (cached) {
+						console.log(
+							`Cached lastModified: ${cached.lastModified}, Server lastModified: ${lastModified}`
+						);
+					}
 
 					if (!cached || cached.lastModified !== lastModified) {
 						const newPixels = await Pixels.fromJSON(this, { url, exactColor: true }, { skipCache: true });
-						newPixels.lastModified = lastModified;
-						this.mapsCache.set(x, newPixels);
+						const tileData = { pixels: newPixels.pixels, lastModified };
+						this.mapsCache.set(x, tileData);
+						await this.saveTileToDB(x, tileData);
 					}
 
 					this.widget.status = `⌛ Reading map [${++done}/${imagesToDownload.size}]`;
@@ -339,6 +346,63 @@ export class WPlaceBot {
 			);
 		});
 	}
+
+	async initDB() {
+		return new Promise<IDBDatabase>((resolve, reject) => {
+			const request = indexedDB.open('mapsDB', 1);
+			request.onupgradeneeded = () => {
+				const db = request.result;
+				if (!db.objectStoreNames.contains('tiles')) {
+					db.createObjectStore('tiles'); // key = tileX/tileY
+				}
+			};
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	async setTile(db: IDBDatabase, key: string, value: any) {
+		return new Promise<void>((resolve, reject) => {
+			const tx = db.transaction('tiles', 'readwrite');
+			const store = tx.objectStore('tiles');
+			const req = store.put(value, key);
+			req.onsuccess = () => resolve();
+			req.onerror = () => reject(req.error);
+		});
+	}
+
+	async getTile(db: IDBDatabase, key: string) {
+		return new Promise<any>((resolve, reject) => {
+			const tx = db.transaction('tiles', 'readonly');
+			const store = tx.objectStore('tiles');
+			const req = store.get(key);
+			req.onsuccess = () => resolve(req.result);
+			req.onerror = () => reject(req.error);
+		});
+	}
+
+	async loadCacheFromDB() {
+		const db = await this.initDB();
+		this.mapsCache = new Map();
+		const keys = await new Promise<string[]>((resolve, reject) => {
+			const tx = db.transaction('tiles', 'readonly');
+			const store = tx.objectStore('tiles');
+			const req = store.getAllKeys();
+			req.onsuccess = () => resolve(req.result as string[]);
+			req.onerror = () => reject(req.error);
+		});
+
+		for (const key of keys) {
+			const tile = await this.getTile(db, key);
+			this.mapsCache.set(key, tile);
+		}
+	}
+
+	async saveTileToDB(key: string, value: any) {
+		const db = await this.initDB();
+		await this.setTile(db, key, value);
+	}
+
 	/** Wait until window is unfocused */
 	public waitForUnfocus() {
 		return this.widget.run(
