@@ -194,7 +194,12 @@ export class WPlaceBot {
 				$canvas.addEventListener('wheel', prevent, true);
 				this.updateTasks();
 
-				let charges = 0;
+				const res = await fetch('https://backend.wplace.live/me', {
+					credentials: 'include',
+				});
+				const data = await res.json();
+
+				let charges = Math.floor(data.charges.count);
 
 				let n = 0;
 				for (let index = 0; index < this.images.length; index++) n += this.images[index]!.tasks.length;

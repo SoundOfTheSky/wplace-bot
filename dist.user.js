@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot fixed
 // @namespace    https://github.com/Readixyee
-// @version      1.5
+// @version      1.5.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
@@ -2083,7 +2083,11 @@ class WPlaceBot {
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
       this.updateTasks();
-      let charges = 0;
+      const res = await fetch("https://backend.wplace.live/me", {
+        credentials: "include"
+      });
+      const data = await res.json();
+      let charges = Math.floor(data.charges.count);
       let n = 0;
       for (let index = 0;index < this.images.length; index++)
         n += this.images[index].tasks.length;
