@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot fixed
 // @namespace    https://github.com/Readixyee
-// @version      1.4
+// @version      1.5
 // @description  Bot to automate painting on website https://wplace.live
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
@@ -989,12 +989,7 @@ class BotImage extends Base2 {
     this.registerEvent(this.$topbar, "mousedown", this.moveStart.bind(this));
     this.registerEvent(this.$canvas, "mousedown", this.moveStart.bind(this));
     this.registerEvent(document, "mouseup", function(e) {
-      const start = performance.now();
       this.moveStop(e);
-      requestAnimationFrame(() => {
-        const end = performance.now();
-        console.log(`Post-mouseup frame delay: ${end - start}ms`);
-      });
     }.bind(this));
     this.registerEvent(document, "mousemove", this.move.bind(this));
     for (const $resize of this.element.querySelectorAll(".resize"))
@@ -2000,6 +1995,7 @@ class WPlaceBot {
   markerPixelPositionResolvers = [];
   lastColor;
   constructor() {
+    this.registerFetchInterceptor();
     this.bootstrap();
   }
   async bootstrap() {
@@ -2018,7 +2014,6 @@ class WPlaceBot {
       }
       this.strategy = save2.strategy;
     }
-    this.registerFetchInterceptor();
     const style = document.createElement("style");
     style.textContent = style_default.replace("FAKE_FAVORITE_LOCATIONS", FAVORITE_LOCATIONS.length.toString());
     document.head.append(style);
@@ -2088,11 +2083,7 @@ class WPlaceBot {
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
       this.updateTasks();
-      const res = await fetch("https://backend.wplace.live/me", {
-        credentials: "include"
-      });
-      const data = await res.json();
-      let charges = Math.floor(data.charges.count);
+      let charges = 0;
       let n = 0;
       for (let index = 0;index < this.images.length; index++)
         n += this.images[index].tasks.length;

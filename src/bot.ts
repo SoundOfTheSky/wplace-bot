@@ -81,6 +81,8 @@ export class WPlaceBot {
 	protected lastColor?: number;
 
 	public constructor() {
+		// NEEDS TO RUN FIRST TO MAKE SURE THE /me IS INTERCEPTED
+		this.registerFetchInterceptor();
 		void this.bootstrap();
 	}
 
@@ -101,8 +103,6 @@ export class WPlaceBot {
 			}
 			this.strategy = save.strategy;
 		}
-
-		this.registerFetchInterceptor();
 
 		const style = document.createElement('style');
 		style.textContent = (css as string).replace('FAKE_FAVORITE_LOCATIONS', FAVORITE_LOCATIONS.length.toString());
@@ -194,12 +194,7 @@ export class WPlaceBot {
 				$canvas.addEventListener('wheel', prevent, true);
 				this.updateTasks();
 
-				const res = await fetch('https://backend.wplace.live/me', {
-					credentials: 'include',
-				});
-				const data = await res.json();
-
-				let charges = Math.floor(data.charges.count);
+				let charges = 0;
 
 				let n = 0;
 				for (let index = 0; index < this.images.length; index++) n += this.images[index]!.tasks.length;
