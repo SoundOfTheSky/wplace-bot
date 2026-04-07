@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.5.1
+// @version      4.5.2
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -1765,11 +1765,10 @@ class WPlaceBot {
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
       this.updateTasks();
-      const res = await fetch("https://backend.wplace.live/me", {
+      const me = await fetch("https://backend.wplace.live/me", {
         credentials: "include"
-      });
-      const data = await res.json();
-      let charges = Math.floor(data.charges.count);
+      }).then((x) => x.json());
+      let charges = Math.floor(me.charges.count);
       let n = 0;
       for (let index = 0;index < this.images.length; index++)
         n += this.images[index].tasks.length;
@@ -1782,7 +1781,7 @@ class WPlaceBot {
               if (!task)
                 continue;
               this.drawTask(task);
-              charges -= 1;
+              charges--;
               await wait(1);
               end = false;
             }
@@ -1804,7 +1803,7 @@ class WPlaceBot {
               }
             }
             this.drawTask(minImage.tasks.shift());
-            charges -= 1;
+            charges--;
             await wait(1);
           }
           break;
@@ -1814,7 +1813,7 @@ class WPlaceBot {
             const image = this.images[imageIndex];
             for (let task = image.tasks.shift();task && charges > 0; task = image.tasks.shift()) {
               this.drawTask(task);
-              charges -= 1;
+              charges--;
               await wait(1);
             }
           }

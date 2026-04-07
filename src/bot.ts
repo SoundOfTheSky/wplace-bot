@@ -178,12 +178,10 @@ export class WPlaceBot {
         $canvas.addEventListener('wheel', prevent, true)
         this.updateTasks()
 
-        const res = await fetch('https://backend.wplace.live/me', {
-            credentials: 'include'
-        })
-        const data = await res.json()
-
-        let charges = Math.floor(data.charges.count);
+        const me = (await fetch('https://backend.wplace.live/me', {
+          credentials: 'include',
+        }).then((x) => x.json())) as Me
+        let charges = Math.floor(me.charges.count)
 
         let n = 0
         for (let index = 0; index < this.images.length; index++)
@@ -200,7 +198,7 @@ export class WPlaceBot {
                 const task = this.images[imageIndex]!.tasks.shift()
                 if (!task) continue
                 this.drawTask(task)
-                charges -= 1
+                charges--
                 await wait(1)
                 end = false
               }
@@ -209,11 +207,7 @@ export class WPlaceBot {
             break
           }
           case BotStrategy.PERCENTAGE: {
-            for (
-              let taskIndex = 0;
-              taskIndex < n && charges > 0;
-              taskIndex++
-            ) {
+            for (let taskIndex = 0; taskIndex < n && charges > 0; taskIndex++) {
               let minPercent = 1
               let minImage!: BotImage
               for (
@@ -233,7 +227,7 @@ export class WPlaceBot {
                 }
               }
               this.drawTask(minImage.tasks.shift()!)
-              charges -= 1
+              charges--
               await wait(1)
             }
             break
@@ -251,7 +245,7 @@ export class WPlaceBot {
                 task = image.tasks.shift()
               ) {
                 this.drawTask(task)
-                charges -= 1
+                charges--
                 await wait(1)
               }
             }
