@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot fixed
 // @namespace    https://github.com/Readixyee
-// @version      1.5.1
+// @version      1.6.0
 // @description  Bot to automate painting on website https://wplace.live
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
@@ -862,8 +862,9 @@ class BotImage extends Base2 {
   drawColorsInOrder;
   colors;
   lock;
+  active;
   static async fromJSON(bot, data) {
-    return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels, data.drawColorsInOrder, data.colors, data.lock);
+    return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels, data.drawColorsInOrder, data.colors, data.lock, data.active ?? true);
   }
   element = document.createElement("div");
   tasks = [];
@@ -885,7 +886,7 @@ class BotImage extends Base2 {
   $strategy;
   $topbar;
   $wrapper;
-  constructor(bot, position, pixels, strategy = "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */, opacity = 50, drawTransparentPixels = false, drawColorsInOrder = false, colors = [], lock = false) {
+  constructor(bot, position, pixels, strategy = "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */, opacity = 50, drawTransparentPixels = false, drawColorsInOrder = false, colors = [], lock = false, active = true) {
     super();
     this.bot = bot;
     this.position = position;
@@ -896,6 +897,7 @@ class BotImage extends Base2 {
     this.drawColorsInOrder = drawColorsInOrder;
     this.colors = colors;
     this.lock = lock;
+    this.active = active;
     this.element.innerHTML = image_default;
     this.element.classList.add("wimage");
     document.body.append(this.element);
@@ -1006,7 +1008,8 @@ class BotImage extends Base2 {
       drawTransparentPixels: this.drawTransparentPixels,
       drawColorsInOrder: this.drawColorsInOrder,
       colors: this.colors,
-      lock: this.lock
+      lock: this.lock,
+      active: this.active
     };
   }
   updateTasks() {
@@ -1059,6 +1062,15 @@ class BotImage extends Base2 {
     this.$progressLine.style.transform = `scaleX(${percent}%)`;
     this.$wrapper.classList[this.lock ? "add" : "remove"]("no-pointer-events");
     this.$lock.textContent = this.lock ? "\uD83D\uDD12" : "\uD83D\uDD13";
+    if (!this.active) {
+      this.$topbar.style.display = "none";
+      this.$wrapper.style.display = "none";
+      this.$canvas.style.display = "none";
+    } else {
+      this.$topbar.style.display = "";
+      this.$wrapper.style.display = "";
+      this.$canvas.style.display = "";
+    }
   }
   destroy() {
     super.destroy();
@@ -1760,6 +1772,38 @@ var style_default = `/* stylelint-disable declaration-no-important */
 .wform.popup .close-popup:hover {
 	background: #c00;
 }
+.image.inactive {
+	opacity: 0.4;
+	filter: grayscale(1);
+}
+
+.wwidget .images .image .toggle {
+	width: 48px;
+	height: 28px;
+	margin-left: 4px;
+	border: 2px solid var(--text);
+	border-radius: 4px;
+	background-color: var(--main);
+	color: var(--text-invert);
+	font-size: 14px;
+	font-weight: bold;
+	transition: background-color 0.2s, color 0.2s, transform 0.1s;
+	cursor: pointer;
+}
+
+.wwidget .images .image .toggle:hover {
+	background-color: var(--main-hover);
+}
+
+.wwidget .images .image.inactive .toggle {
+	background-color: var(--background-disabled);
+	color: var(--text);
+	cursor: not-allowed;
+}
+
+.wwidget .images .image .toggle:active {
+	transform: scale(0.95);
+}
 `;
 
 // src/errors.ts
@@ -1938,7 +1982,10 @@ class Widget extends Base2 {
       const $image = document.createElement("div");
       this.$images.append($image);
       $image.className = "image";
+      if (!image.active)
+        $image.classList.add("inactive");
       $image.innerHTML = `<img src="${image.pixels.image.src}">
+    <button class="toggle">${image.active ? "ON" : "OFF"}</button>
   <button class="up" title="Move up" ${index === 0 ? "disabled" : ""}>▴</button>
   <button class="down" title="Move down" ${index === this.bot.images.length - 1 ? "disabled" : ""}>▾</button>`;
       $image.querySelector("img").addEventListener("click", () => {
@@ -1954,6 +2001,14 @@ class Widget extends Base2 {
         this.update();
         save(this.bot);
       });
+      $image.querySelector(".toggle").addEventListener("click", () => {
+        image.active = !image.active;
+        $image.classList.toggle("inactive", !image.active);
+        this.update();
+        image.update();
+        save(this.bot);
+      });
+      $image.querySelector(".toggle").textContent = image.active ? "ON" : "OFF";
     }
   }
   setDisabled(name, disabled) {
@@ -2088,6 +2143,7 @@ class WPlaceBot {
       });
       const data = await res.json();
       let charges = Math.floor(data.charges.count);
+      const images = this.images.filter((i) => i.active);
       let n = 0;
       for (let index = 0;index < this.images.length; index++)
         n += this.images[index].tasks.length;
@@ -2095,8 +2151,8 @@ class WPlaceBot {
         case "ALL" /* ALL */: {
           while (charges > 0) {
             let end = true;
-            for (let imageIndex = 0;imageIndex < this.images.length; imageIndex++) {
-              const task = this.images[imageIndex].tasks.shift();
+            for (let imageIndex = 0;imageIndex < images.length; imageIndex++) {
+              const task = images[imageIndex].tasks.shift();
               if (!task)
                 continue;
               this.drawTask(task);
@@ -2113,8 +2169,8 @@ class WPlaceBot {
           for (let taskIndex = 0;taskIndex < n && charges > 0; taskIndex++) {
             let minPercent = 1;
             let minImage;
-            for (let imageIndex = 0;imageIndex < this.images.length; imageIndex++) {
-              const image = this.images[imageIndex];
+            for (let imageIndex = 0;imageIndex < images.length; imageIndex++) {
+              const image = images[imageIndex];
               const percent = 1 - image.tasks.length / (image.pixels.pixels.length * image.pixels.pixels[0].length);
               if (percent < minPercent) {
                 minPercent = percent;
@@ -2128,8 +2184,8 @@ class WPlaceBot {
           break;
         }
         case "SEQUENTIAL" /* SEQUENTIAL */: {
-          for (let imageIndex = 0;imageIndex < this.images.length; imageIndex++) {
-            const image = this.images[imageIndex];
+          for (let imageIndex = 0;imageIndex < images.length; imageIndex++) {
+            const image = images[imageIndex];
             for (let task = image.tasks.shift();task && charges > 0; task = image.tasks.shift()) {
               this.drawTask(task);
               charges -= 1;

@@ -201,14 +201,16 @@ export class WPlaceBot {
 
 				let charges = Math.floor(data.charges.count);
 
+                const images = this.images.filter(i => i.active);
+
 				let n = 0;
 				for (let index = 0; index < this.images.length; index++) n += this.images[index]!.tasks.length;
 				switch (this.strategy) {
 					case BotStrategy.ALL: {
 						while (charges > 0) {
 							let end = true;
-							for (let imageIndex = 0; imageIndex < this.images.length; imageIndex++) {
-								const task = this.images[imageIndex]!.tasks.shift();
+							for (let imageIndex = 0; imageIndex < images.length; imageIndex++) {
+								const task = images[imageIndex]!.tasks.shift();
 								if (!task) continue;
 								this.drawTask(task);
 								charges -= 1;
@@ -223,8 +225,8 @@ export class WPlaceBot {
 						for (let taskIndex = 0; taskIndex < n && charges > 0; taskIndex++) {
 							let minPercent = 1;
 							let minImage!: BotImage;
-							for (let imageIndex = 0; imageIndex < this.images.length; imageIndex++) {
-								const image = this.images[imageIndex]!;
+							for (let imageIndex = 0; imageIndex < images.length; imageIndex++) {
+								const image = images[imageIndex]!;
 								const percent =
 									1 -
 									image.tasks.length / (image.pixels.pixels.length * image.pixels.pixels[0]!.length);
@@ -240,8 +242,8 @@ export class WPlaceBot {
 						break;
 					}
 					case BotStrategy.SEQUENTIAL: {
-						for (let imageIndex = 0; imageIndex < this.images.length; imageIndex++) {
-							const image = this.images[imageIndex]!;
+						for (let imageIndex = 0; imageIndex < images.length; imageIndex++) {
+							const image = images[imageIndex]!;
 							for (let task = image.tasks.shift(); task && charges > 0; task = image.tasks.shift()) {
 								this.drawTask(task);
 								charges -= 1;

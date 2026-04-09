@@ -40,7 +40,8 @@ export class BotImage extends Base {
 			data.drawTransparentPixels,
 			data.drawColorsInOrder,
 			data.colors,
-			data.lock
+			data.lock,
+			data.active ?? true
 		);
 	}
 
@@ -94,7 +95,9 @@ export class BotImage extends Base {
 		/** Colors settings */
 		public colors: { realColor: number; disabled?: boolean }[] = [],
 		/** Stop accidental image edit */
-		public lock = false
+		public lock = false,
+
+		public active = true
 	) {
 		super();
 		this.element.innerHTML = html as unknown as string;
@@ -240,6 +243,7 @@ export class BotImage extends Base {
 			drawColorsInOrder: this.drawColorsInOrder,
 			colors: this.colors,
 			lock: this.lock,
+			active: this.active,
 		};
 	}
 
@@ -294,6 +298,16 @@ export class BotImage extends Base {
 		this.$progressLine.style.transform = `scaleX(${percent}%)`;
 		this.$wrapper.classList[this.lock ? 'add' : 'remove']('no-pointer-events');
 		this.$lock.textContent = this.lock ? '🔒' : '🔓';
+
+		if (!this.active) {
+			this.$topbar.style.display = 'none';
+			this.$wrapper.style.display = 'none';
+			this.$canvas.style.display = 'none';
+		} else {
+			this.$topbar.style.display = '';
+			this.$wrapper.style.display = '';
+			this.$canvas.style.display = '';
+		}
 	}
 
 	/** Removes image. Don't forget to remove from array inside widget. */

@@ -442,3 +442,35 @@
 .wform.popup .close-popup:hover {
 	background: #c00;
 }
+.image.inactive {
+	opacity: 0.4;
+	filter: grayscale(1);
+}
+
+.wwidget .images .image .toggle {
+	width: 48px;
+	height: 28px;
+	margin-left: 4px;
+	border: 2px solid var(--text);
+	border-radius: 4px;
+	background-color: var(--main);
+	color: var(--text-invert);
+	font-size: 14px;
+	font-weight: bold;
+	transition: background-color 0.2s, color 0.2s, transform 0.1s;
+	cursor: pointer;
+}
+
+.wwidget .images .image .toggle:hover {
+	background-color: var(--main-hover);
+}
+
+.wwidget .images .image.inactive .toggle {
+	background-color: var(--background-disabled);
+	color: var(--text);
+	cursor: not-allowed;
+}
+
+.wwidget .images .image .toggle:active {
+	transform: scale(0.95);
+}

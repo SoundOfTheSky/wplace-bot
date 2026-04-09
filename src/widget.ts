@@ -189,7 +189,11 @@ export class Widget extends Base {
 			const $image = document.createElement('div');
 			this.$images.append($image);
 			$image.className = 'image';
+
+			if (!image.active) $image.classList.add('inactive');
+
 			$image.innerHTML = `<img src="${image.pixels.image.src}">
+    <button class="toggle">${image.active ? 'ON' : 'OFF'}</button>
   <button class="up" title="Move up" ${index === 0 ? 'disabled' : ''}>▴</button>
   <button class="down" title="Move down" ${index === this.bot.images.length - 1 ? 'disabled' : ''}>▾</button>`;
 			$image.querySelector<HTMLButtonElement>('img')!.addEventListener('click', () => {
@@ -205,6 +209,15 @@ export class Widget extends Base {
 				this.update();
 				save(this.bot);
 			});
+			$image.querySelector<HTMLButtonElement>('.toggle')!.addEventListener('click', () => {
+				image.active = !image.active;
+				$image.classList.toggle('inactive', !image.active);
+				this.update();
+                image.update();
+				save(this.bot);
+			});
+
+			$image.querySelector<HTMLButtonElement>('.toggle')!.textContent = image.active ? 'ON' : 'OFF';
 		}
 	}
 
