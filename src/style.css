@@ -416,14 +416,33 @@
 	left: 50%;
 	transform: translate(-50%, -50%);
 	border: 2px solid #ccc;
-	padding: 1rem;
 	box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
 	display: none;
 	z-index: 999;
+	background-color: var(--background);
+	border: var(--text) 2px solid;
+	color: var(--text);
+	font-family: 'Tiny5', sans-serif;
+	box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+	min-width: 220px;
 }
 
 .wform.popup.show {
 	display: block;
+}
+
+.wform.popup .popup-header {
+	width: 100%;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	cursor: move;
+	padding: 4px;
+	margin: 0;
+	margin-bottom: 8px;
+	background-color: var(--main);
+	color: var(--text-invert);
+	user-select: none;
 }
 
 .wform.popup .close-popup {
@@ -435,8 +454,8 @@
 	cursor: pointer;
 	font-size: 16px;
 	line-height: 24px;
-	text-align: center;
-	float: right;
+	display: flex;
+	justify-content: center;
 }
 
 .wform.popup .close-popup:hover {
@@ -457,7 +476,10 @@
 	color: var(--text-invert);
 	font-size: 14px;
 	font-weight: bold;
-	transition: background-color 0.2s, color 0.2s, transform 0.1s;
+	transition:
+		background-color 0.2s,
+		color 0.2s,
+		transform 0.1s;
 	cursor: pointer;
 }
 

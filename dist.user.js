@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot fixed
 // @namespace    https://github.com/Readixyee
-// @version      1.6.0
+// @version      1.6.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
@@ -390,7 +390,10 @@ var image_default = `<div class="wtopbar">
 </div>
 
 <div class="wform popup">
-	<button class="close-popup">✖</button>
+	<div class="popup-header">
+		<span>Settings</span>
+		<button class="close-popup">✖</button>
+	</div>
 	<div class="wprogress">
 		<div></div>
 		<span></span>
@@ -925,6 +928,31 @@ class BotImage extends Base2 {
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
     this.$canvas = this.pixels.canvas;
     this.$wrapper.prepend(this.pixels.canvas);
+    document.body.appendChild(this.$popup);
+    const header = this.$popup.querySelector(".popup-header");
+    let isDragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+    header.addEventListener("mousedown", (e) => {
+      isDragging = true;
+      const rect = this.$popup.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+    });
+    document.addEventListener("mousemove", (e) => {
+      if (!isDragging)
+        return;
+      this.$popup.style.top = `${e.clientY - offsetY}px`;
+      this.$popup.style.left = `${e.clientX - offsetX}px`;
+      this.$popup.style.transform = "none";
+    });
+    document.addEventListener("mouseup", () => {
+      isDragging = false;
+    });
+    const closeBtn = this.$popup.querySelector(".close-popup");
+    closeBtn.addEventListener("click", () => {
+      this.$popup.classList.remove("show");
+    });
     this.registerEvent(this.$strategy, "change", () => {
       this.strategy = this.$strategy.value;
       save(this.bot);
@@ -1746,14 +1774,33 @@ var style_default = `/* stylelint-disable declaration-no-important */
 	left: 50%;
 	transform: translate(-50%, -50%);
 	border: 2px solid #ccc;
-	padding: 1rem;
 	box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
 	display: none;
 	z-index: 999;
+	background-color: var(--background);
+	border: var(--text) 2px solid;
+	color: var(--text);
+	font-family: 'Tiny5', sans-serif;
+	box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+	min-width: 220px;
 }
 
 .wform.popup.show {
 	display: block;
+}
+
+.wform.popup .popup-header {
+	width: 100%;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	cursor: move;
+	padding: 4px;
+	margin: 0;
+	margin-bottom: 8px;
+	background-color: var(--main);
+	color: var(--text-invert);
+	user-select: none;
 }
 
 .wform.popup .close-popup {
@@ -1765,8 +1812,8 @@ var style_default = `/* stylelint-disable declaration-no-important */
 	cursor: pointer;
 	font-size: 16px;
 	line-height: 24px;
-	text-align: center;
-	float: right;
+	display: flex;
+	justify-content: center;
 }
 
 .wform.popup .close-popup:hover {
@@ -1787,7 +1834,10 @@ var style_default = `/* stylelint-disable declaration-no-important */
 	color: var(--text-invert);
 	font-size: 14px;
 	font-weight: bold;
-	transition: background-color 0.2s, color 0.2s, transform 0.1s;
+	transition:
+		background-color 0.2s,
+		color 0.2s,
+		transform 0.1s;
 	cursor: pointer;
 }
 

@@ -128,6 +128,36 @@ export class BotImage extends Base {
 		this.$resetSizeSpan = this.$resetSize.querySelector<HTMLSpanElement>('span')!;
 		this.$canvas = this.pixels.canvas;
 		this.$wrapper.prepend(this.pixels.canvas);
+		document.body.appendChild(this.$popup);
+
+		const header = this.$popup.querySelector('.popup-header')!;
+		let isDragging = false;
+		let offsetX = 0;
+		let offsetY = 0;
+
+		header.addEventListener('mousedown', (e: MouseEvent) => {
+			isDragging = true;
+			const rect = this.$popup.getBoundingClientRect();
+			offsetX = e.clientX - rect.left;
+			offsetY = e.clientY - rect.top;
+		});
+
+		document.addEventListener('mousemove', (e: MouseEvent) => {
+			if (!isDragging) return;
+			this.$popup.style.top = `${e.clientY - offsetY}px`;
+			this.$popup.style.left = `${e.clientX - offsetX}px`;
+			this.$popup.style.transform = 'none';
+		});
+
+		document.addEventListener('mouseup', () => {
+			isDragging = false;
+		});
+
+		// Close button
+		const closeBtn = this.$popup.querySelector('.close-popup')!;
+		closeBtn.addEventListener('click', () => {
+			this.$popup.classList.remove('show');
+		});
 
 		// Strategy
 		this.registerEvent(this.$strategy, 'change', () => {
