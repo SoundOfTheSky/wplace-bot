@@ -41,7 +41,7 @@ export class BotImage extends Base {
 			data.drawColorsInOrder,
 			data.colors,
 			data.lock,
-			data.active ?? true
+			data.active ?? true,
 		);
 	}
 
@@ -49,6 +49,8 @@ export class BotImage extends Base {
 
 	/** Pixels left to draw */
 	public tasks: DrawTask[] = [];
+
+	public progress: DrawTask[] = [];
 
 	/** Moving/resizing image */
 	protected moveInfo?: {
@@ -65,6 +67,7 @@ export class BotImage extends Base {
 	protected readonly $colors!: HTMLDivElement;
 	protected readonly $delete!: HTMLButtonElement;
 	protected readonly $drawColorsInOrder!: HTMLInputElement;
+    protected readonly $onlyAvailableColors!: HTMLInputElement;
 	protected readonly $drawTransparent!: HTMLInputElement;
 	protected readonly $export!: HTMLDivElement;
 	protected readonly $lock!: HTMLButtonElement;
@@ -109,6 +112,7 @@ export class BotImage extends Base {
 			$colors: '.colors',
 			$delete: '.delete',
 			$drawColorsInOrder: '.draw-colors-in-order',
+			$onlyAvailableColors: '.only-available-colors',
 			$drawTransparent: '.draw-transparent',
 			$export: '.export',
 			$lock: '.lock',
@@ -223,6 +227,14 @@ export class BotImage extends Base {
 			save(this.bot);
 		});
 
+		this.registerEvent(this.$onlyAvailableColors, 'click', () => {
+			this.pixels.onlyAvailableColors = this.$onlyAvailableColors.checked;
+			this.pixels.update();
+			this.updateColors();
+			this.update();
+			save(this.bot);
+		});
+
 		// Lock
 		this.registerEvent(this.$lock, 'click', () => {
 			this.lock = !this.lock;
@@ -280,29 +292,45 @@ export class BotImage extends Base {
 	/** Calculates everything we need to do. Very expensive task! */
 	public updateTasks() {
 		this.tasks.length = 0;
+		this.progress.length = 0;
+
 		const position = this.position.clone();
+
 		const skipColors = new Set<number>();
 		const colorsOrderMap = new Map<number, number>();
+
 		for (let index = 0; index < this.colors.length; index++) {
 			const drawColor = this.colors[index]!;
 			if (drawColor.disabled) skipColors.add(drawColor.realColor);
 			colorsOrderMap.set(drawColor.realColor, index);
 		}
+
 		for (const { x, y } of this.strategyPositionIterator()) {
 			const color = this.pixels.pixels[y]![x]!;
-			if (skipColors.has(color)) continue;
-			if (this.bot.unavailableColors.has(color)) continue;
+
 			position.globalX = this.position.globalX + x;
 			position.globalY = this.position.globalY + y;
+
 			const mapColor = position.getMapColor();
-			if (color !== mapColor && (this.drawTransparentPixels || color !== 0))
-				this.tasks.push({
+
+			if (color !== mapColor && (this.drawTransparentPixels || color !== 0)) {
+				const fullTask: DrawTask = {
 					position: position.clone(),
 					color,
-				});
+				};
+
+				this.progress.push(fullTask);
+
+				if (!skipColors.has(color) && !this.bot.unavailableColors.has(color)) {
+					this.tasks.push(fullTask);
+				}
+			}
 		}
-		if (this.drawColorsInOrder)
+
+		if (this.drawColorsInOrder) {
 			this.tasks.sort((a, b) => (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0));
+		}
+
 		this.update();
 		this.bot.widget.update();
 	}
@@ -321,8 +349,9 @@ export class BotImage extends Base {
 		this.$opacity.valueAsNumber = this.opacity;
 		this.$drawTransparent.checked = this.drawTransparentPixels;
 		this.$drawColorsInOrder.checked = this.drawColorsInOrder;
+        this.$onlyAvailableColors.checked = this.pixels.onlyAvailableColors;
 		const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0]!.length;
-		const doneTasks = maxTasks - this.tasks.length;
+		const doneTasks = maxTasks - this.progress.length;
 		const percent = ((doneTasks / maxTasks) * 100) | 0;
 		this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${(this.tasks.length / 120) | 0}h`;
 		this.$progressLine.style.transform = `scaleX(${percent}%)`;

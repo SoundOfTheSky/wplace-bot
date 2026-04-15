@@ -175,7 +175,7 @@ export class Widget extends Base {
 		for (let index = 0; index < this.bot.images.length; index++) {
 			const image = this.bot.images[index]!;
 			maxTasks += image.pixels.pixels.length * image.pixels.pixels[0]!.length;
-			totalTasks += image.tasks.length;
+			totalTasks += image.progress.length;
 		}
 		const doneTasks = maxTasks - totalTasks;
 		const percent = ((doneTasks / maxTasks) * 100) | 0;

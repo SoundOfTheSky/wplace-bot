@@ -23,6 +23,7 @@ type CacheKey = {
 	width: number;
 	brightness: number;
 	exactColor: boolean;
+	onlyAvailableColors: boolean;
 };
 
 export class Pixels {
@@ -124,7 +125,7 @@ export class Pixels {
 					.then((X) => URL.createObjectURL(X))
 			: data.url;
 		await promisifyEventSource(image, ['load'], ['error']);
-		let pixels = new Pixels(bot, image, data.width, data.brightness, data.exactColor);
+		let pixels = new Pixels(bot, image, data.width, data.brightness, data.exactColor, data.onlyAvailableColors);
 		await pixels.update(skipCache);
 
 		return pixels;
@@ -160,7 +161,9 @@ export class Pixels {
 		/** Change brightness of picture */
 		public brightness = 0,
 		/** Use fast exact color algorithm */
-		public exactColor = false
+		public exactColor = false,
+
+		public onlyAvailableColors = false
 	) {
 		if (exactColor) {
 			this.resolution = 1;
@@ -194,6 +197,7 @@ export class Pixels {
 				width: this.width,
 				brightness: this.brightness,
 				exactColor: this.exactColor,
+				onlyAvailableColors: this.onlyAvailableColors,
 			};
 
 			const cached = await Pixels.loadFromCache(cacheKey);
@@ -250,7 +254,8 @@ export class Pixels {
 		this.colors.clear();
 		const colorCache = new Map<string, [number, number]>();
 		for (let index = 1; index < 64; index++) {
-			if (this.exactColor) colorCache.set(COLORS_RGB[index]!, [index, index]);
+			if (this.exactColor || (!this.bot.unavailableColors.has(index) && this.onlyAvailableColors))
+				colorCache.set(COLORS_RGB[index]!, [index, index]);
 		}
 
 		this.context.imageSmoothingEnabled = false;
@@ -289,7 +294,7 @@ export class Pixels {
 					for (let colorIndex = 0; colorIndex < COLORS.length; colorIndex++) {
 						const color = COLORS[colorIndex]!;
 						const delta = deltaE2000(rgbToOklab(r, g, b), color, this.brightness);
-						if (delta < minDelta) {
+						if (delta < minDelta && (!this.onlyAvailableColors || !this.bot.unavailableColors.has(colorIndex))) {
 							minDelta = delta;
 							min = colorIndex;
 						}
@@ -336,11 +341,13 @@ export class Pixels {
 			width: this.width,
 			brightness: this.brightness,
 			exactColor: this.exactColor,
+            onlyAvailableColors: this.onlyAvailableColors
 		} as {
 			url: string;
 			width?: number;
 			brightness?: number;
 			exactColor?: boolean;
+            onlyAvailableColors?: boolean
 		};
 	}
 

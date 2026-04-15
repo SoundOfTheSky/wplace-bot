@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot fixed
 // @namespace    https://github.com/Readixyee
-// @version      1.6.1
+// @version      1.6.2
 // @description  Bot to automate painting on website https://wplace.live
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
@@ -416,6 +416,7 @@ var image_default = `<div class="wtopbar">
 	<button class="reset-size">Reset size [<span></span>px]</button>
 	<label> <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels </label>
 	<label> <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order </label>
+    <label> <input type="checkbox" class="only-available-colors" />&nbsp;Only available colors </label>
 </div>
 `;
 
@@ -426,6 +427,7 @@ class Pixels {
   width;
   brightness;
   exactColor;
+  onlyAvailableColors;
   static db = null;
   static DB_NAME = "PixelBotCache";
   static STORE_NAME = "pixelData";
@@ -500,7 +502,7 @@ class Pixels {
     const image = new Image;
     image.src = data.url.startsWith("http") ? await fetch(data.url, { cache: "no-store" }).then((x) => x.blob()).then((X) => URL.createObjectURL(X)) : data.url;
     await promisifyEventSource(image, ["load"], ["error"]);
-    let pixels = new Pixels(bot, image, data.width, data.brightness, data.exactColor);
+    let pixels = new Pixels(bot, image, data.width, data.brightness, data.exactColor, data.onlyAvailableColors);
     await pixels.update(skipCache);
     return pixels;
   }
@@ -516,12 +518,13 @@ class Pixels {
   set height(value) {
     this.width = value * this.resolution | 0;
   }
-  constructor(bot, image, width = image.naturalWidth, brightness = 0, exactColor = false) {
+  constructor(bot, image, width = image.naturalWidth, brightness = 0, exactColor = false, onlyAvailableColors = false) {
     this.bot = bot;
     this.image = image;
     this.width = width;
     this.brightness = brightness;
     this.exactColor = exactColor;
+    this.onlyAvailableColors = onlyAvailableColors;
     if (exactColor) {
       this.resolution = 1;
       this.width = 1000;
@@ -542,7 +545,8 @@ class Pixels {
         imageHash,
         width: this.width,
         brightness: this.brightness,
-        exactColor: this.exactColor
+        exactColor: this.exactColor,
+        onlyAvailableColors: this.onlyAvailableColors
       };
       const cached = await Pixels.loadFromCache(cacheKey);
       if (cached) {
@@ -589,7 +593,7 @@ class Pixels {
     this.colors.clear();
     const colorCache = new Map;
     for (let index = 1;index < 64; index++) {
-      if (this.exactColor)
+      if (this.exactColor || !this.bot.unavailableColors.has(index) && this.onlyAvailableColors)
         colorCache.set(COLORS_RGB[index], [index, index]);
     }
     this.context.imageSmoothingEnabled = false;
@@ -625,7 +629,7 @@ class Pixels {
           for (let colorIndex = 0;colorIndex < COLORS.length; colorIndex++) {
             const color = COLORS[colorIndex];
             const delta = deltaE2000(rgbToOklab(r, g, b), color, this.brightness);
-            if (delta < minDelta) {
+            if (delta < minDelta && (!this.onlyAvailableColors || !this.bot.unavailableColors.has(colorIndex))) {
               minDelta = delta;
               min = colorIndex;
             }
@@ -665,7 +669,8 @@ class Pixels {
       url: this._cachedDataURL,
       width: this.width,
       brightness: this.brightness,
-      exactColor: this.exactColor
+      exactColor: this.exactColor,
+      onlyAvailableColors: this.onlyAvailableColors
     };
   }
   static async clearCache() {
@@ -871,12 +876,14 @@ class BotImage extends Base2 {
   }
   element = document.createElement("div");
   tasks = [];
+  progress = [];
   moveInfo;
   $brightness;
   $canvas;
   $colors;
   $delete;
   $drawColorsInOrder;
+  $onlyAvailableColors;
   $drawTransparent;
   $export;
   $lock;
@@ -909,6 +916,7 @@ class BotImage extends Base2 {
       $colors: ".colors",
       $delete: ".delete",
       $drawColorsInOrder: ".draw-colors-in-order",
+      $onlyAvailableColors: ".only-available-colors",
       $drawTransparent: ".draw-transparent",
       $export: ".export",
       $lock: ".lock",
@@ -1003,6 +1011,13 @@ class BotImage extends Base2 {
       this.drawColorsInOrder = this.$drawColorsInOrder.checked;
       save(this.bot);
     });
+    this.registerEvent(this.$onlyAvailableColors, "click", () => {
+      this.pixels.onlyAvailableColors = this.$onlyAvailableColors.checked;
+      this.pixels.update();
+      this.updateColors();
+      this.update();
+      save(this.bot);
+    });
     this.registerEvent(this.$lock, "click", () => {
       this.lock = !this.lock;
       this.update();
@@ -1042,6 +1057,7 @@ class BotImage extends Base2 {
   }
   updateTasks() {
     this.tasks.length = 0;
+    this.progress.length = 0;
     const position = this.position.clone();
     const skipColors = new Set;
     const colorsOrderMap = new Map;
@@ -1053,21 +1069,23 @@ class BotImage extends Base2 {
     }
     for (const { x, y } of this.strategyPositionIterator()) {
       const color = this.pixels.pixels[y][x];
-      if (skipColors.has(color))
-        continue;
-      if (this.bot.unavailableColors.has(color))
-        continue;
       position.globalX = this.position.globalX + x;
       position.globalY = this.position.globalY + y;
       const mapColor = position.getMapColor();
-      if (color !== mapColor && (this.drawTransparentPixels || color !== 0))
-        this.tasks.push({
+      if (color !== mapColor && (this.drawTransparentPixels || color !== 0)) {
+        const fullTask = {
           position: position.clone(),
           color
-        });
+        };
+        this.progress.push(fullTask);
+        if (!skipColors.has(color) && !this.bot.unavailableColors.has(color)) {
+          this.tasks.push(fullTask);
+        }
+      }
     }
-    if (this.drawColorsInOrder)
+    if (this.drawColorsInOrder) {
       this.tasks.sort((a, b) => (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0));
+    }
     this.update();
     this.bot.widget.update();
   }
@@ -1083,8 +1101,9 @@ class BotImage extends Base2 {
     this.$opacity.valueAsNumber = this.opacity;
     this.$drawTransparent.checked = this.drawTransparentPixels;
     this.$drawColorsInOrder.checked = this.drawColorsInOrder;
+    this.$onlyAvailableColors.checked = this.pixels.onlyAvailableColors;
     const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0].length;
-    const doneTasks = maxTasks - this.tasks.length;
+    const doneTasks = maxTasks - this.progress.length;
     const percent = doneTasks / maxTasks * 100 | 0;
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${this.tasks.length / 120 | 0}h`;
     this.$progressLine.style.transform = `scaleX(${percent}%)`;
@@ -2020,7 +2039,7 @@ class Widget extends Base2 {
     for (let index = 0;index < this.bot.images.length; index++) {
       const image = this.bot.images[index];
       maxTasks += image.pixels.pixels.length * image.pixels.pixels[0].length;
-      totalTasks += image.tasks.length;
+      totalTasks += image.progress.length;
     }
     const doneTasks = maxTasks - totalTasks;
     const percent = doneTasks / maxTasks * 100 | 0;
