@@ -373,6 +373,72 @@ function colorToCSS(colorId) {
   const color = COLORS[colorId];
   return `oklab(${color[0] * 100}% ${color[1]} ${color[2]})`;
 }
+var COLOR_NAMES = [
+  "Transparent",
+  "Black",
+  "Dark Gray",
+  "Gray",
+  "Light Gray",
+  "White",
+  "Deep Red",
+  "Red",
+  "Orange",
+  "Gold",
+  "Yellow",
+  "Light Yellow",
+  "Dark Green",
+  "Green",
+  "Light Green",
+  "Dark Teal",
+  "Teal",
+  "Light Teal",
+  "Dark Blue",
+  "Blue",
+  "Cyan",
+  "Indigo",
+  "Light Indigo",
+  "Dark Purple",
+  "Purple",
+  "Light Purple",
+  "Dark Pink",
+  "Pink",
+  "Light Pink",
+  "Dark Brown",
+  "Brown",
+  "Beige",
+  "Medium Gray",
+  "Dark Red",
+  "Light Red",
+  "Dark Orange",
+  "Light Tan",
+  "Dark Goldenrod",
+  "Goldenrod",
+  "Light Goldenrod",
+  "Dark Olive",
+  "Olive",
+  "Light Olive",
+  "Dark Cyan",
+  "Light Cyan",
+  "Light Blue",
+  "Dark Indigo",
+  "Dark Slate Blue",
+  "Slate Blue",
+  "Light Slate Blue",
+  "Light Brown",
+  "Dark Beige",
+  "Light Beige",
+  "Dark Peach",
+  "Peach",
+  "Light Peach",
+  "Dark Tan",
+  "Tan",
+  "Dark Slate",
+  "Slate",
+  "Light Slate",
+  "Dark Stone",
+  "Stone",
+  "Light Stone"
+];
 
 // src/image.html
 var image_default = `<div class="wtopbar">
@@ -1129,7 +1195,6 @@ class BotImage extends Base2 {
   updateColors() {
     this.$colors.innerHTML = "";
     const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0].length;
-    const itemWidth = 100 / this.pixels.colors.size;
     if (this.colors.length !== this.pixels.colors.size || this.colors.some((x) => !this.pixels.colors.has(x.realColor))) {
       this.colors = this.pixels.colors.values().toArray().sort((a, b) => b.amount - a.amount).map((color) => ({
         realColor: color.realColor,
@@ -1137,80 +1202,178 @@ class BotImage extends Base2 {
       }));
       save(this.bot);
     }
-    let nextXPosition = 0;
+    const $utilities = document.createElement("div");
+    $utilities.style.display = "flex";
+    $utilities.style.gap = "8px";
+    $utilities.style.padding = "8px";
+    $utilities.style.borderBottom = "1px solid rgba(0,0,0,0.1)";
+    $utilities.style.flexWrap = "wrap";
+    const createUtilButton = (label, onClick) => {
+      const $btn = document.createElement("button");
+      $btn.textContent = label;
+      $btn.style.padding = "6px 12px";
+      $btn.style.fontSize = "12px";
+      $btn.style.cursor = "pointer";
+      $btn.style.border = "1px solid rgba(0,0,0,0.2)";
+      $btn.style.borderRadius = "4px";
+      $btn.style.background = "rgba(0,0,0,0.05)";
+      $btn.addEventListener("click", onClick);
+      return $btn;
+    };
+    $utilities.append(createUtilButton("First Half", () => {
+      const mid = Math.ceil(this.colors.length / 2);
+      this.colors.forEach((color, i) => {
+        color.disabled = i >= mid ? true : undefined;
+      });
+      this.updateColors();
+      save(this.bot);
+    }));
+    $utilities.append(createUtilButton("Second Half", () => {
+      const mid = Math.ceil(this.colors.length / 2);
+      this.colors.forEach((color, i) => {
+        color.disabled = i < mid ? true : undefined;
+      });
+      this.updateColors();
+      save(this.bot);
+    }));
+    $utilities.append(createUtilButton("Random", () => {
+      this.colors.forEach((color) => {
+        color.disabled = Math.random() > 0.5 ? true : undefined;
+      });
+      this.updateColors();
+      save(this.bot);
+    }));
+    $utilities.append(createUtilButton("Invert", () => {
+      this.colors.forEach((color) => {
+        color.disabled = color.disabled ? undefined : true;
+      });
+      this.updateColors();
+      save(this.bot);
+    }));
+    $utilities.append(createUtilButton("Select All", () => {
+      this.colors.forEach((color) => {
+        color.disabled = undefined;
+      });
+      this.updateColors();
+      save(this.bot);
+    }));
+    $utilities.append(createUtilButton("Deselect All", () => {
+      this.colors.forEach((color) => {
+        color.disabled = true;
+      });
+      this.updateColors();
+      save(this.bot);
+    }));
+    this.$colors.append($utilities);
+    let dragIndex = null;
+    let startY = 0;
+    let startIndex = 0;
+    const rowHeight = 20;
     for (let index = 0;index < this.colors.length; index++) {
       const drawColor = this.colors[index];
       const color = this.pixels.colors.get(drawColor.realColor);
-      let dragging = false;
-      const toggleDisabled = () => {
-        if (dragging)
-          return;
+      const $button = document.createElement("button");
+      $button.style.display = "flex";
+      $button.style.alignItems = "center";
+      const percent = color.amount / pixelsSum * 100;
+      const pixels = color.amount;
+      if (color.realColor === color.color) {
+        $button.style.background = colorToCSS(color.realColor);
+        const css = colorToCSS(color.realColor);
+        const l = parseFloat(css.match(/oklab\((\d+\.?\d*)/)?.[1] ?? "100");
+        if (l < 50)
+          $button.classList.add("color-dark");
+      }
+      $button.setAttribute("data-color", String(drawColor.realColor));
+      if (drawColor.disabled)
+        $button.classList.add("color-disabled");
+      const colorName = COLOR_NAMES[drawColor.realColor] ?? `Color ${drawColor.realColor}`;
+      $button.setAttribute("title", colorName);
+      const $drag = document.createElement("div");
+      $drag.style.flex = "0 0 32px";
+      $drag.style.display = "flex";
+      $drag.style.alignItems = "center";
+      $drag.style.justifyContent = "flex-start";
+      $drag.style.cursor = "grab";
+      $drag.innerHTML = `
+<svg width="30" height="25" viewBox="0 0 24 24" fill="currentColor">
+	<rect x="0" y="6" width="20" height="4" rx="1"/>
+	<rect x="0" y="13" width="20" height="4" rx="1"/>
+</svg>
+`;
+      const $content = document.createElement("div");
+      $content.style.flex = "1";
+      $content.style.display = "flex";
+      $content.style.justifyContent = "flex-end";
+      const info = document.createElement("span");
+      info.textContent = `${percent.toFixed(2)}% (${pixels})`;
+      $content.append(info);
+      $content.addEventListener("click", () => {
         drawColor.disabled = drawColor.disabled ? undefined : true;
         $button.classList.toggle("color-disabled");
         save(this.bot);
-      };
-      const $button = document.createElement("button");
-      if (drawColor.disabled)
-        $button.classList.add("color-disabled");
-      if (color.realColor === color.color)
-        $button.style.background = colorToCSS(color.realColor);
-      else {
-        $button.classList.add("substitution");
-        $button.style.setProperty("--wreal-color", colorToCSS(color.realColor));
-        $button.style.setProperty("--wsubstitution-color", colorToCSS(color.color));
-        const $button1 = document.createElement("button");
-        const $button2 = document.createElement("button");
-        $button1.textContent = "$";
-        $button2.textContent = "✓";
-        $button1.addEventListener("click", () => {
-          document.getElementById("color-" + color.realColor)?.click();
-        });
-        $button2.addEventListener("click", toggleDisabled);
-        $button.append($button1);
-        $button.append($button2);
-      }
-      $button.style.left = nextXPosition + "%";
-      const width = color.amount / pixelsSum * 100;
-      $button.style.width = width + "%";
-      nextXPosition += width;
-      $button.style.setProperty("--wleft", itemWidth * index + "%");
-      $button.style.setProperty("--wwidth", itemWidth + "%");
-      this.$colors.append($button);
-      const startDrag = (startEvent) => {
-        let newIndex = index;
-        const buttonWidth = $button.getBoundingClientRect().width;
-        const mouseMoveHandler = (event) => {
-          newIndex = Math.min(this.colors.length - 1, Math.max(0, Math.round(index + (event.clientX - startEvent.clientX) / buttonWidth)));
-          if (newIndex !== index)
-            dragging = true;
-          let childIndex = 0;
-          for (const $child of this.$colors.children) {
-            if ($child === $button)
-              continue;
-            if (childIndex === newIndex)
-              childIndex++;
-            $child.style.setProperty("--wleft", itemWidth * childIndex + "%");
-            childIndex++;
+      });
+      $button.append($drag);
+      $button.append($content);
+      $drag.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        $drag.setPointerCapture(e.pointerId);
+        const originalIndex = Array.from(this.$colors.children).indexOf($button);
+        const startY2 = e.clientY;
+        const rect = $button.getBoundingClientRect();
+        const containerRect = this.$colors.getBoundingClientRect();
+        $button.style.position = "fixed";
+        $button.style.top = `${rect.top}px`;
+        $button.style.width = `${rect.width}px`;
+        $button.style.zIndex = "9999";
+        $button.style.opacity = "0.85";
+        $button.style.pointerEvents = "none";
+        const $placeholder = document.createElement("div");
+        $placeholder.style.height = `${rowHeight}px`;
+        $placeholder.style.background = "rgba(0,0,0,0.15)";
+        $placeholder.style.boxSizing = "border-box";
+        $button.after($placeholder);
+        let currentIndex = originalIndex;
+        const onMove = (e2) => {
+          const delta = e2.clientY - startY2;
+          $button.style.top = `${rect.top + delta}px`;
+          const buttons = Array.from(this.$colors.children).filter((el) => el !== $button && el !== $placeholder);
+          let newIndex = buttons.findIndex((btn) => {
+            const r = btn.getBoundingClientRect();
+            return e2.clientY < r.top + r.height / 2;
+          });
+          if (newIndex === -1)
+            newIndex = buttons.length;
+          if (newIndex !== currentIndex) {
+            currentIndex = newIndex;
+            if (newIndex >= buttons.length) {
+              buttons[buttons.length - 1]?.after($placeholder);
+            } else {
+              buttons[newIndex].before($placeholder);
+            }
           }
-          $button.style.setProperty("--wleft", itemWidth * newIndex + "%");
         };
-        document.addEventListener("mousemove", mouseMoveHandler);
-        document.addEventListener("mouseup", () => {
-          document.removeEventListener("mousemove", mouseMoveHandler);
-          if (newIndex !== index)
-            this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1));
+        const onUp = () => {
+          $button.removeEventListener("pointermove", onMove);
+          $button.style.position = "";
+          $button.style.top = "";
+          $button.style.left = "";
+          $button.style.width = "";
+          $button.style.zIndex = "";
+          $button.style.opacity = "";
+          $button.style.pointerEvents = "";
+          $placeholder.replaceWith($button);
+          const newOrder = Array.from(this.$colors.children);
+          this.colors = newOrder.map((el) => {
+            const realColor = el.getAttribute("data-color");
+            return this.colors.find((c) => String(c.realColor) === realColor);
+          });
           save(this.bot);
-          $button.removeEventListener("mousedown", startDrag);
-          setTimeout(() => {
-            this.updateColors();
-          }, 200);
-        }, {
-          once: true
-        });
-      };
-      $button.addEventListener("mousedown", startDrag);
-      if (color.realColor === color.color)
-        $button.addEventListener("click", toggleDisabled);
+        };
+        $button.addEventListener("pointermove", onMove);
+        $button.addEventListener("pointerup", onUp, { once: true });
+      });
+      this.$colors.append($button);
     }
   }
   *strategyPositionIterator() {
@@ -1392,6 +1555,10 @@ var style_default = `/* stylelint-disable declaration-no-important */
 	--background-disabled: #a37648;
 	--main: #66bbb4;
 	--main-hover: #48a19a;
+
+	--text-r: 66;
+	--text-g: 46;
+	--text-b: 44;
 }
 
 .text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center:nth-child(
@@ -1582,45 +1749,40 @@ var style_default = `/* stylelint-disable declaration-no-important */
 }
 
 .wform .colors {
-	position: relative;
-	width: 100%;
-	height: 32px;
-	margin: 0;
-	background: repeating-linear-gradient(
-		25deg,
-		var(--background),
-		var(--background),
-		var(--hover) 8px,
-		var(--hover) 12px
-	);
-	cursor: ew-resize;
+	display: block;
+	overflow-y: auto;
+	height: 200px;
+	min-height: 0;
+	touch-action: pan-y;
 }
 
 .wform .colors > button {
-	position: absolute;
-	top: 0;
-	left: 0;
+	position: relative;
 	width: 100%;
-	height: 100%;
+	display: flex;
 	border: none;
-	cursor: grab;
-	transition:
-		0.2s left,
-		0.2s width,
-		0.2s filter;
+	align-items: center;
+	justify-content: end;
+	padding: 0;
+	padding-right: 2px;
+	padding-left: 2px;
 }
 
 .wform .colors > button:hover {
 	filter: brightness(0.6);
 }
 
-.wform .colors > button.color-disabled::before {
-	content: '';
-	position: absolute;
-	inset: 0;
-	z-index: 2;
-	box-shadow: inset 0 0 0 2px var(--error);
-	pointer-events: none;
+.wform .colors > button.color-dark {
+	color: var(--text-invert);
+}
+
+.wform .colors > button.color-dark svg {
+	fill: var(--text-invert);
+}
+
+.wform .colors > button.color-disabled {
+	cursor: no-drop;
+	border: 2px solid red;
 }
 
 .wform .colors > button.substitution button {
@@ -1652,11 +1814,6 @@ var style_default = `/* stylelint-disable declaration-no-important */
 
 .wform .colors > button.substitution:hover {
 	filter: none;
-}
-
-.wform .colors:hover > button {
-	left: var(--wleft) !important;
-	width: var(--wwidth) !important;
 }
 
 /* Move */
@@ -1801,7 +1958,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
 	color: var(--text);
 	font-family: 'Tiny5', sans-serif;
 	box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-	min-width: 220px;
+	min-width: 350px;
 }
 
 .wform.popup.show {

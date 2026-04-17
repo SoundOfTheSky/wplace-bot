@@ -2,7 +2,7 @@ import { removeFromArray } from '@softsky/utils';
 
 import { Base } from './base';
 import { WPlaceBot } from './bot';
-import { colorToCSS } from './colors';
+import { COLOR_NAMES, colorToCSS } from './colors';
 // @ts-ignore
 import html from './image.html' with { type: 'text' };
 import { Pixels } from './pixels';
@@ -41,7 +41,7 @@ export class BotImage extends Base {
 			data.drawColorsInOrder,
 			data.colors,
 			data.lock,
-			data.active ?? true,
+			data.active ?? true
 		);
 	}
 
@@ -67,7 +67,7 @@ export class BotImage extends Base {
 	protected readonly $colors!: HTMLDivElement;
 	protected readonly $delete!: HTMLButtonElement;
 	protected readonly $drawColorsInOrder!: HTMLInputElement;
-    protected readonly $onlyAvailableColors!: HTMLInputElement;
+	protected readonly $onlyAvailableColors!: HTMLInputElement;
 	protected readonly $drawTransparent!: HTMLInputElement;
 	protected readonly $export!: HTMLDivElement;
 	protected readonly $lock!: HTMLButtonElement;
@@ -349,7 +349,7 @@ export class BotImage extends Base {
 		this.$opacity.valueAsNumber = this.opacity;
 		this.$drawTransparent.checked = this.drawTransparentPixels;
 		this.$drawColorsInOrder.checked = this.drawColorsInOrder;
-        this.$onlyAvailableColors.checked = this.pixels.onlyAvailableColors;
+		this.$onlyAvailableColors.checked = this.pixels.onlyAvailableColors;
 		const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0]!.length;
 		const doneTasks = maxTasks - this.progress.length;
 		const percent = ((doneTasks / maxTasks) * 100) | 0;
@@ -381,10 +381,9 @@ export class BotImage extends Base {
 	/** Update colors array */
 	public updateColors() {
 		this.$colors.innerHTML = '';
-		const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0]!.length;
-		const itemWidth = 100 / this.pixels.colors.size;
 
-		// If not the synced with colors then rebuild order
+		const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0]!.length;
+
 		if (
 			this.colors.length !== this.pixels.colors.size ||
 			this.colors.some((x) => !this.pixels.colors.has(x.realColor))
@@ -400,85 +399,245 @@ export class BotImage extends Base {
 			save(this.bot);
 		}
 
-		// Build colors UI
-		let nextXPosition = 0;
+		// Add utility buttons container
+		const $utilities = document.createElement('div');
+		$utilities.style.display = 'flex';
+		$utilities.style.gap = '8px';
+		$utilities.style.padding = '8px';
+		$utilities.style.borderBottom = '1px solid rgba(0,0,0,0.1)';
+		$utilities.style.flexWrap = 'wrap';
+
+		const createUtilButton = (label: string, onClick: () => void) => {
+			const $btn = document.createElement('button');
+			$btn.textContent = label;
+			$btn.style.padding = '6px 12px';
+			$btn.style.fontSize = '12px';
+			$btn.style.cursor = 'pointer';
+			$btn.style.border = '1px solid rgba(0,0,0,0.2)';
+			$btn.style.borderRadius = '4px';
+			$btn.style.background = 'rgba(0,0,0,0.05)';
+			$btn.addEventListener('click', onClick);
+			return $btn;
+		};
+
+		// Select first half
+		$utilities.append(
+			createUtilButton('First Half', () => {
+				const mid = Math.ceil(this.colors.length / 2);
+				this.colors.forEach((color, i) => {
+					color.disabled = i >= mid ? true : undefined;
+				});
+				this.updateColors();
+				save(this.bot);
+			})
+		);
+
+		// Select second half
+		$utilities.append(
+			createUtilButton('Second Half', () => {
+				const mid = Math.ceil(this.colors.length / 2);
+				this.colors.forEach((color, i) => {
+					color.disabled = i < mid ? true : undefined;
+				});
+				this.updateColors();
+				save(this.bot);
+			})
+		);
+
+		// Random selection
+		$utilities.append(
+			createUtilButton('Random', () => {
+				this.colors.forEach((color) => {
+					color.disabled = Math.random() > 0.5 ? true : undefined;
+				});
+				this.updateColors();
+				save(this.bot);
+			})
+		);
+
+		// Invert selection
+		$utilities.append(
+			createUtilButton('Invert', () => {
+				this.colors.forEach((color) => {
+					color.disabled = color.disabled ? undefined : true;
+				});
+				this.updateColors();
+				save(this.bot);
+			})
+		);
+
+		// Select all
+		$utilities.append(
+			createUtilButton('Select All', () => {
+				this.colors.forEach((color) => {
+					color.disabled = undefined;
+				});
+				this.updateColors();
+				save(this.bot);
+			})
+		);
+
+		// Deselect all
+		$utilities.append(
+			createUtilButton('Deselect All', () => {
+				this.colors.forEach((color) => {
+					color.disabled = true;
+				});
+				this.updateColors();
+				save(this.bot);
+			})
+		);
+
+		this.$colors.append($utilities);
+
+		let dragIndex: number | null = null;
+		let startY = 0;
+		let startIndex = 0;
+		const rowHeight = 20;
+
 		for (let index = 0; index < this.colors.length; index++) {
 			const drawColor = this.colors[index]!;
 			const color = this.pixels.colors.get(drawColor.realColor)!;
-			let dragging = false;
-			const toggleDisabled = () => {
-				if (dragging) return;
+
+			const $button = document.createElement('button');
+			$button.style.display = 'flex';
+			$button.style.alignItems = 'center';
+
+			const percent = (color.amount / pixelsSum) * 100;
+			const pixels = color.amount;
+
+			if (color.realColor === color.color) {
+				$button.style.background = colorToCSS(color.realColor);
+
+				const css = colorToCSS(color.realColor);
+				const l = parseFloat(css.match(/oklab\((\d+\.?\d*)/)?.[1] ?? '100');
+				if (l < 50) $button.classList.add('color-dark');
+			}
+
+			$button.setAttribute('data-color', String(drawColor.realColor));
+
+			if (drawColor.disabled) $button.classList.add('color-disabled');
+
+			const colorName = COLOR_NAMES[drawColor.realColor] ?? `Color ${drawColor.realColor}`;
+
+			$button.setAttribute('title', colorName);
+
+			const $drag = document.createElement('div');
+			$drag.style.flex = '0 0 32px';
+			$drag.style.display = 'flex';
+			$drag.style.alignItems = 'center';
+			$drag.style.justifyContent = 'flex-start';
+			$drag.style.cursor = 'grab';
+			$drag.innerHTML = `
+<svg width="30" height="25" viewBox="0 0 24 24" fill="currentColor">
+	<rect x="0" y="6" width="20" height="4" rx="1"/>
+	<rect x="0" y="13" width="20" height="4" rx="1"/>
+</svg>
+`;
+
+			const $content = document.createElement('div');
+			$content.style.flex = '1';
+			$content.style.display = 'flex';
+			$content.style.justifyContent = 'flex-end';
+
+			const info = document.createElement('span');
+			info.textContent = `${percent.toFixed(2)}% (${pixels})`;
+
+			$content.append(info);
+
+			$content.addEventListener('click', () => {
 				drawColor.disabled = drawColor.disabled ? undefined : true;
 				$button.classList.toggle('color-disabled');
 				save(this.bot);
-			};
-			const $button = document.createElement('button');
-			if (drawColor.disabled) $button.classList.add('color-disabled');
-			if (color.realColor === color.color) $button.style.background = colorToCSS(color.realColor);
-			else {
-				$button.classList.add('substitution');
-				$button.style.setProperty('--wreal-color', colorToCSS(color.realColor));
-				$button.style.setProperty('--wsubstitution-color', colorToCSS(color.color));
-				const $button1 = document.createElement('button');
-				const $button2 = document.createElement('button');
-				$button1.textContent = '$';
-				$button2.textContent = '✓';
-				$button1.addEventListener('click', () => {
-					document.getElementById('color-' + color.realColor)?.click();
-				});
-				$button2.addEventListener('click', toggleDisabled);
-				$button.append($button1);
-				$button.append($button2);
-			}
-			$button.style.left = nextXPosition + '%';
-			const width = (color.amount / pixelsSum) * 100;
-			$button.style.width = width + '%';
-			nextXPosition += width;
-			$button.style.setProperty('--wleft', itemWidth * index + '%');
-			$button.style.setProperty('--wwidth', itemWidth + '%');
-			this.$colors.append($button);
+			});
 
-			// Drag functionality
-			const startDrag = (startEvent: MouseEvent) => {
-				let newIndex = index;
-				const buttonWidth = $button.getBoundingClientRect().width;
-				const mouseMoveHandler = (event: MouseEvent) => {
-					newIndex = Math.min(
-						this.colors.length - 1,
-						Math.max(0, Math.round(index + (event.clientX - startEvent.clientX) / buttonWidth))
-					);
-					if (newIndex !== index) dragging = true;
-					let childIndex = 0;
-					for (const $child of this.$colors.children as Iterable<HTMLElement>) {
-						if ($child === $button) continue;
-						if (childIndex === newIndex) childIndex++;
-						$child.style.setProperty('--wleft', itemWidth * childIndex + '%');
-						childIndex++;
+			$button.append($drag);
+			$button.append($content);
+
+			$drag.addEventListener('pointerdown', (e) => {
+				e.preventDefault();
+				$drag.setPointerCapture(e.pointerId);
+
+				const originalIndex = Array.from(this.$colors.children).indexOf($button);
+				const startY = e.clientY;
+
+				// Float the button in place
+				const rect = $button.getBoundingClientRect();
+				const containerRect = this.$colors.getBoundingClientRect();
+
+				$button.style.position = 'fixed';
+				$button.style.top = `${rect.top}px`;
+				$button.style.width = `${rect.width}px`;
+				$button.style.zIndex = '9999';
+				$button.style.opacity = '0.85';
+				$button.style.pointerEvents = 'none';
+
+				// Placeholder to hold the space
+				const $placeholder = document.createElement('div');
+				$placeholder.style.height = `${rowHeight}px`;
+				$placeholder.style.background = 'rgba(0,0,0,0.15)';
+				$placeholder.style.boxSizing = 'border-box';
+				$button.after($placeholder);
+
+				let currentIndex = originalIndex;
+
+				const onMove = (e: PointerEvent) => {
+					const delta = e.clientY - startY;
+					$button.style.top = `${rect.top + delta}px`;
+
+					const buttons = Array.from(this.$colors.children).filter(
+						(el) => el !== $button && el !== $placeholder
+					) as HTMLElement[];
+
+					let newIndex = buttons.findIndex((btn) => {
+						const r = btn.getBoundingClientRect();
+						return e.clientY < r.top + r.height / 2;
+					});
+					if (newIndex === -1) newIndex = buttons.length;
+
+					if (newIndex !== currentIndex) {
+						currentIndex = newIndex;
+						if (newIndex >= buttons.length) {
+							buttons[buttons.length - 1]?.after($placeholder);
+						} else {
+							buttons[newIndex]!.before($placeholder);
+						}
 					}
-					$button.style.setProperty('--wleft', itemWidth * newIndex + '%');
 				};
-				document.addEventListener('mousemove', mouseMoveHandler);
-				document.addEventListener(
-					'mouseup',
-					() => {
-						document.removeEventListener('mousemove', mouseMoveHandler);
-						if (newIndex !== index) this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1));
-						save(this.bot);
-						$button.removeEventListener('mousedown', startDrag);
-						setTimeout(() => {
-							this.updateColors();
-						}, 200);
-					},
-					{
-						once: true,
-					}
-				);
-			};
-			$button.addEventListener('mousedown', startDrag);
-			if (color.realColor === color.color) $button.addEventListener('click', toggleDisabled);
+
+				const onUp = () => {
+					$button.removeEventListener('pointermove', onMove);
+
+					// Reset styles
+					$button.style.position = '';
+					$button.style.top = '';
+					$button.style.left = '';
+					$button.style.width = '';
+					$button.style.zIndex = '';
+					$button.style.opacity = '';
+					$button.style.pointerEvents = '';
+
+					// Drop into placeholder position
+					$placeholder.replaceWith($button);
+
+					// Sync this.colors to match DOM order
+					const newOrder = Array.from(this.$colors.children) as HTMLElement[];
+					this.colors = newOrder.map((el) => {
+						const realColor = el.getAttribute('data-color');
+
+						return this.colors.find((c) => String(c.realColor) === realColor)!;
+					});
+
+					save(this.bot);
+				};
+
+				$button.addEventListener('pointermove', onMove);
+				$button.addEventListener('pointerup', onUp, { once: true });
+			});
+
+			this.$colors.append($button);
 		}
 	}
-
 	/** Create iterator that generates positions based on strategy */
 	protected *strategyPositionIterator(): Generator<Position> {
 		const width = this.pixels.pixels[0]!.length;
