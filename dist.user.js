@@ -460,6 +460,16 @@ var image_default = `<div class="wtopbar">
 		<span>Settings</span>
 		<button class="close-popup">✖</button>
 	</div>
+
+    <div class="popup-resize n"></div>
+	<div class="popup-resize e"></div>
+	<div class="popup-resize s"></div>
+	<div class="popup-resize w"></div>
+	<div class="popup-resize ne"></div>
+	<div class="popup-resize nw"></div>
+	<div class="popup-resize se"></div>
+	<div class="popup-resize sw"></div>
+
 	<div class="wprogress">
 		<div></div>
 		<span></span>
@@ -1023,6 +1033,58 @@ class BotImage extends Base2 {
     document.addEventListener("mouseup", () => {
       isDragging = false;
     });
+    let resizeDir = null;
+    let startX = 0;
+    let startY = 0;
+    let startW = 0;
+    let startH = 0;
+    let startTop = 0;
+    let startLeft = 0;
+    for (const el of this.$popup.querySelectorAll(".popup-resize")) {
+      el.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        resizeDir = el.classList[1];
+        const rect = this.$popup.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        startW = rect.width;
+        startH = rect.height;
+        startTop = rect.top;
+        startLeft = rect.left;
+        document.body.style.userSelect = "none";
+      });
+    }
+    document.addEventListener("mousemove", (e) => {
+      if (!resizeDir)
+        return;
+      let dx = e.clientX - startX;
+      let dy = e.clientY - startY;
+      let newW = startW;
+      let newH = startH;
+      let newTop = startTop;
+      let newLeft = startLeft;
+      if (resizeDir.includes("e"))
+        newW = startW + dx;
+      if (resizeDir.includes("s"))
+        newH = startH + dy;
+      if (resizeDir.includes("w")) {
+        newW = startW - dx;
+        newLeft = startLeft + dx;
+      }
+      if (resizeDir.includes("n")) {
+        newH = startH - dy;
+        newTop = startTop + dy;
+      }
+      this.$popup.style.width = `${Math.max(200, newW)}px`;
+      this.$popup.style.height = `${Math.max(150, newH)}px`;
+      this.$popup.style.top = `${newTop}px`;
+      this.$popup.style.left = `${newLeft}px`;
+      this.$popup.style.transform = "none";
+    });
+    document.addEventListener("mouseup", () => {
+      resizeDir = null;
+      document.body.style.userSelect = "";
+    });
     const closeBtn = this.$popup.querySelector(".close-popup");
     closeBtn.addEventListener("click", () => {
       this.$popup.classList.remove("show");
@@ -1195,6 +1257,7 @@ class BotImage extends Base2 {
   updateColors() {
     this.$colors.innerHTML = "";
     const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0].length;
+    console.log("this.colors", this.colors);
     if (this.colors.length !== this.pixels.colors.size || this.colors.some((x) => !this.pixels.colors.has(x.realColor))) {
       this.colors = this.pixels.colors.values().toArray().sort((a, b) => b.amount - a.amount).map((color) => ({
         realColor: color.realColor,
@@ -1208,6 +1271,7 @@ class BotImage extends Base2 {
     $utilities.style.padding = "8px";
     $utilities.style.borderBottom = "1px solid rgba(0,0,0,0.1)";
     $utilities.style.flexWrap = "wrap";
+    $utilities.style.justifyContent = "space-between";
     const createUtilButton = (label, onClick) => {
       const $btn = document.createElement("button");
       $btn.textContent = label;
@@ -1363,7 +1427,7 @@ class BotImage extends Base2 {
           $button.style.opacity = "";
           $button.style.pointerEvents = "";
           $placeholder.replaceWith($button);
-          const newOrder = Array.from(this.$colors.children);
+          const newOrder = Array.from(this.$colors.children).filter((el) => el.hasAttribute("data-color"));
           this.colors = newOrder.map((el) => {
             const realColor = el.getAttribute("data-color");
             return this.colors.find((c) => String(c.realColor) === realColor);
@@ -1751,8 +1815,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
 .wform .colors {
 	display: block;
 	overflow-y: auto;
-	height: 200px;
-	min-height: 0;
+	min-height: 200px;
 	touch-action: pan-y;
 }
 
@@ -1962,7 +2025,12 @@ var style_default = `/* stylelint-disable declaration-no-important */
 }
 
 .wform.popup.show {
-	display: block;
+	display:grid;
+    grid-template-rows:auto auto 1fr auto;
+    min-width: 520px;
+    min-height: 600px;
+    width: 520px;
+    height: 600px;
 }
 
 .wform.popup .popup-header {
@@ -2030,6 +2098,21 @@ var style_default = `/* stylelint-disable declaration-no-important */
 .wwidget .images .image .toggle:active {
 	transform: scale(0.95);
 }
+
+.popup-resize{
+position:absolute;
+z-index:10
+}
+
+.popup-resize.n{top:0;left:0;right:0;height:6px;cursor:n-resize;margin:0}
+.popup-resize.s{bottom:0;left:0;right:0;height:6px;cursor:s-resize;margin:0}
+.popup-resize.e{top:0;right:0;bottom:0;width:6px;cursor:e-resize;margin:0}
+.popup-resize.w{top:0;left:0;bottom:0;width:6px;cursor:w-resize;margin:0}
+
+.popup-resize.ne{top:0;right:0;width:10px;height:10px;cursor:ne-resize;margin:0}
+.popup-resize.nw{top:0;left:0;width:10px;height:10px;cursor:nw-resize;margin:0}
+.popup-resize.se{bottom:0;right:0;width:10px;height:10px;cursor:se-resize;margin:0}
+.popup-resize.sw{bottom:0;left:0;width:10px;height:10px;cursor:sw-resize;margin:0}
 `;
 
 // src/errors.ts
