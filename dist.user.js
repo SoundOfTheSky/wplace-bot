@@ -461,7 +461,7 @@ var image_default = `<div class="wtopbar">
 		<button class="close-popup">✖</button>
 	</div>
 
-    <div class="popup-resize n"></div>
+	<div class="popup-resize n"></div>
 	<div class="popup-resize e"></div>
 	<div class="popup-resize s"></div>
 	<div class="popup-resize w"></div>
@@ -492,7 +492,7 @@ var image_default = `<div class="wtopbar">
 	<button class="reset-size">Reset size [<span></span>px]</button>
 	<label> <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels </label>
 	<label> <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order </label>
-    <label> <input type="checkbox" class="only-available-colors" />&nbsp;Only available colors </label>
+	<label> <input type="checkbox" class="only-available-colors" />&nbsp;Only available colors </label>
 </div>
 `;
 
@@ -1026,8 +1026,13 @@ class BotImage extends Base2 {
     document.addEventListener("mousemove", (e) => {
       if (!isDragging)
         return;
-      this.$popup.style.top = `${e.clientY - offsetY}px`;
-      this.$popup.style.left = `${e.clientX - offsetX}px`;
+      const popupRect = this.$popup.getBoundingClientRect();
+      const maxX = window.innerWidth - popupRect.width;
+      const maxY = window.innerHeight - popupRect.height;
+      const newLeft = Math.min(Math.max(0, e.clientX - offsetX), maxX);
+      const newTop = Math.min(Math.max(0, e.clientY - offsetY), maxY);
+      this.$popup.style.top = `${newTop}px`;
+      this.$popup.style.left = `${newLeft}px`;
       this.$popup.style.transform = "none";
     });
     document.addEventListener("mouseup", () => {
@@ -1063,20 +1068,28 @@ class BotImage extends Base2 {
       let newH = startH;
       let newTop = startTop;
       let newLeft = startLeft;
-      if (resizeDir.includes("e"))
-        newW = startW + dx;
-      if (resizeDir.includes("s"))
-        newH = startH + dy;
+      const MIN_W = 200;
+      const MIN_H = 150;
+      if (resizeDir.includes("e")) {
+        newW = Math.min(startW + dx, window.innerWidth - startLeft);
+      }
+      if (resizeDir.includes("s")) {
+        newH = Math.min(startH + dy, window.innerHeight - startTop);
+      }
       if (resizeDir.includes("w")) {
-        newW = startW - dx;
-        newLeft = startLeft + dx;
+        const maxDx = startW - MIN_W;
+        const clampedDx = Math.min(Math.max(dx, -startLeft), maxDx);
+        newW = startW - clampedDx;
+        newLeft = startLeft + clampedDx;
       }
       if (resizeDir.includes("n")) {
-        newH = startH - dy;
-        newTop = startTop + dy;
+        const maxDy = startH - MIN_H;
+        const clampedDy = Math.min(Math.max(dy, -startTop), maxDy);
+        newH = startH - clampedDy;
+        newTop = startTop + clampedDy;
       }
-      this.$popup.style.width = `${Math.max(200, newW)}px`;
-      this.$popup.style.height = `${Math.max(150, newH)}px`;
+      this.$popup.style.width = `${Math.max(MIN_W, newW)}px`;
+      this.$popup.style.height = `${Math.max(MIN_H, newH)}px`;
       this.$popup.style.top = `${newTop}px`;
       this.$popup.style.left = `${newLeft}px`;
       this.$popup.style.transform = "none";
@@ -2025,12 +2038,12 @@ var style_default = `/* stylelint-disable declaration-no-important */
 }
 
 .wform.popup.show {
-	display:grid;
-    grid-template-rows:auto auto 1fr auto;
-    min-width: 520px;
-    min-height: 600px;
-    width: 520px;
-    height: 600px;
+	display: grid;
+	grid-template-rows: auto auto 1fr auto;
+	min-width: 540px;
+	min-height: 600px;
+	width: 540px;
+	height: 600px;
 }
 
 .wform.popup .popup-header {
@@ -2099,20 +2112,76 @@ var style_default = `/* stylelint-disable declaration-no-important */
 	transform: scale(0.95);
 }
 
-.popup-resize{
-position:absolute;
-z-index:10
+.popup-resize {
+	position: absolute;
+	z-index: 10;
 }
 
-.popup-resize.n{top:0;left:0;right:0;height:6px;cursor:n-resize;margin:0}
-.popup-resize.s{bottom:0;left:0;right:0;height:6px;cursor:s-resize;margin:0}
-.popup-resize.e{top:0;right:0;bottom:0;width:6px;cursor:e-resize;margin:0}
-.popup-resize.w{top:0;left:0;bottom:0;width:6px;cursor:w-resize;margin:0}
+.popup-resize.n {
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 6px;
+	cursor: n-resize;
+	margin: 0;
+}
+.popup-resize.s {
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: 6px;
+	cursor: s-resize;
+	margin: 0;
+}
+.popup-resize.e {
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 6px;
+	cursor: e-resize;
+	margin: 0;
+}
+.popup-resize.w {
+	top: 0;
+	left: 0;
+	bottom: 0;
+	width: 6px;
+	cursor: w-resize;
+	margin: 0;
+}
 
-.popup-resize.ne{top:0;right:0;width:10px;height:10px;cursor:ne-resize;margin:0}
-.popup-resize.nw{top:0;left:0;width:10px;height:10px;cursor:nw-resize;margin:0}
-.popup-resize.se{bottom:0;right:0;width:10px;height:10px;cursor:se-resize;margin:0}
-.popup-resize.sw{bottom:0;left:0;width:10px;height:10px;cursor:sw-resize;margin:0}
+.popup-resize.ne {
+	top: 0;
+	right: 0;
+	width: 10px;
+	height: 10px;
+	cursor: ne-resize;
+	margin: 0;
+}
+.popup-resize.nw {
+	top: 0;
+	left: 0;
+	width: 10px;
+	height: 10px;
+	cursor: nw-resize;
+	margin: 0;
+}
+.popup-resize.se {
+	bottom: 0;
+	right: 0;
+	width: 10px;
+	height: 10px;
+	cursor: se-resize;
+	margin: 0;
+}
+.popup-resize.sw {
+	bottom: 0;
+	left: 0;
+	width: 10px;
+	height: 10px;
+	cursor: sw-resize;
+	margin: 0;
+}
 `;
 
 // src/errors.ts
@@ -2423,30 +2492,32 @@ class WPlaceBot {
     };
     return this.widget.run("Drawing", async () => {
       await this.widget.run("Initializing draw", () => Promise.all([this.updateColors(), this.readMap()]));
+      this.updateTasks();
       const canvas = document.querySelector(".maplibregl-canvas");
       const firstTask = this.images[0].tasks[0];
-      function waitForZoom(minPixelSize) {
-        return new Promise((resolve) => {
-          function step() {
-            if (firstTask.position.pixelSize >= minPixelSize) {
-              resolve();
-              return;
+      if (firstTask) {
+        let waitForZoom = function(minPixelSize) {
+          return new Promise((resolve) => {
+            function step() {
+              if (firstTask.position.pixelSize >= minPixelSize) {
+                resolve();
+                return;
+              }
+              canvas.dispatchEvent(new WheelEvent("wheel", {
+                deltaY: -500,
+                clientX: canvas.clientWidth / 2,
+                clientY: canvas.clientHeight / 2,
+                bubbles: true
+              }));
+              requestAnimationFrame(step);
             }
-            canvas.dispatchEvent(new WheelEvent("wheel", {
-              deltaY: -500,
-              clientX: canvas.clientWidth / 2,
-              clientY: canvas.clientHeight / 2,
-              bubbles: true
-            }));
-            requestAnimationFrame(step);
-          }
-          step();
-        });
+            step();
+          });
+        };
+        await waitForZoom(4);
       }
-      await waitForZoom(4);
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
-      this.updateTasks();
       const res = await fetch("https://backend.wplace.live/me", {
         credentials: "include"
       });

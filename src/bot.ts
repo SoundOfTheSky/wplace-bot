@@ -163,36 +163,39 @@ export class WPlaceBot {
 			async () => {
 				await this.widget.run('Initializing draw', () => Promise.all([this.updateColors(), this.readMap()]));
 
+				this.updateTasks();
+
 				const canvas = document.querySelector('.maplibregl-canvas');
 				const firstTask = this.images[0].tasks[0];
 
-				function waitForZoom(minPixelSize: number) {
-					return new Promise<void>((resolve) => {
-						function step() {
-							if (firstTask.position.pixelSize >= minPixelSize) {
-								resolve();
-								return;
+				if (firstTask) {
+					function waitForZoom(minPixelSize: number) {
+						return new Promise<void>((resolve) => {
+							function step() {
+								if (firstTask.position.pixelSize >= minPixelSize) {
+									resolve();
+									return;
+								}
+								canvas.dispatchEvent(
+									new WheelEvent('wheel', {
+										deltaY: -500,
+										clientX: canvas.clientWidth / 2,
+										clientY: canvas.clientHeight / 2,
+										bubbles: true,
+									})
+								);
+								requestAnimationFrame(step);
 							}
-							canvas.dispatchEvent(
-								new WheelEvent('wheel', {
-									deltaY: -500,
-									clientX: canvas.clientWidth / 2,
-									clientY: canvas.clientHeight / 2,
-									bubbles: true,
-								})
-							);
-							requestAnimationFrame(step);
-						}
-						step();
-					});
-				}
+							step();
+						});
+					}
 
-				await waitForZoom(4);
+					await waitForZoom(4);
+				}
 
 				// Stop mouse messing with drawing by capturing event
 				globalThis.addEventListener('mousemove', prevent, true);
 				$canvas.addEventListener('wheel', prevent, true);
-				this.updateTasks();
 
 				const res = await fetch('https://backend.wplace.live/me', {
 					credentials: 'include',
@@ -201,7 +204,7 @@ export class WPlaceBot {
 
 				let charges = Math.floor(data.charges.count);
 
-                const images = this.images.filter(i => i.active);
+				const images = this.images.filter((i) => i.active);
 
 				let n = 0;
 				for (let index = 0; index < this.images.length; index++) n += this.images[index]!.tasks.length;

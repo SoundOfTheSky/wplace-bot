@@ -148,8 +148,13 @@ export class BotImage extends Base {
 
 		document.addEventListener('mousemove', (e: MouseEvent) => {
 			if (!isDragging) return;
-			this.$popup.style.top = `${e.clientY - offsetY}px`;
-			this.$popup.style.left = `${e.clientX - offsetX}px`;
+			const popupRect = this.$popup.getBoundingClientRect();
+			const maxX = window.innerWidth - popupRect.width;
+			const maxY = window.innerHeight - popupRect.height;
+			const newLeft = Math.min(Math.max(0, e.clientX - offsetX), maxX);
+			const newTop = Math.min(Math.max(0, e.clientY - offsetY), maxY);
+			this.$popup.style.top = `${newTop}px`;
+			this.$popup.style.left = `${newLeft}px`;
 			this.$popup.style.transform = 'none';
 		});
 
@@ -157,67 +162,76 @@ export class BotImage extends Base {
 			isDragging = false;
 		});
 
-        let resizeDir: string | null = null;
-let startX = 0;
-let startY = 0;
-let startW = 0;
-let startH = 0;
-let startTop = 0;
-let startLeft = 0;
+		let resizeDir: string | null = null;
+		let startX = 0;
+		let startY = 0;
+		let startW = 0;
+		let startH = 0;
+		let startTop = 0;
+		let startLeft = 0;
 
-for (const el of this.$popup.querySelectorAll<HTMLDivElement>('.popup-resize')) {
-	el.addEventListener('mousedown', (e) => {
-		e.preventDefault();
-		resizeDir = el.classList[1];
+		for (const el of this.$popup.querySelectorAll<HTMLDivElement>('.popup-resize')) {
+			el.addEventListener('mousedown', (e) => {
+				e.preventDefault();
+				resizeDir = el.classList[1];
 
-		const rect = this.$popup.getBoundingClientRect();
+				const rect = this.$popup.getBoundingClientRect();
 
-		startX = e.clientX;
-		startY = e.clientY;
-		startW = rect.width;
-		startH = rect.height;
-		startTop = rect.top;
-		startLeft = rect.left;
+				startX = e.clientX;
+				startY = e.clientY;
+				startW = rect.width;
+				startH = rect.height;
+				startTop = rect.top;
+				startLeft = rect.left;
 
-		document.body.style.userSelect = 'none';
-	});
-}
+				document.body.style.userSelect = 'none';
+			});
+		}
 
-document.addEventListener('mousemove', (e) => {
-	if (!resizeDir) return;
+		document.addEventListener('mousemove', (e) => {
+			if (!resizeDir) return;
 
-	let dx = e.clientX - startX;
-	let dy = e.clientY - startY;
+			let dx = e.clientX - startX;
+			let dy = e.clientY - startY;
 
-	let newW = startW;
-	let newH = startH;
-	let newTop = startTop;
-	let newLeft = startLeft;
+			let newW = startW;
+			let newH = startH;
+			let newTop = startTop;
+			let newLeft = startLeft;
 
-	if (resizeDir.includes('e')) newW = startW + dx;
-	if (resizeDir.includes('s')) newH = startH + dy;
+			const MIN_W = 200;
+			const MIN_H = 150;
 
-	if (resizeDir.includes('w')) {
-		newW = startW - dx;
-		newLeft = startLeft + dx;
-	}
+			if (resizeDir.includes('e')) {
+				newW = Math.min(startW + dx, window.innerWidth - startLeft);
+			}
+			if (resizeDir.includes('s')) {
+				newH = Math.min(startH + dy, window.innerHeight - startTop);
+			}
+			if (resizeDir.includes('w')) {
+				const maxDx = startW - MIN_W; // can't shrink past min width
+				const clampedDx = Math.min(Math.max(dx, -startLeft), maxDx);
+				newW = startW - clampedDx;
+				newLeft = startLeft + clampedDx;
+			}
+			if (resizeDir.includes('n')) {
+				const maxDy = startH - MIN_H; // can't shrink past min height
+				const clampedDy = Math.min(Math.max(dy, -startTop), maxDy);
+				newH = startH - clampedDy;
+				newTop = startTop + clampedDy;
+			}
 
-	if (resizeDir.includes('n')) {
-		newH = startH - dy;
-		newTop = startTop + dy;
-	}
+			this.$popup.style.width = `${Math.max(MIN_W, newW)}px`;
+			this.$popup.style.height = `${Math.max(MIN_H, newH)}px`;
+			this.$popup.style.top = `${newTop}px`;
+			this.$popup.style.left = `${newLeft}px`;
+			this.$popup.style.transform = 'none';
+		});
 
-	this.$popup.style.width = `${Math.max(200, newW)}px`;
-	this.$popup.style.height = `${Math.max(150, newH)}px`;
-	this.$popup.style.top = `${newTop}px`;
-	this.$popup.style.left = `${newLeft}px`;
-	this.$popup.style.transform = 'none';
-});
-
-document.addEventListener('mouseup', () => {
-	resizeDir = null;
-	document.body.style.userSelect = '';
-});
+		document.addEventListener('mouseup', () => {
+			resizeDir = null;
+			document.body.style.userSelect = '';
+		});
 
 		// Close button
 		const closeBtn = this.$popup.querySelector('.close-popup')!;
@@ -446,7 +460,7 @@ document.addEventListener('mouseup', () => {
 
 		const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0]!.length;
 
-        console.log('this.colors', this.colors);
+		console.log('this.colors', this.colors);
 		if (
 			this.colors.length !== this.pixels.colors.size ||
 			this.colors.some((x) => !this.pixels.colors.has(x.realColor))
@@ -469,7 +483,7 @@ document.addEventListener('mouseup', () => {
 		$utilities.style.padding = '8px';
 		$utilities.style.borderBottom = '1px solid rgba(0,0,0,0.1)';
 		$utilities.style.flexWrap = 'wrap';
-        $utilities.style.justifyContent = 'space-between';
+		$utilities.style.justifyContent = 'space-between';
 
 		const createUtilButton = (label: string, onClick: () => void) => {
 			const $btn = document.createElement('button');
@@ -685,7 +699,9 @@ document.addEventListener('mouseup', () => {
 					$placeholder.replaceWith($button);
 
 					// Sync this.colors to match DOM order
-					const newOrder = Array.from(this.$colors.children).filter((el) => el.hasAttribute('data-color')) as HTMLElement[];
+					const newOrder = Array.from(this.$colors.children).filter((el) =>
+						el.hasAttribute('data-color')
+					) as HTMLElement[];
 					this.colors = newOrder.map((el) => {
 						const realColor = el.getAttribute('data-color');
 
