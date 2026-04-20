@@ -621,6 +621,22 @@ export class BotImage extends Base {
 			const info = document.createElement('span');
 			info.textContent = `${percent.toFixed(2)}% (${pixels})`;
 
+			const isOwned = !this.bot.unavailableColors.has(color.color);
+
+			if (!isOwned) {
+				const $buy = document.createElement('div');
+				$buy.textContent = '$';
+				$buy.style.marginRight = '4px';
+				$buy.style.padding = '2px 6px';
+				$buy.style.fontSize = '11px';
+				$buy.style.cursor = 'pointer';
+				$buy.addEventListener('click', (e) => {
+					e.stopPropagation();
+					document.getElementById('color-' + color.realColor)?.click();
+				});
+				$content.prepend($buy);
+			}
+
 			$content.append(info);
 
 			$content.addEventListener('click', () => {

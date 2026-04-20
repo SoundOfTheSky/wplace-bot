@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot fixed
 // @namespace    https://github.com/Readixyee
-// @version      1.6.2
+// @version      1.7.0
 // @description  Bot to automate painting on website https://wplace.live
 // @author       Readixyee, SoundOfTheSky
 // @license      MPL-2.0
@@ -1384,6 +1384,20 @@ class BotImage extends Base2 {
       $content.style.justifyContent = "flex-end";
       const info = document.createElement("span");
       info.textContent = `${percent.toFixed(2)}% (${pixels})`;
+      const isOwned = !this.bot.unavailableColors.has(color.color);
+      if (!isOwned) {
+        const $buy = document.createElement("div");
+        $buy.textContent = "$";
+        $buy.style.marginRight = "4px";
+        $buy.style.padding = "2px 6px";
+        $buy.style.fontSize = "11px";
+        $buy.style.cursor = "pointer";
+        $buy.addEventListener("click", (e) => {
+          e.stopPropagation();
+          document.getElementById("color-" + color.realColor)?.click();
+        });
+        $content.prepend($buy);
+      }
       $content.append(info);
       $content.addEventListener("click", () => {
         drawColor.disabled = drawColor.disabled ? undefined : true;
@@ -2028,7 +2042,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
 	border: 2px solid #ccc;
 	box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
 	display: none;
-	z-index: 999;
+	z-index: 10;
 	background-color: var(--background);
 	border: var(--text) 2px solid;
 	color: var(--text);

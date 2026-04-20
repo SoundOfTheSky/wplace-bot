@@ -411,7 +411,7 @@
 	border: 2px solid #ccc;
 	box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
 	display: none;
-	z-index: 999;
+	z-index: 10;
 	background-color: var(--background);
 	border: var(--text) 2px solid;
 	color: var(--text);
