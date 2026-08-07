@@ -1,6 +1,7 @@
 import { wait } from '@softsky/utils'
 
 import { BotImage, DrawTask } from './image'
+import { obfuscateCSS, SID } from './obfuscator'
 import { Pixels } from './pixels'
 import { loadSave } from './save'
 // @ts-ignore
@@ -72,6 +73,9 @@ export class WPlaceBot {
   /** Images on canvas */
   public images: BotImage[] = []
 
+  /** Autodraw interval */
+  public autoDrawInterval?: ReturnType<typeof setInterval>
+
   public widget = new Widget(this)
 
   /** Used to wait for pixel data on marker set */
@@ -89,7 +93,7 @@ export class WPlaceBot {
     // Preinit save data before page has loaded
     if (save) {
       for (let index = 0; index < save.images.length; index++) {
-        const image = save.images[index]!
+        const image = save.images[index]
         addFavoriteLocation({
           x: image.position[0] - 1000,
           y: image.position[1] - 1000,
@@ -106,54 +110,62 @@ export class WPlaceBot {
 
     // Embed styles
     const style = document.createElement('style')
-    style.textContent = (css as string).replace(
-      'FAKE_FAVORITE_LOCATIONS',
-      FAVORITE_LOCATIONS.length.toString(),
+    style.textContent = obfuscateCSS(
+      (css as string).replace(
+        'FAKE_FAVORITE_LOCATIONS',
+        FAVORITE_LOCATIONS.length.toString(),
+      ),
     )
     document.head.append(style)
 
-    void this.widget.run('Initializing', async () => {
-      // Waiting for all of website to load
-      await this.waitForElement('login', '.avatar.center-absolute.absolute')
-      await this.waitForElement(
-        'pixel count',
-        '.btn.btn-primary.btn-lg.relative.z-30 canvas',
-      )
-      const $canvasContainer = await this.waitForElement(
-        'canvas',
-        '.maplibregl-canvas-container',
-      )
-      new MutationObserver((mutations: MutationRecord[]) => {
-        // If elements were removed, update stars
-        for (let index = 0; index < mutations.length; index++)
-          if (mutations[index]!.removedNodes.length !== 0) {
-            this.updateStars()
-            break
-          }
-        this.updateImages()
-      }).observe($canvasContainer, {
-        attributes: true,
-        childList: true,
-        subtree: true,
-      })
-      this.updateStars()
-      await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
-      await this.updateColors()
+    void this.widget
+      .run('Initializing', async () => {
+        // Waiting for all of website to load
+        await this.waitForElement('login', '.avatar.center-absolute.absolute')
+        await this.waitForElement(
+          'pixel count',
+          '.btn.btn-primary.btn-lg.relative.z-30 canvas',
+        )
+        const $canvasContainer = await this.waitForElement(
+          'canvas',
+          '.maplibregl-canvas-container',
+        )
+        new MutationObserver((mutations: MutationRecord[]) => {
+          // If elements were removed, update stars
+          for (let index = 0; index < mutations.length; index++)
+            if (mutations[index].removedNodes.length !== 0) {
+              this.updateStars()
+              break
+            }
+          this.updateImages()
+        }).observe($canvasContainer, {
+          attributes: true,
+          childList: true,
+          subtree: true,
+        })
+        this.updateStars()
+        await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
+        await this.updateColors()
 
-      // Load images
-      if (save)
-        for (let index = 0; index < save.images.length; index++) {
-          const image = await BotImage.fromJSON(this, save.images[index]!)
-          this.images.push(image)
-          image.update()
-        }
-      await this.readMap()
-      this.updateTasks()
-      // Unblock buttons
-      this.widget.setDisabled('draw', false)
-      this.widget.setDisabled('add-image', false)
-      // this.widget.setDisabled('pumpkin-hunt', false)
-    })
+        // Load images
+        if (save)
+          for (let index = 0; index < save.images.length; index++) {
+            const image = await BotImage.fromJSON(this, save.images[index])
+            this.images.push(image)
+            image.update()
+          }
+        await this.readMap()
+        this.updateTasks()
+        // Unblock buttons
+        this.widget.setDisabled('draw', false)
+        this.widget.setDisabled('auto-draw', false)
+        this.widget.setDisabled('add-image', false)
+        // this.widget.setDisabled('pumpkin-hunt', false)
+      })
+      .catch(() => {
+        localStorage.removeItem(SID + 'wbot')
+        document.location.reload()
+      })
   }
 
   /** Start drawing */
@@ -170,22 +182,31 @@ export class WPlaceBot {
     return this.widget.run(
       'Drawing',
       async () => {
-        await this.widget.run('Initializing draw', () =>
-          Promise.all([this.updateColors(), this.readMap()]),
-        )
+        const firstImage = this.images[0] as BotImage | undefined
+        if (!firstImage) return
+
         // Stop mouse messing with drawing by capturing event
         globalThis.addEventListener('mousemove', prevent, true)
         $canvas.addEventListener('wheel', prevent, true)
+
+        await this.widget.run('Initializing draw', () =>
+          Promise.all([
+            this.updateColors(),
+            this.readMap(),
+            this.zoomIn(firstImage.position, 4, $canvas),
+          ]),
+        )
+
         this.updateTasks()
 
-        const me = (await fetch('https://backend.wplace.live/me', {
+        this.me = (await fetch('https://backend.wplace.live/me', {
           credentials: 'include',
         }).then((x) => x.json())) as Me
-        let charges = Math.floor(me.charges.count)
+        let charges = Math.floor(this.me.charges.count)
 
         let n = 0
         for (let index = 0; index < this.images.length; index++)
-          n += this.images[index]!.tasks.length
+          n += this.images[index].tasks.length
         switch (this.strategy) {
           case BotStrategy.ALL: {
             while (charges > 0) {
@@ -195,7 +216,7 @@ export class WPlaceBot {
                 imageIndex < this.images.length;
                 imageIndex++
               ) {
-                const task = this.images[imageIndex]!.tasks.shift()
+                const task = this.images[imageIndex].tasks.shift()
                 if (!task) continue
                 this.drawTask(task)
                 charges--
@@ -215,12 +236,11 @@ export class WPlaceBot {
                 imageIndex < this.images.length;
                 imageIndex++
               ) {
-                const image = this.images[imageIndex]!
+                const image = this.images[imageIndex]
                 const percent =
                   1 -
                   image.tasks.length /
-                    (image.pixels.pixels.length *
-                      image.pixels.pixels[0]!.length)
+                    (image.pixels.pixels.length * image.pixels.pixels[0].length)
                 if (percent < minPercent) {
                   minPercent = percent
                   minImage = image
@@ -238,7 +258,7 @@ export class WPlaceBot {
               imageIndex < this.images.length;
               imageIndex++
             ) {
-              const image = this.images[imageIndex]!
+              const image = this.images[imageIndex]
               for (
                 let task = image.tasks.shift();
                 task && charges > 0;
@@ -252,6 +272,11 @@ export class WPlaceBot {
           }
         }
         this.widget.update()
+        document
+          .querySelector<HTMLButtonElement>(
+            '.absolute.bottom-0  .btn.btn-lg.relative.btn-primary',
+          )
+          ?.click()
       },
       () => {
         globalThis.removeEventListener('mousemove', prevent, true)
@@ -259,6 +284,34 @@ export class WPlaceBot {
         this.widget.setDisabled('draw', false)
       },
     )
+  }
+
+  public autoDraw() {
+    if (this.autoDrawInterval) {
+      this.widget.$autoDraw.innerText = 'Auto-Draw'
+      clearInterval(this.autoDrawInterval)
+      this.autoDrawInterval = undefined
+      return false
+    }
+    this.widget.$autoDraw.innerText = 'Auto-Draw is starting...'
+    let errorCount = 0
+    let drawTime = 0
+    this.autoDrawInterval = setInterval(async () => {
+      const deltaTime = drawTime - Date.now()
+      if (deltaTime > 0)
+        this.widget.$autoDraw.innerText = `Auto-Draw in (${(deltaTime / 60000) | 0}:${(((deltaTime % 60000) / 1000) | 0).toString().padStart(2, '0')})!`
+      else {
+        drawTime = Date.now() + (this.me?.charges.max ?? 100) * 30000
+        try {
+          await this.draw()
+          errorCount = 0
+        } catch {
+          errorCount++
+          if (errorCount === 4) throw new Error('Error')
+        }
+      }
+    }, 1000)
+    return true
   }
 
   /** Serialize bot */
@@ -312,10 +365,10 @@ export class WPlaceBot {
     this.mapsCache.clear()
     const imagesToDownload = new Set<string>()
     for (let index = 0; index < this.images.length; index++) {
-      const image = this.images[index]!
+      const image = this.images[index]
       const { tileX: tileXEnd, tileY: tileYEnd } = new WorldPosition(
         this,
-        image.position.globalX + image.pixels.pixels[0]!.length,
+        image.position.globalX + image.pixels.pixels[0].length,
         image.position.globalY + image.pixels.pixels.length,
       )
       for (let tileX = image.position.tileX; tileX <= tileXEnd; tileX++)
@@ -368,7 +421,7 @@ export class WPlaceBot {
     let min1 = Infinity
     let min2 = Infinity
     for (let index = 0; index < this.$stars.length; index++) {
-      const { x, y } = extractScreenPositionFromStar(this.$stars[index]!)
+      const { x, y } = extractScreenPositionFromStar(this.$stars[index])
       if (x < position.x && y < position.y) {
         const delta = position.x - x + (position.y - y)
         if (delta < min1) {
@@ -384,16 +437,16 @@ export class WPlaceBot {
       }
     }
     const anchorScreenPosition = extractScreenPositionFromStar(
-      this.$stars[anchorIndex]!,
+      this.$stars[anchorIndex],
     )
-    const anchorWorldPosition = FAVORITE_LOCATIONS_POSITIONS[anchorIndex]!
+    const anchorWorldPosition = FAVORITE_LOCATIONS_POSITIONS[anchorIndex]
     return {
       anchorScreenPosition,
       anchorWorldPosition,
       pixelSize:
-        (extractScreenPositionFromStar(this.$stars[minI2]!).x -
+        (extractScreenPositionFromStar(this.$stars[minI2]).x -
           anchorScreenPosition.x) /
-        (FAVORITE_LOCATIONS_POSITIONS[minI2]!.x - anchorWorldPosition.x),
+        (FAVORITE_LOCATIONS_POSITIONS[minI2].x - anchorWorldPosition.x),
     }
   }
 
@@ -488,13 +541,13 @@ export class WPlaceBot {
           index < this.markerPixelPositionResolvers.length;
           index++
         )
-          this.markerPixelPositionResolvers[index]!(
+          this.markerPixelPositionResolvers[index](
             new WorldPosition(
               this,
-              +pixelMatch[1]!,
-              +pixelMatch[2]!,
-              +pixelMatch[3]!,
-              +pixelMatch[4]!,
+              +pixelMatch[1],
+              +pixelMatch[2],
+              +pixelMatch[3],
+              +pixelMatch[4],
             ),
           )
         this.markerPixelPositionResolvers.length = 0
@@ -558,19 +611,44 @@ export class WPlaceBot {
   /** Update images position and contents */
   protected updateImages() {
     for (let index = 0; index < this.images.length; index++)
-      this.images[index]!.update()
+      this.images[index].update()
   }
 
   /** Update tasks of all images */
   protected updateTasks() {
     for (let index = 0; index < this.images.length; index++)
-      this.images[index]!.updateTasks()
+      this.images[index].updateTasks()
   }
 
   /** Update colors of all images */
   protected updateImageColors() {
     for (let index = 0; index < this.images.length; index++)
-      this.images[index]!.updateColors()
+      this.images[index].updateColors()
+  }
+
+  /** Zoom in canvas */
+  protected async zoomIn(
+    position: WorldPosition,
+    zoom: number,
+    canvas = document.querySelector<HTMLDivElement>('.maplibregl-canvas')!,
+  ) {
+    const screen = position.toScreenPosition()
+    return new Promise<void>((resolve) => {
+      function scroll() {
+        canvas.dispatchEvent(
+          new WheelEvent('wheel', {
+            deltaY: -10,
+            clientX: screen.x,
+            clientY: screen.y,
+            bubbles: true,
+            shiftKey: true,
+          }),
+        )
+        if (position.pixelSize >= zoom) resolve()
+        else requestAnimationFrame(scroll)
+      }
+      scroll()
+    })
   }
 }
 

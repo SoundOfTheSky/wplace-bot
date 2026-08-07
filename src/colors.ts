@@ -244,6 +244,6 @@ export const COLORS_RGB = [
 ] as string[]
 export function colorToCSS(colorId: number) {
   if (colorId === 0) return 'transparent'
-  const color = COLORS[colorId]!
+  const color = COLORS[colorId]
   return `oklab(${color[0] * 100}% ${color[1]} ${color[2]})`
 }

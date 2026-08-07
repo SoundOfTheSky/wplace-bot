@@ -4,6 +4,15 @@ import { Base } from './base'
 import { WPlaceBot } from './bot'
 import { NoImageError, WPlaceBotError } from './errors'
 import { BotImage } from './image'
+import {
+  addClass,
+  containsClass,
+  obfucsateHTML,
+  querySelector,
+  removeClass,
+  SID,
+  toggleClass,
+} from './obfuscator'
 import { Pixels } from './pixels'
 import { save } from './save'
 // @ts-ignore
@@ -29,11 +38,11 @@ export class Widget extends Base {
   }
 
   public get open() {
-    return this.element.classList.contains('wopen')
+    return containsClass(this.element, 'open')
   }
   public set open(value) {
-    if (value) this.element.classList.add('wopen')
-    else this.element.classList.remove('wopen')
+    if (value) addClass(this.element, 'open')
+    else removeClass(this.element, 'open')
   }
 
   protected readonly $settings!: HTMLDivElement
@@ -46,39 +55,42 @@ export class Widget extends Base {
   protected readonly $progressLine!: HTMLDivElement
   protected readonly $progressText!: HTMLSpanElement
   protected readonly $images!: HTMLDivElement
-  protected readonly $wopenButton!: HTMLButtonElement
+  protected readonly $openButton!: HTMLButtonElement
+  public readonly $autoDraw!: HTMLButtonElement
 
   // protected readonly $pumpkinHunt!: HTMLButtonElement
 
   public constructor(protected bot: WPlaceBot) {
     super()
-    this.element.classList.add('wwidget')
-    this.element.innerHTML = html as unknown as string
+    addClass(this.element, 'widget')
+    this.element.innerHTML = obfucsateHTML(html)
     document.body.append(this.element)
 
     this.populateElementsWithSelector(this.element, {
-      $wopenButton: '.wopen-button',
-      $settings: '.wform',
-      $status: '.wstatus',
+      $openButton: '.open-button',
+      $settings: '.form',
+      $status: '.status',
       $minimize: '.minimize',
-      $topbar: '.wtopbar',
+      $topbar: '.topbar',
       $draw: '.draw',
       $addImage: '.add-image',
       $strategy: '.strategy',
-      $progressLine: '.wprogress div',
-      $progressText: '.wprogress span',
+      $progressLine: '.progress div',
+      $progressText: '.progress span',
       $images: '.images',
+      $autoDraw: '.auto-draw',
       // $pumpkinHunt: '.pumpkin-hunt',
     })
 
     // Button actions
-    this.$wopenButton.addEventListener('click', () => (this.open = !this.open))
+    this.$openButton.addEventListener('click', () => (this.open = !this.open))
     this.$draw.addEventListener('click', () => this.bot.draw())
     // this.$pumpkinHunt.addEventListener('click', () => this.pumpkinHunt())
     this.$addImage.addEventListener('click', () => this.addImage())
     this.$strategy.addEventListener('change', () => {
       this.bot.strategy = this.$strategy.value as BotStrategy
     })
+    this.$autoDraw.addEventListener('click', () => this.bot.autoDraw())
 
     this.update()
     this.open = true
@@ -118,11 +130,16 @@ export class Widget extends Base {
               y: 32,
             }),
             new Pixels(this.bot, image),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            file.name,
           )
         }
         this.bot.images.push(botImage)
-        await this.bot.readMap()
-        botImage.updateTasks()
         save(this.bot, true)
         document.location.reload()
       },
@@ -139,8 +156,8 @@ export class Widget extends Base {
     let maxTasks = 0
     let totalTasks = 0
     for (let index = 0; index < this.bot.images.length; index++) {
-      const image = this.bot.images[index]!
-      maxTasks += image.pixels.pixels.length * image.pixels.pixels[0]!.length
+      const image = this.bot.images[index]
+      maxTasks += image.pixels.pixels.length * image.pixels.pixels[0].length
       totalTasks += image.tasks.length
     }
     const doneTasks = maxTasks - totalTasks
@@ -151,38 +168,45 @@ export class Widget extends Base {
     // Images
     this.$images.innerHTML = ''
     for (let index = 0; index < this.bot.images.length; index++) {
-      const image = this.bot.images[index]!
+      const image = this.bot.images[index]
       const $image = document.createElement('div')
       this.$images.append($image)
-      $image.className = 'image'
-      $image.innerHTML = `<img src="${image.pixels.image.src}">
-  <button class="up" title="Move up" ${index === 0 ? 'disabled' : ''}>▴</button>
-  <button class="down" title="Move down" ${index === this.bot.images.length - 1 ? 'disabled' : ''}>▾</button>`
+      $image.className = SID + 'item'
+      $image.innerHTML = obfucsateHTML(`<img src="${image.pixels.image.src}">
+<div class="buttons">
+<input type="text" class="name">
+<button class="up" title="Move up" ${index === 0 ? 'disabled' : ''}>▴</button>
+<button class="down" title="Move down" ${index === this.bot.images.length - 1 ? 'disabled' : ''}>▾</button>
+</div>`)
       $image
         .querySelector<HTMLButtonElement>('img')!
         .addEventListener('click', () => {
-          image.position.scrollScreenTo()
+          image.position.moveScreenTo()
         })
-      $image
-        .querySelector<HTMLButtonElement>('.up')!
-        .addEventListener('click', () => {
-          swap(this.bot.images, index, index - 1)
-          this.update()
-          save(this.bot)
-        })
-      $image
-        .querySelector<HTMLButtonElement>('.down')!
-        .addEventListener('click', () => {
-          swap(this.bot.images, index, index + 1)
-          this.update()
-          save(this.bot)
-        })
+      const $name = querySelector<HTMLInputElement>($image, '.name')!
+      $name.value = image.name
+      $name.addEventListener('change', () => {
+        image.name = $name.value
+        image.update()
+        this.update()
+        save(this.bot)
+      })
+      querySelector($image, '.up')!.addEventListener('click', () => {
+        swap(this.bot.images, index, index - 1)
+        this.update()
+        save(this.bot)
+      })
+      querySelector($image, '.down')!.addEventListener('click', () => {
+        swap(this.bot.images, index, index + 1)
+        this.update()
+        save(this.bot)
+      })
     }
   }
 
   /** Disable/enable element by class name */
   public setDisabled(name: string, disabled: boolean) {
-    this.element.querySelector<HTMLButtonElement>('.' + name)!.disabled =
+    querySelector<HTMLButtonElement>(this.element, '.' + name)!.disabled =
       disabled
   }
 
@@ -212,7 +236,7 @@ export class Widget extends Base {
 
   /** Hides content */
   protected minimize() {
-    this.$settings.classList.toggle('hidden')
+    toggleClass(this.$settings, 'hidden')
   }
 
   // protected async pumpkinHunt() {

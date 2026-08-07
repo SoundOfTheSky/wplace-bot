@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      4.5.2
+// @version      4.5.3
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -154,6 +154,43 @@ class SpeedCalculator {
     return { time, historyTime };
   }
 }
+// src/obfuscator.ts
+var SID = Array.from({ length: 16 }, () => (10 + Math.random() * 26 | 0).toString(36)).join("");
+function obfucsateHTML(html) {
+  return html.replace(/class="([^"]*)"/g, (_, classes) => {
+    const prefixed = classes.split(/\s+/).filter(Boolean).map((c) => `${SID}${c}`).join(" ");
+    return `class="${prefixed}"`;
+  });
+}
+function obfuscateLocalCSS(css) {
+  return css.replaceAll(/\.([a-z])/g, `.${SID}$1`);
+}
+function obfuscateCSS(css) {
+  const [global, local] = css.split("/** LOCAL STYLES */");
+  return global + `
+` + obfuscateLocalCSS(local);
+}
+function toggleClass(el, className) {
+  return el.classList.toggle(SID + className);
+}
+function addClass(el, className) {
+  el.classList.add(SID + className);
+}
+function removeClass(el, className) {
+  el.classList.remove(SID + className);
+}
+function containsClass(el, className) {
+  return el.classList.contains(SID + className);
+}
+function querySelector(el, selector) {
+  if (selector === ".topbar")
+    console.log(el, obfuscateLocalCSS(selector));
+  return el.querySelector(obfuscateLocalCSS(selector));
+}
+function querySelectorAll(el, selector) {
+  return el.querySelectorAll(obfuscateLocalCSS(selector));
+}
+
 // src/base.ts
 class Base2 {
   runOnDestroy = [];
@@ -163,7 +200,7 @@ class Base2 {
   }
   populateElementsWithSelector(element, selectors) {
     for (const key in selectors) {
-      this[key] = element.querySelector(selectors[key]);
+      this[key] = querySelector(element, selectors[key]);
     }
   }
   registerEvent(target, type, listener, options = {}) {
@@ -374,14 +411,15 @@ function colorToCSS(colorId) {
 }
 
 // src/image.html
-var image_default = `<div class="wtopbar">
+var image_default = `<div class="topbar">
+  <input type="text" class="name">
   <button class="export">📤</button>
   <button class="lock">🔓</button>
   <button class="delete">❌</button>
 </div>
 <div class="wrapper">
-  <div class="wform">
-    <div class="wprogress">
+  <div class="form">
+    <div class="progress">
       <div></div>
       <span></span>
     </div>
@@ -456,10 +494,9 @@ class Pixels {
     this.canvas.height = this.height;
     this.colors.clear();
     const colorCache = new Map;
-    for (let index = 1;index < 64; index++) {
+    for (let index = 1;index < 64; index++)
       if (this.exactColor || !this.bot.unavailableColors.has(index))
         colorCache.set(COLORS_RGB[index], [index, index]);
-    }
     this.context.imageSmoothingEnabled = false;
     this.context.imageSmoothingQuality = "low";
     this.context.drawImage(this.image, 0, 0, this.canvas.width, this.canvas.height);
@@ -535,7 +572,15 @@ class Pixels {
 
 // src/save.ts
 function loadSave() {
-  const json = localStorage.getItem("wbot");
+  let key = "";
+  for (let index = 0;index < localStorage.length; index++) {
+    key = localStorage.key(index);
+    if (key.endsWith("wbot"))
+      break;
+  }
+  if (!key.endsWith("wbot"))
+    key = SID + "wbot";
+  const json = localStorage.getItem(key);
   let save;
   try {
     save = JSON.parse(json);
@@ -547,8 +592,9 @@ function loadSave() {
       save.strategy = _save.widget.strategy;
       delete _save.widget;
     }
+    localStorage.removeItem(key);
+    localStorage.setItem(SID + "wbot", JSON.stringify(save));
   } catch {
-    localStorage.removeItem("wbot");
     save = undefined;
   }
   return save;
@@ -557,10 +603,10 @@ var saveTimeout;
 function save(bot, immediate = false) {
   clearTimeout(saveTimeout);
   if (immediate)
-    localStorage.setItem("wbot", JSON.stringify(bot));
+    localStorage.setItem(SID + "wbot", JSON.stringify(bot));
   else
     saveTimeout = setTimeout(() => {
-      localStorage.setItem("wbot", JSON.stringify(bot));
+      localStorage.setItem(SID + "wbot", JSON.stringify(bot));
     }, 1000);
 }
 
@@ -677,7 +723,7 @@ class WorldPosition {
   getMapColor() {
     return this.bot.mapsCache.get(this.tileX + "/" + this.tileY).pixels[this.y][this.x];
   }
-  scrollScreenTo() {
+  moveScreenTo() {
     const { x, y } = this.toScreenPosition();
     this.bot.moveMap({
       x: x - window.innerWidth / 3,
@@ -703,8 +749,9 @@ class BotImage extends Base2 {
   drawColorsInOrder;
   colors;
   lock;
+  name;
   static async fromJSON(bot, data) {
-    return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels, data.drawColorsInOrder, data.colors, data.lock);
+    return new BotImage(bot, WorldPosition.fromJSON(bot, data.position), await Pixels.fromJSON(bot, data.pixels), data.strategy, data.opacity, data.drawTransparentPixels, data.drawColorsInOrder, data.colors, data.lock, data.name);
   }
   element = document.createElement("div");
   tasks = [];
@@ -726,7 +773,8 @@ class BotImage extends Base2 {
   $strategy;
   $topbar;
   $wrapper;
-  constructor(bot, position, pixels, strategy = "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */, opacity = 50, drawTransparentPixels = false, drawColorsInOrder = false, colors = [], lock = false) {
+  $name;
+  constructor(bot, position, pixels, strategy = "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */, opacity = 50, drawTransparentPixels = false, drawColorsInOrder = false, colors = [], lock = false, name = `${pixels.width}x${pixels.height}`) {
     super();
     this.bot = bot;
     this.position = position;
@@ -737,8 +785,9 @@ class BotImage extends Base2 {
     this.drawColorsInOrder = drawColorsInOrder;
     this.colors = colors;
     this.lock = lock;
-    this.element.innerHTML = image_default;
-    this.element.classList.add("wimage");
+    this.name = name;
+    this.element.innerHTML = obfucsateHTML(image_default);
+    addClass(this.element, "image");
     document.body.append(this.element);
     this.populateElementsWithSelector(this.element, {
       $brightness: ".brightness",
@@ -749,13 +798,14 @@ class BotImage extends Base2 {
       $export: ".export",
       $lock: ".lock",
       $opacity: ".opacity",
-      $progressLine: ".wprogress div",
-      $progressText: ".wprogress span",
+      $progressLine: ".progress div",
+      $progressText: ".progress span",
       $resetSize: ".reset-size",
-      $settings: ".wform",
+      $settings: ".form",
       $strategy: ".strategy",
-      $topbar: ".wtopbar",
-      $wrapper: ".wrapper"
+      $topbar: ".topbar",
+      $wrapper: ".wrapper",
+      $name: ".name"
     });
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
     this.$canvas = this.pixels.canvas;
@@ -804,11 +854,17 @@ class BotImage extends Base2 {
     });
     this.registerEvent(this.$delete, "click", this.destroy.bind(this));
     this.registerEvent(this.$export, "click", this.export.bind(this));
+    this.registerEvent(this.$name, "change", () => {
+      this.name = this.$name.value;
+      this.update();
+      this.bot.widget.update();
+      save(this.bot);
+    });
     this.registerEvent(this.$topbar, "mousedown", this.moveStart.bind(this));
     this.registerEvent(this.$canvas, "mousedown", this.moveStart.bind(this));
     this.registerEvent(document, "mouseup", this.moveStop.bind(this));
     this.registerEvent(document, "mousemove", this.move.bind(this));
-    for (const $resize of this.element.querySelectorAll(".resize"))
+    for (const $resize of querySelectorAll(this.element, ".resize"))
       this.registerEvent($resize, "mousedown", this.resizeStart.bind(this));
     this.update();
     this.updateColors();
@@ -822,7 +878,8 @@ class BotImage extends Base2 {
       drawTransparentPixels: this.drawTransparentPixels,
       drawColorsInOrder: this.drawColorsInOrder,
       colors: this.colors,
-      lock: this.lock
+      lock: this.lock,
+      name: this.name
     };
   }
   updateTasks() {
@@ -859,19 +916,23 @@ class BotImage extends Base2 {
     this.element.style.transform = `translate(${x}px, ${y}px)`;
     this.element.style.width = `${this.position.pixelSize * this.pixels.width}px`;
     this.$canvas.style.opacity = `${this.opacity}%`;
-    this.element.classList.remove("hidden");
+    removeClass(this.element, "hidden");
     this.$resetSizeSpan.textContent = this.pixels.width.toString();
     this.$brightness.valueAsNumber = this.pixels.brightness;
     this.$strategy.value = this.strategy;
     this.$opacity.valueAsNumber = this.opacity;
     this.$drawTransparent.checked = this.drawTransparentPixels;
     this.$drawColorsInOrder.checked = this.drawColorsInOrder;
+    this.$name.value = this.name;
     const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0].length;
     const doneTasks = maxTasks - this.tasks.length;
     const percent = doneTasks / maxTasks * 100 | 0;
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${this.tasks.length / 120 | 0}h`;
     this.$progressLine.style.transform = `scaleX(${percent}%)`;
-    this.$wrapper.classList[this.lock ? "add" : "remove"]("no-pointer-events");
+    if (this.lock)
+      addClass(this.$wrapper, "no-pointer-events");
+    else
+      removeClass(this.$wrapper, "no-pointer-events");
     this.$lock.textContent = this.lock ? "\uD83D\uDD12" : "\uD83D\uDD13";
   }
   destroy() {
@@ -901,16 +962,16 @@ class BotImage extends Base2 {
         if (dragging)
           return;
         drawColor.disabled = drawColor.disabled ? undefined : true;
-        $button.classList.toggle("color-disabled");
+        toggleClass($button, "color-disabled");
         save(this.bot);
       };
       const $button = document.createElement("button");
       if (drawColor.disabled)
-        $button.classList.add("color-disabled");
+        addClass($button, "color-disabled");
       if (color.realColor === color.color)
         $button.style.background = colorToCSS(color.realColor);
       else {
-        $button.classList.add("substitution");
+        addClass($button, "substitution");
         $button.style.setProperty("--wreal-color", colorToCSS(color.realColor));
         $button.style.setProperty("--wsubstitution-color", colorToCSS(color.color));
         const $button1 = document.createElement("button");
@@ -1102,15 +1163,15 @@ class BotImage extends Base2 {
       clientY: event.clientY
     };
     const $resize = event.target;
-    if ($resize.classList.contains("n")) {
+    if (containsClass($resize, "n")) {
       this.moveInfo.height = this.pixels.height;
       this.moveInfo.globalY = this.position.globalY;
     }
-    if ($resize.classList.contains("e"))
+    if (containsClass($resize, "e"))
       this.moveInfo.width = this.pixels.width;
-    if ($resize.classList.contains("s"))
+    if (containsClass($resize, "s"))
       this.moveInfo.height = this.pixels.height;
-    if ($resize.classList.contains("w")) {
+    if (containsClass($resize, "w")) {
       this.moveInfo.width = this.pixels.width;
       this.moveInfo.globalX = this.position.globalX;
     }
@@ -1141,7 +1202,6 @@ var style_default = `/* stylelint-disable declaration-no-important */
   --text-invert: #fff;
   --error: #f00;
   --resize: 8px;
-  --asdadsasdasdasdasdasdasdasd: 1px;
   --text: #422e2c;
   --background: #fbe3cb;
   --background-hover: #f0d1b3;
@@ -1156,8 +1216,10 @@ var style_default = `/* stylelint-disable declaration-no-important */
   display: none;
 }
 
+/** LOCAL STYLES */
+
 /** Widget */
-.wwidget {
+.widget {
   position: fixed;
   top: 0;
   left: 0;
@@ -1167,32 +1229,35 @@ var style_default = `/* stylelint-disable declaration-no-important */
   border-right: var(--text) 2px solid;
   background-color: var(--background);
   color: var(--text);
-  font-family: 'Tiny5', sans-serif;
   transition: transform 0.5s;
   transform: translateX(-100%);
 }
 
-.wwidget .title {
+.widget * {
+  font-family: 'Tiny5', sans-serif;
+}
+
+.widget .title {
   border-bottom: var(--text) 2px solid;
   background-color: var(--main);
   font-size: 32px;
   text-align: center;
 }
 
-.wwidget.wopen .wopen-button div {
+.widget.open .open-button div {
   transform: rotate(180deg);
 }
 
-.wwidget.wopen {
+.widget.open {
   box-shadow: 8px 0 16px -8px var(--main);
   transform: translateX(0);
 }
 
-.wwidget .wopen-button div {
+.widget .open-button div {
   transition: transform 0.5s;
 }
 
-.wwidget .wopen-button {
+.widget .open-button {
   position: absolute;
   top: calc(50% - 24px);
   right: -24px;
@@ -1205,50 +1270,72 @@ var style_default = `/* stylelint-disable declaration-no-important */
   cursor: pointer;
 }
 
-.wwidget .images {
+.widget .images {
   display: block;
   overflow-y: auto;
   height: auto;
   max-height: 240px;
 }
 
-.wwidget .images .image {
+.widget .images .item {
   display: flex;
   align-items: center;
   width: 100%;
   height: 64px;
 }
 
-.wwidget .images .image img {
+.widget .images .item img {
   max-width: 100%;
   max-height: 100%;
   margin: 0 auto;
   cursor: pointer;
 }
 
-.wwidget .images .image button {
-  width: 32px;
-  height: 64px;
+.widget .images .item .buttons {
+  width: 100%;
+  height: 100%;
+}
+
+.widget .images .item .buttons input {
+  display: block;
+  width: 100%;
+  height: 30px;
+  margin-bottom: 4px;
+}
+
+.widget .images .item .buttons button {
+  display: inline-block;
+  width: calc(50% - 2px);
+  height: 30px;
   font-weight: bolder;
   font-size: 24px;
+  line-height: 100%;
+}
+
+.widget .images .item .buttons button:first-child {
+  margin-right: 4px;
 }
 
 /** Image */
-.wimage {
+.image {
   position: fixed;
   top: 0;
   left: 0;
   z-index: 9;
 }
 
-.wimage canvas {
+.image * {
+  font-family: 'Tiny5', sans-serif;
+}
+
+.image canvas {
+  image-rendering: pixelated;
   width: 100%;
   box-shadow: inset var(--text) 0 0 0 2px;
   cursor: all-scroll;
-  image-rendering: pixelated;
 }
 
-.wimage .wform {
+.image .form {
   position: absolute;
   display: none;
   width: 100%;
@@ -1258,16 +1345,12 @@ var style_default = `/* stylelint-disable declaration-no-important */
   color: var(--text);
 }
 
-.wimage:hover .wrapper .wform {
+.image:hover .wrapper .form {
   display: block;
 }
 
 /* Settings */
-.wform {
-  font-family: 'Tiny5', sans-serif;
-}
-
-.wform > * {
+.form > * {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -1279,18 +1362,19 @@ var style_default = `/* stylelint-disable declaration-no-important */
   white-space: nowrap;
 }
 
-.wform button,
-.wform input,
-.wform select,
-.wform textarea,
-.wform label:has(input[type='checkbox']) {
+.form button,
+.form input,
+.form select,
+.form textarea,
+.form label:has(input[type='checkbox']) {
   padding: 0 8px;
   border: var(--text) 2px solid;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
-.wform input[type='range'] {
+.form input[type='range'] {
+  appearance: none;
   width: 100%;
   height: 32px;
   background: linear-gradient(
@@ -1299,37 +1383,36 @@ var style_default = `/* stylelint-disable declaration-no-important */
     var(--background-disabled) var(--val)
   );
   cursor: ew-resize;
-  appearance: none;
 }
 
-.wform input[type='range']::-moz-range-thumb {
+.form input[type='range']::-moz-range-thumb {
   width: 0;
   height: 0;
   opacity: 0;
 }
 
-.wform button:hover,
-.wform input:hover {
+.form button:hover,
+.form input:hover {
   background-color: var(--background-hover);
 }
 
-.wform button:disabled,
-.wform input:disabled {
+.form button:disabled,
+.form input:disabled {
   background-color: var(--background-disabled);
   cursor: no-drop;
 }
 
-.wform label input:not([type='checkbox']) {
+.form label input:not([type='checkbox']) {
   width: inherit;
 }
 
-.wform .wprogress {
+.form .progress {
   position: relative;
   width: 100%;
   margin: 0;
 }
 
-.wform .wprogress div {
+.form .progress div {
   position: absolute;
   width: 100%;
   height: 100%;
@@ -1337,11 +1420,11 @@ var style_default = `/* stylelint-disable declaration-no-important */
   transform-origin: left;
 }
 
-.wform .wprogress span {
+.form .progress span {
   z-index: 0;
 }
 
-.wform .colors {
+.form .colors {
   position: relative;
   width: 100%;
   height: 32px;
@@ -1356,7 +1439,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
   cursor: ew-resize;
 }
 
-.wform .colors > button {
+.form .colors > button {
   position: absolute;
   top: 0;
   left: 0;
@@ -1370,11 +1453,11 @@ var style_default = `/* stylelint-disable declaration-no-important */
     0.2s filter;
 }
 
-.wform .colors > button:hover {
+.form .colors > button:hover {
   filter: brightness(0.6);
 }
 
-.wform .colors > button.color-disabled::before {
+.form .colors > button.color-disabled::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -1383,7 +1466,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
   pointer-events: none;
 }
 
-.wform .colors > button.substitution button {
+.form .colors > button.substitution button {
   position: absolute;
   top: 0;
   left: 0;
@@ -1394,38 +1477,37 @@ var style_default = `/* stylelint-disable declaration-no-important */
   transition: 0.2s filter;
 }
 
-.wform .colors > button.substitution button:hover {
+.form .colors > button.substitution button:hover {
   filter: brightness(0.6);
 }
 
-.wform .colors > button.substitution button:first-child {
+.form .colors > button.substitution button:first-child {
+  clip-path: polygon(0 0, 80% 0, 20% 100%, 0 100%);
   background: var(--wreal-color);
   text-align: left;
-  clip-path: polygon(0 0, 80% 0, 20% 100%, 0 100%);
 }
 
-.wform .colors > button.substitution button:last-child {
+.form .colors > button.substitution button:last-child {
+  clip-path: polygon(100% 100%, 100% 0, 80% 0, 20% 100%);
   background: var(--wsubstitution-color);
   text-align: right;
-  clip-path: polygon(100% 100%, 100% 0, 80% 0, 20% 100%);
 }
 
-.wform .colors > button.substitution:hover {
+.form .colors > button.substitution:hover {
   filter: none;
 }
 
-.wform .colors:hover > button {
+.form .colors:hover > button {
   left: var(--wleft) !important;
   width: var(--wwidth) !important;
 }
 
-/* Move */
-.wtopbar {
+/* Topbar */
+.topbar {
   position: absolute;
   top: -24px;
   left: 0;
   display: flex;
-  justify-content: end;
   align-items: center;
   width: 100%;
   min-width: min-content;
@@ -1436,7 +1518,13 @@ var style_default = `/* stylelint-disable declaration-no-important */
   cursor: all-scroll;
 }
 
-.wtopbar button {
+.topbar .name {
+  width: 100%;
+  height: 100%;
+  padding: 0 4px;
+}
+
+.topbar button {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -1444,7 +1532,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
   height: 24px;
 }
 
-.wtopbar button:hover {
+.topbar button:hover {
   background-color: var(--main-hover);
 }
 
@@ -1484,7 +1572,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
 }
 
 /* Utility */
-.wp {
+.p {
   padding: 0 8px;
 }
 
@@ -1514,12 +1602,13 @@ class NoImageError extends WPlaceBotError {
 }
 
 // src/widget.html
-var widget_default = `<button class="wopen-button"><div>></div></button>
+var widget_default = `<button class="open-button"><div>></div></button>
 <div class="title">WPlace-bot</div>
-<div class="wform">
-  <div class="wprogress"><div></div><span></span></div>
-  <div class="wp wstatus"></div>
+<div class="form">
+  <div class="progress"><div></div><span></span></div>
+  <div class="p status"></div>
   <button class="draw" disabled>Draw</button>
+  <button class="auto-draw" disabled>Auto-Draw</button>
   <label>Strategy:&nbsp;<select class="strategy">
     <option value="SEQUENTIAL" selected>Sequential</option>
     <option value="ALL">All</option>
@@ -1542,13 +1631,13 @@ class Widget extends Base2 {
     this.$status.innerHTML = value;
   }
   get open() {
-    return this.element.classList.contains("wopen");
+    return containsClass(this.element, "open");
   }
   set open(value) {
     if (value)
-      this.element.classList.add("wopen");
+      addClass(this.element, "open");
     else
-      this.element.classList.remove("wopen");
+      removeClass(this.element, "open");
   }
   $settings;
   $status;
@@ -1560,32 +1649,35 @@ class Widget extends Base2 {
   $progressLine;
   $progressText;
   $images;
-  $wopenButton;
+  $openButton;
+  $autoDraw;
   constructor(bot) {
     super();
     this.bot = bot;
-    this.element.classList.add("wwidget");
-    this.element.innerHTML = widget_default;
+    addClass(this.element, "widget");
+    this.element.innerHTML = obfucsateHTML(widget_default);
     document.body.append(this.element);
     this.populateElementsWithSelector(this.element, {
-      $wopenButton: ".wopen-button",
-      $settings: ".wform",
-      $status: ".wstatus",
+      $openButton: ".open-button",
+      $settings: ".form",
+      $status: ".status",
       $minimize: ".minimize",
-      $topbar: ".wtopbar",
+      $topbar: ".topbar",
       $draw: ".draw",
       $addImage: ".add-image",
       $strategy: ".strategy",
-      $progressLine: ".wprogress div",
-      $progressText: ".wprogress span",
-      $images: ".images"
+      $progressLine: ".progress div",
+      $progressText: ".progress span",
+      $images: ".images",
+      $autoDraw: ".auto-draw"
     });
-    this.$wopenButton.addEventListener("click", () => this.open = !this.open);
+    this.$openButton.addEventListener("click", () => this.open = !this.open);
     this.$draw.addEventListener("click", () => this.bot.draw());
     this.$addImage.addEventListener("click", () => this.addImage());
     this.$strategy.addEventListener("change", () => {
       this.bot.strategy = this.$strategy.value;
     });
+    this.$autoDraw.addEventListener("click", () => this.bot.autoDraw());
     this.update();
     this.open = true;
   }
@@ -1614,11 +1706,9 @@ class Widget extends Base2 {
         botImage = new BotImage(this.bot, WorldPosition.fromScreenPosition(this.bot, {
           x: 256,
           y: 32
-        }), new Pixels(this.bot, image));
+        }), new Pixels(this.bot, image), undefined, undefined, undefined, undefined, undefined, undefined, file.name);
       }
       this.bot.images.push(botImage);
-      await this.bot.readMap();
-      botImage.updateTasks();
       save(this.bot, true);
       document.location.reload();
     }, () => {
@@ -1643,19 +1733,30 @@ class Widget extends Base2 {
       const image = this.bot.images[index];
       const $image = document.createElement("div");
       this.$images.append($image);
-      $image.className = "image";
-      $image.innerHTML = `<img src="${image.pixels.image.src}">
-  <button class="up" title="Move up" ${index === 0 ? "disabled" : ""}>▴</button>
-  <button class="down" title="Move down" ${index === this.bot.images.length - 1 ? "disabled" : ""}>▾</button>`;
+      $image.className = SID + "item";
+      $image.innerHTML = obfucsateHTML(`<img src="${image.pixels.image.src}">
+<div class="buttons">
+<input type="text" class="name">
+<button class="up" title="Move up" ${index === 0 ? "disabled" : ""}>▴</button>
+<button class="down" title="Move down" ${index === this.bot.images.length - 1 ? "disabled" : ""}>▾</button>
+</div>`);
       $image.querySelector("img").addEventListener("click", () => {
-        image.position.scrollScreenTo();
+        image.position.moveScreenTo();
       });
-      $image.querySelector(".up").addEventListener("click", () => {
+      const $name = querySelector($image, ".name");
+      $name.value = image.name;
+      $name.addEventListener("change", () => {
+        image.name = $name.value;
+        image.update();
+        this.update();
+        save(this.bot);
+      });
+      querySelector($image, ".up").addEventListener("click", () => {
         swap(this.bot.images, index, index - 1);
         this.update();
         save(this.bot);
       });
-      $image.querySelector(".down").addEventListener("click", () => {
+      querySelector($image, ".down").addEventListener("click", () => {
         swap(this.bot.images, index, index + 1);
         this.update();
         save(this.bot);
@@ -1663,7 +1764,7 @@ class Widget extends Base2 {
     }
   }
   setDisabled(name, disabled) {
-    this.element.querySelector("." + name).disabled = disabled;
+    querySelector(this.element, "." + name).disabled = disabled;
   }
   async run(status, run, fin, emoji = "⌛") {
     const originalStatus = this.status;
@@ -1683,7 +1784,7 @@ class Widget extends Base2 {
     }
   }
   minimize() {
-    this.$settings.classList.toggle("hidden");
+    toggleClass(this.$settings, "hidden");
   }
 }
 
@@ -1697,6 +1798,7 @@ class WPlaceBot {
   $stars = [];
   strategy = "SEQUENTIAL" /* SEQUENTIAL */;
   images = [];
+  autoDrawInterval;
   widget = new Widget(this);
   markerPixelPositionResolvers = [];
   lastColor;
@@ -1718,7 +1820,7 @@ class WPlaceBot {
     }
     this.registerFetchInterceptor();
     const style = document.createElement("style");
-    style.textContent = style_default.replace("FAKE_FAVORITE_LOCATIONS", FAVORITE_LOCATIONS.length.toString());
+    style.textContent = obfuscateCSS(style_default.replace("FAKE_FAVORITE_LOCATIONS", FAVORITE_LOCATIONS.length.toString()));
     document.head.append(style);
     this.widget.run("Initializing", async () => {
       await this.waitForElement("login", ".avatar.center-absolute.absolute");
@@ -1748,7 +1850,11 @@ class WPlaceBot {
       await this.readMap();
       this.updateTasks();
       this.widget.setDisabled("draw", false);
+      this.widget.setDisabled("auto-draw", false);
       this.widget.setDisabled("add-image", false);
+    }).catch(() => {
+      localStorage.removeItem(SID + "wbot");
+      document.location.reload();
     });
   }
   draw() {
@@ -1761,14 +1867,21 @@ class WPlaceBot {
         event.stopPropagation();
     };
     return this.widget.run("Drawing", async () => {
-      await this.widget.run("Initializing draw", () => Promise.all([this.updateColors(), this.readMap()]));
+      const firstImage = this.images[0];
+      if (!firstImage)
+        return;
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
+      await this.widget.run("Initializing draw", () => Promise.all([
+        this.updateColors(),
+        this.readMap(),
+        this.zoomIn(firstImage.position, 4, $canvas)
+      ]));
       this.updateTasks();
-      const me = await fetch("https://backend.wplace.live/me", {
+      this.me = await fetch("https://backend.wplace.live/me", {
         credentials: "include"
       }).then((x) => x.json());
-      let charges = Math.floor(me.charges.count);
+      let charges = Math.floor(this.me.charges.count);
       let n = 0;
       for (let index = 0;index < this.images.length; index++)
         n += this.images[index].tasks.length;
@@ -1820,11 +1933,40 @@ class WPlaceBot {
         }
       }
       this.widget.update();
+      document.querySelector(".absolute.bottom-0  .btn.btn-lg.relative.btn-primary")?.click();
     }, () => {
       globalThis.removeEventListener("mousemove", prevent, true);
       $canvas.removeEventListener("wheel", prevent, true);
       this.widget.setDisabled("draw", false);
     });
+  }
+  autoDraw() {
+    if (this.autoDrawInterval) {
+      this.widget.$autoDraw.innerText = "Auto-Draw";
+      clearInterval(this.autoDrawInterval);
+      this.autoDrawInterval = undefined;
+      return false;
+    }
+    this.widget.$autoDraw.innerText = "Auto-Draw is starting...";
+    let errorCount = 0;
+    let drawTime = 0;
+    this.autoDrawInterval = setInterval(async () => {
+      const deltaTime = drawTime - Date.now();
+      if (deltaTime > 0)
+        this.widget.$autoDraw.innerText = `Auto-Draw in (${deltaTime / 60000 | 0}:${(deltaTime % 60000 / 1000 | 0).toString().padStart(2, "0")})!`;
+      else {
+        drawTime = Date.now() + (this.me?.charges.max ?? 100) * 30000;
+        try {
+          await this.draw();
+          errorCount = 0;
+        } catch {
+          errorCount++;
+          if (errorCount === 4)
+            throw new Error("Error");
+        }
+      }
+    }, 1000);
+    return true;
   }
   toJSON() {
     return {
@@ -2035,6 +2177,25 @@ class WPlaceBot {
   updateImageColors() {
     for (let index = 0;index < this.images.length; index++)
       this.images[index].updateColors();
+  }
+  async zoomIn(position, zoom, canvas = document.querySelector(".maplibregl-canvas")) {
+    const screen = position.toScreenPosition();
+    return new Promise((resolve) => {
+      function scroll() {
+        canvas.dispatchEvent(new WheelEvent("wheel", {
+          deltaY: -10,
+          clientX: screen.x,
+          clientY: screen.y,
+          bubbles: true,
+          shiftKey: true
+        }));
+        if (position.pixelSize >= zoom)
+          resolve();
+        else
+          requestAnimationFrame(scroll);
+      }
+      scroll();
+    });
   }
 }
 globalThis.wbot = new WPlaceBot;

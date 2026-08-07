@@ -5,6 +5,14 @@ import { WPlaceBot } from './bot'
 import { colorToCSS } from './colors'
 // @ts-ignore
 import html from './image.html' with { type: 'text' }
+import {
+  addClass,
+  containsClass,
+  obfucsateHTML,
+  querySelectorAll,
+  removeClass,
+  toggleClass,
+} from './obfuscator'
 import { Pixels } from './pixels'
 import { save } from './save'
 import { Position, WorldPosition } from './world-position'
@@ -44,6 +52,7 @@ export class BotImage extends Base {
       data.drawColorsInOrder,
       data.colors,
       data.lock,
+      data.name,
     )
   }
 
@@ -79,6 +88,7 @@ export class BotImage extends Base {
   protected readonly $strategy!: HTMLSelectElement
   protected readonly $topbar!: HTMLDivElement
   protected readonly $wrapper!: HTMLDivElement
+  protected readonly $name!: HTMLInputElement
 
   public constructor(
     protected bot: WPlaceBot,
@@ -98,10 +108,12 @@ export class BotImage extends Base {
     public colors: { realColor: number; disabled?: boolean }[] = [],
     /** Stop accidental image edit */
     public lock = false,
+    /** Name of image */
+    public name = `${pixels.width}x${pixels.height}`,
   ) {
     super()
-    this.element.innerHTML = html as unknown as string
-    this.element.classList.add('wimage')
+    this.element.innerHTML = obfucsateHTML(html)
+    addClass(this.element, 'image')
     document.body.append(this.element)
 
     this.populateElementsWithSelector(this.element, {
@@ -113,13 +125,14 @@ export class BotImage extends Base {
       $export: '.export',
       $lock: '.lock',
       $opacity: '.opacity',
-      $progressLine: '.wprogress div',
-      $progressText: '.wprogress span',
+      $progressLine: '.progress div',
+      $progressText: '.progress span',
       $resetSize: '.reset-size',
-      $settings: '.wform',
+      $settings: '.form',
       $strategy: '.strategy',
-      $topbar: '.wtopbar',
+      $topbar: '.topbar',
       $wrapper: '.wrapper',
+      $name: '.name',
     })
     this.$resetSizeSpan =
       this.$resetSize.querySelector<HTMLSpanElement>('span')!
@@ -188,6 +201,14 @@ export class BotImage extends Base {
     // Export
     this.registerEvent(this.$export, 'click', this.export.bind(this))
 
+    // Name
+    this.registerEvent(this.$name, 'change', () => {
+      this.name = this.$name.value
+      this.update()
+      this.bot.widget.update()
+      save(this.bot)
+    })
+
     // Move
     this.registerEvent(this.$topbar, 'mousedown', this.moveStart.bind(this))
     this.registerEvent(this.$canvas, 'mousedown', this.moveStart.bind(this))
@@ -195,9 +216,7 @@ export class BotImage extends Base {
     this.registerEvent(document, 'mousemove', this.move.bind(this))
 
     // Resize
-    for (const $resize of this.element.querySelectorAll<HTMLDivElement>(
-      '.resize',
-    ))
+    for (const $resize of querySelectorAll(this.element, '.resize'))
       this.registerEvent($resize, 'mousedown', this.resizeStart.bind(this))
     this.update()
     this.updateColors()
@@ -213,6 +232,7 @@ export class BotImage extends Base {
       drawColorsInOrder: this.drawColorsInOrder,
       colors: this.colors,
       lock: this.lock,
+      name: this.name,
     }
   }
 
@@ -223,12 +243,12 @@ export class BotImage extends Base {
     const skipColors = new Set<number>()
     const colorsOrderMap = new Map<number, number>()
     for (let index = 0; index < this.colors.length; index++) {
-      const drawColor = this.colors[index]!
+      const drawColor = this.colors[index]
       if (drawColor.disabled) skipColors.add(drawColor.realColor)
       colorsOrderMap.set(drawColor.realColor, index)
     }
     for (const { x, y } of this.strategyPositionIterator()) {
-      const color = this.pixels.pixels[y]![x]!
+      const color = this.pixels.pixels[y][x]
       if (skipColors.has(color)) continue
       position.globalX = this.position.globalX + x
       position.globalY = this.position.globalY + y
@@ -255,7 +275,7 @@ export class BotImage extends Base {
     this.element.style.transform = `translate(${x}px, ${y}px)`
     this.element.style.width = `${this.position.pixelSize * this.pixels.width}px`
     this.$canvas.style.opacity = `${this.opacity}%`
-    this.element.classList.remove('hidden')
+    removeClass(this.element, 'hidden')
 
     this.$resetSizeSpan.textContent = this.pixels.width.toString()
     this.$brightness.valueAsNumber = this.pixels.brightness
@@ -263,12 +283,14 @@ export class BotImage extends Base {
     this.$opacity.valueAsNumber = this.opacity
     this.$drawTransparent.checked = this.drawTransparentPixels
     this.$drawColorsInOrder.checked = this.drawColorsInOrder
-    const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0]!.length
+    this.$name.value = this.name
+    const maxTasks = this.pixels.pixels.length * this.pixels.pixels[0].length
     const doneTasks = maxTasks - this.tasks.length
     const percent = ((doneTasks / maxTasks) * 100) | 0
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${(this.tasks.length / 120) | 0}h`
     this.$progressLine.style.transform = `scaleX(${percent}%)`
-    this.$wrapper.classList[this.lock ? 'add' : 'remove']('no-pointer-events')
+    if (this.lock) addClass(this.$wrapper, 'no-pointer-events')
+    else removeClass(this.$wrapper, 'no-pointer-events')
     this.$lock.textContent = this.lock ? '🔒' : '🔓'
   }
 
@@ -284,7 +306,7 @@ export class BotImage extends Base {
   /** Update colors array */
   public updateColors() {
     this.$colors.innerHTML = ''
-    const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0]!.length
+    const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0].length
     const itemWidth = 100 / this.pixels.colors.size
 
     // If not the synced with colors then rebuild order
@@ -306,21 +328,21 @@ export class BotImage extends Base {
     // Build colors UI
     let nextXPosition = 0
     for (let index = 0; index < this.colors.length; index++) {
-      const drawColor = this.colors[index]!
+      const drawColor = this.colors[index]
       const color = this.pixels.colors.get(drawColor.realColor)!
       let dragging = false
       const toggleDisabled = () => {
         if (dragging) return
         drawColor.disabled = drawColor.disabled ? undefined : true
-        $button.classList.toggle('color-disabled')
+        toggleClass($button, 'color-disabled')
         save(this.bot)
       }
       const $button = document.createElement('button')
-      if (drawColor.disabled) $button.classList.add('color-disabled')
+      if (drawColor.disabled) addClass($button, 'color-disabled')
       if (color.realColor === color.color)
         $button.style.background = colorToCSS(color.realColor)
       else {
-        $button.classList.add('substitution')
+        addClass($button, 'substitution')
         $button.style.setProperty('--wreal-color', colorToCSS(color.realColor))
         $button.style.setProperty(
           '--wsubstitution-color',
@@ -395,7 +417,7 @@ export class BotImage extends Base {
 
   /** Create iterator that generates positions based on strategy */
   protected *strategyPositionIterator(): Generator<Position> {
-    const width = this.pixels.pixels[0]!.length
+    const width = this.pixels.pixels[0].length
     const height = this.pixels.pixels.length
     switch (this.strategy) {
       case ImageStrategy.DOWN: {
@@ -424,7 +446,7 @@ export class BotImage extends Base {
           for (let x = 0; x < width; x++) positions.push({ x, y })
         for (let index = positions.length - 1; index >= 0; index--) {
           const index_ = Math.floor(Math.random() * (index + 1))
-          const temporary = positions[index]!
+          const temporary = positions[index]
           positions[index] = positions[index_]!
           positions[index_] = temporary
         }
@@ -462,8 +484,8 @@ export class BotImage extends Base {
                     if (count >= total) return
                   }
                 }
-                x += directories[directionIndex]![0]!
-                y += directories[directionIndex]![1]!
+                x += directories[directionIndex][0]
+                y += directories[directionIndex][1]
               }
               directionIndex = (directionIndex + 1) % 4
             }
@@ -475,7 +497,7 @@ export class BotImage extends Base {
         else {
           const collected = [...emit()]
           for (let index = collected.length - 1; index >= 0; index--)
-            yield collected[index]!
+            yield collected[index]
         }
         break
       }
@@ -533,14 +555,13 @@ export class BotImage extends Base {
       clientY: event.clientY,
     }
     const $resize = event.target! as HTMLDivElement
-    if ($resize.classList.contains('n')) {
+    if (containsClass($resize, 'n')) {
       this.moveInfo.height = this.pixels.height
       this.moveInfo.globalY = this.position.globalY
     }
-    if ($resize.classList.contains('e')) this.moveInfo.width = this.pixels.width
-    if ($resize.classList.contains('s'))
-      this.moveInfo.height = this.pixels.height
-    if ($resize.classList.contains('w')) {
+    if (containsClass($resize, 'e')) this.moveInfo.width = this.pixels.width
+    if (containsClass($resize, 's')) this.moveInfo.height = this.pixels.height
+    if (containsClass($resize, 'w')) {
       this.moveInfo.width = this.pixels.width
       this.moveInfo.globalX = this.position.globalX
     }

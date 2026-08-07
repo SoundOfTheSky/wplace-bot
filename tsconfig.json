@@ -1,3 +1,7 @@
 {
-  "extends": "@softsky/configs/tsconfig.json"
+  "extends": "@softsky/configs/tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "skipLibCheck": true
+  }
 }

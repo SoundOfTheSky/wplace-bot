@@ -1,12 +1,14 @@
 import { AnyFunction } from '@softsky/utils'
 
+import { querySelector } from './obfuscator'
+
 export class Base {
   protected runOnDestroy: AnyFunction[] = []
 
   /** Will run all runOnDestroy functions and unregister from all events */
   public destroy() {
     for (let index = 0; index < this.runOnDestroy.length; index++)
-      this.runOnDestroy[index]!()
+      this.runOnDestroy[index]()
   }
 
   /** Build object with all found objects via querySelector */
@@ -15,8 +17,10 @@ export class Base {
     selectors: Record<string, string>,
   ) {
     for (const key in selectors) {
-      ;(this as unknown as Record<string, HTMLElement>)[key] =
-        element.querySelector(selectors[key]!)!
+      ;(this as unknown as Record<string, HTMLElement>)[key] = querySelector(
+        element,
+        selectors[key],
+      )!
     }
   }
 

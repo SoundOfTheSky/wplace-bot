@@ -125,10 +125,10 @@ export class WorldPosition {
   /** Pixel size around with world position. Calculated on every read */
   public get pixelSize() {
     return (
-      (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]!).x -
-        extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]!).x) /
-      (FAVORITE_LOCATIONS_POSITIONS[this.anchor2Index]!.x -
-        FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]!.x)
+      (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]).x -
+        extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]).x) /
+      (FAVORITE_LOCATIONS_POSITIONS[this.anchor2Index].x -
+        FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index].x)
     )
   }
 
@@ -156,7 +156,7 @@ export class WorldPosition {
     let min1 = Infinity
     let min2 = Infinity
     for (let index = 0; index < FAVORITE_LOCATIONS_POSITIONS.length; index++) {
-      const { x, y } = FAVORITE_LOCATIONS_POSITIONS[index]!
+      const { x, y } = FAVORITE_LOCATIONS_POSITIONS[index]
       if (x < this.globalX && y < this.globalY) {
         const delta = this.globalX - x + (this.globalY - y)
         if (delta < min1) {
@@ -175,9 +175,9 @@ export class WorldPosition {
 
   /** Get screen position */
   public toScreenPosition(): Position {
-    const worldPosition = FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]!
+    const worldPosition = FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]
     const screenPosition = extractScreenPositionFromStar(
-      this.bot.$stars[this.anchor1Index]!,
+      this.bot.$stars[this.anchor1Index],
     )
     return {
       x: (this.globalX - worldPosition.x) * this.pixelSize + screenPosition.x,
@@ -189,11 +189,11 @@ export class WorldPosition {
   public getMapColor() {
     return this.bot.mapsCache.get(this.tileX + '/' + this.tileY)!.pixels[
       this.y
-    ]![this.x]!
+    ][this.x]
   }
 
   /** Scroll screen to this position */
-  public scrollScreenTo() {
+  public moveScreenTo() {
     const { x, y } = this.toScreenPosition()
     this.bot.moveMap({
       x: x - window.innerWidth / 3,

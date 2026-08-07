@@ -67,10 +67,9 @@ export class Pixels {
     this.canvas.height = this.height
     this.colors.clear()
     const colorCache = new Map<string, [number, number]>() // cache for already processed colors
-    for (let index = 1; index < 64; index++) {
+    for (let index = 1; index < 64; index++)
       if (this.exactColor || !this.bot.unavailableColors.has(index))
-        colorCache.set(COLORS_RGB[index]!, [index, index])
-    }
+        colorCache.set(COLORS_RGB[index], [index, index])
 
     this.context.imageSmoothingEnabled = false
     this.context.imageSmoothingQuality = 'low'
@@ -95,14 +94,14 @@ export class Pixels {
     for (let y = 0; y < this.canvas.height; y++) {
       for (let x = 0; x < this.canvas.width; x++) {
         const index = (y * this.canvas.width + x) * 4
-        const r = data[index]!
-        const g = data[index + 1]!
-        const b = data[index + 2]!
-        const a = data[index + 3]!
+        const r = data[index]
+        const g = data[index + 1]
+        const b = data[index + 2]
+        const a = data[index + 3]
         // Key for caching
         const key = `${r},${g},${b}`
         if (this.exactColor) {
-          this.pixels[y]![x] = a < 100 ? 0 : COLORS_RGB.indexOf(key)
+          this.pixels[y][x] = a < 100 ? 0 : COLORS_RGB.indexOf(key)
           continue
         }
 
@@ -117,7 +116,7 @@ export class Pixels {
           let minDelta = Infinity
           let minDeltaReal = Infinity
           for (let colorIndex = 0; colorIndex < COLORS.length; colorIndex++) {
-            const color = COLORS[colorIndex]!
+            const color = COLORS[colorIndex]
             const delta = deltaE2000(
               rgbToOklab(r, g, b),
               color,
@@ -140,11 +139,11 @@ export class Pixels {
 
         // Draw pixel
         if (min !== 0) {
-          this.context.fillStyle = `oklab(${COLORS[min]![0] * 100}% ${COLORS[min]![1]} ${COLORS[min]![2]})`
+          this.context.fillStyle = `oklab(${COLORS[min][0] * 100}% ${COLORS[min][1]} ${COLORS[min][2]})`
           this.context.fillRect(x, y, 1, 1)
         }
 
-        this.pixels[y]![x] = min
+        this.pixels[y][x] = min
 
         // Count colors
 

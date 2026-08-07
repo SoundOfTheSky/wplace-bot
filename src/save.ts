@@ -1,9 +1,16 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { WPlaceBot } from './bot'
+import { SID } from './obfuscator'
 
 export function loadSave() {
-  const json = localStorage.getItem('wbot')!
+  let key = ''
+  for (let index = 0; index < localStorage.length; index++) {
+    key = localStorage.key(index)!
+    if (key.endsWith('wbot')) break
+  }
+  if (!key.endsWith('wbot')) key = SID + 'wbot'
+  const json = localStorage.getItem(key)!
   let save: ReturnType<WPlaceBot['toJSON']> | undefined
   try {
     save = JSON.parse(json)
@@ -14,8 +21,9 @@ export function loadSave() {
       save.strategy = _save.widget.strategy
       delete _save.widget
     }
+    localStorage.removeItem(key)
+    localStorage.setItem(SID + 'wbot', JSON.stringify(save))
   } catch {
-    localStorage.removeItem('wbot')
     save = undefined
   }
   return save
@@ -24,9 +32,9 @@ export function loadSave() {
 let saveTimeout: ReturnType<typeof setTimeout> | undefined
 export function save(bot: WPlaceBot, immediate = false) {
   clearTimeout(saveTimeout)
-  if (immediate) localStorage.setItem('wbot', JSON.stringify(bot))
+  if (immediate) localStorage.setItem(SID + 'wbot', JSON.stringify(bot))
   else
     saveTimeout = setTimeout(() => {
-      localStorage.setItem('wbot', JSON.stringify(bot))
+      localStorage.setItem(SID + 'wbot', JSON.stringify(bot))
     }, 1000)
 }
