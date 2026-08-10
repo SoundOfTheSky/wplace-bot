@@ -1,6 +1,6 @@
 import { wait } from '@softsky/utils'
 
-import { BotImage, DrawTask } from './image'
+import { BotImage, DrawTask, UnownedColorStrategy } from './image'
 import { obfuscateCSS, SID } from './obfuscator'
 import { Pixels } from './pixels'
 import { loadSave } from './save'
@@ -13,6 +13,7 @@ import {
   FAVORITE_LOCATIONS,
   FAVORITE_LOCATIONS_POSITIONS,
   Position,
+  WORLD_PIXEL_SIZE,
   WorldPosition,
 } from './world-position'
 
@@ -55,6 +56,9 @@ const SAVE_VERSION = 2
  * Used to interact with wplace
  * */
 export class WPlaceBot {
+  /** Title in widget */
+  public title = ''
+
   /** Colors that can be bought */
   public unavailableColors = new Set<number>()
 
@@ -103,7 +107,10 @@ export class WPlaceBot {
           y: image.position[1] + 1000,
         })
       }
-      this.strategy = save.strategy
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      this.strategy = save.strategy ?? BotStrategy.SEQUENTIAL
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      this.title = save.title ?? 'Wplace-bot'
     }
 
     this.registerFetchInterceptor()
@@ -163,8 +170,26 @@ export class WPlaceBot {
         // this.widget.setDisabled('pumpkin-hunt', false)
       })
       .catch(() => {
-        localStorage.removeItem(SID + 'wbot')
-        document.location.reload()
+        if (
+          window.confirm(
+            "WPlace-bot's save is corrupted!\nDo you with to IRREVERSABLY DELETE it?\n\nHint for next time: Create backup's with 📤 button.",
+          )
+        ) {
+          localStorage.removeItem(SID + 'wbot')
+          const a = document.createElement('a')
+          document.body.append(a)
+          a.href = URL.createObjectURL(
+            new Blob([JSON.stringify(localStorage.getItem(SID + 'wbot'))], {
+              type: 'application/json',
+            }),
+          )
+          a.download = `Wplace-Bot-Broken-Save.txt`
+          a.click()
+          window.alert(
+            'Wplace-Bot-Broken-Save.txt is your broken save. If you ACTUALLY need data from this save, create issue on https://github.com/SoundOfTheSky/wplace-bot/issues\n\nDeveloper will try to fix your save. Be vary that github issues are public, and save file contains your images and their positions in world.',
+          )
+          document.location.reload()
+        }
       })
   }
 
@@ -193,7 +218,7 @@ export class WPlaceBot {
           Promise.all([
             this.updateColors(),
             this.readMap(),
-            this.zoomIn(firstImage.position, 4, $canvas),
+            this.zoomIn(4, $canvas),
           ]),
         )
 
@@ -204,9 +229,51 @@ export class WPlaceBot {
         }).then((x) => x.json())) as Me
         let charges = Math.floor(this.me.charges.count)
 
-        let n = 0
-        for (let index = 0; index < this.images.length; index++)
-          n += this.images[index].tasks.length
+        // Calculate tasks and colors to buy
+        let tasksLength = 0
+        const colorsToBuyMap = new Map<
+          number,
+          { color: number; amount: number }
+        >()
+        for (let index = 0; index < this.images.length; index++) {
+          const image = this.images[index]
+          tasksLength += image.tasks.length
+          if (image.unownedColorStrategy === UnownedColorStrategy.BUY) {
+            for (let index = 0; index < image.colors.length; index++) {
+              const color = image.colors[index]
+              if (
+                color.disabled ||
+                !this.unavailableColors.has(color.realColor)
+              )
+                continue
+              const amount = image.pixels.colors.get(color.realColor)!.amount
+              if (!colorsToBuyMap.has(color.realColor))
+                colorsToBuyMap.set(color.realColor, {
+                  color: color.realColor,
+                  amount,
+                })
+              else colorsToBuyMap.get(color.realColor)!.amount += amount
+            }
+          }
+        }
+        const colorsToBuy = [...colorsToBuyMap.values()].sort(
+          (a, b) => b.amount - a.amount,
+        )
+        for (
+          let index = 0;
+          index < Math.min(colorsToBuy.length, (this.me.droplets / 2000) | 0);
+          index++
+        ) {
+          document.getElementById('color-' + colorsToBuy[index].color)?.click()
+          await wait(500)
+          document
+            .querySelector<HTMLButtonElement>(
+              '.modal-box .flex.w-max.flex-col button',
+            )
+            ?.click()
+          await wait(1000)
+        }
+
         switch (this.strategy) {
           case BotStrategy.ALL: {
             while (charges > 0) {
@@ -228,7 +295,11 @@ export class WPlaceBot {
             break
           }
           case BotStrategy.PERCENTAGE: {
-            for (let taskIndex = 0; taskIndex < n && charges > 0; taskIndex++) {
+            for (
+              let taskIndex = 0;
+              taskIndex < tasksLength && charges > 0;
+              taskIndex++
+            ) {
               let minPercent = 1
               let minImage!: BotImage
               for (
@@ -272,11 +343,6 @@ export class WPlaceBot {
           }
         }
         this.widget.update()
-        document
-          .querySelector<HTMLButtonElement>(
-            '.absolute.bottom-0  .btn.btn-lg.relative.btn-primary',
-          )
-          ?.click()
       },
       () => {
         globalThis.removeEventListener('mousemove', prevent, true)
@@ -304,6 +370,12 @@ export class WPlaceBot {
         drawTime = Date.now() + (this.me?.charges.max ?? 100) * 30000
         try {
           await this.draw()
+          // Click draw
+          document
+            .querySelector<HTMLButtonElement>(
+              '.absolute.bottom-0  .btn.btn-lg.relative.btn-primary',
+            )
+            ?.click()
           errorCount = 0
         } catch {
           errorCount++
@@ -320,6 +392,7 @@ export class WPlaceBot {
       version: SAVE_VERSION,
       images: this.images.map((x) => x.toJSON()),
       strategy: this.strategy,
+      title: this.title,
     }
   }
 
@@ -368,8 +441,8 @@ export class WPlaceBot {
       const image = this.images[index]
       const { tileX: tileXEnd, tileY: tileYEnd } = new WorldPosition(
         this,
-        image.position.globalX + image.pixels.pixels[0].length,
-        image.position.globalY + image.pixels.pixels.length,
+        image.position.globalX + image.pixels.pixelsSubstitute[0].length,
+        image.position.globalY + image.pixels.pixelsSubstitute.length,
       )
       for (let tileX = image.position.tileX; tileX <= tileXEnd; tileX++)
         for (let tileY = image.position.tileY; tileY <= tileYEnd; tileY++)
@@ -448,6 +521,11 @@ export class WPlaceBot {
           anchorScreenPosition.x) /
         (FAVORITE_LOCATIONS_POSITIONS[minI2].x - anchorWorldPosition.x),
     }
+  }
+
+  /** Close drawing on focus to not consume space */
+  public fixSpaceInInput(input: HTMLInputElement) {
+    input.addEventListener('focus', () => this.closeAll())
   }
 
   /** Opens colors and makes them visible for selection */
@@ -628,24 +706,27 @@ export class WPlaceBot {
 
   /** Zoom in canvas */
   protected async zoomIn(
-    position: WorldPosition,
     zoom: number,
     canvas = document.querySelector<HTMLDivElement>('.maplibregl-canvas')!,
   ) {
-    const screen = position.toScreenPosition()
+    const position = new WorldPosition(
+      this,
+      WORLD_PIXEL_SIZE / 2,
+      WORLD_PIXEL_SIZE / 2,
+    )
+    if (position.pixelSize >= zoom) return
+    const event = new WheelEvent('wheel', {
+      deltaY: -10,
+      clientX: canvas.clientWidth / 2,
+      clientY: canvas.clientHeight / 2,
+      bubbles: true,
+      shiftKey: true,
+    })
     return new Promise<void>((resolve) => {
       function scroll() {
-        canvas.dispatchEvent(
-          new WheelEvent('wheel', {
-            deltaY: -10,
-            clientX: screen.x,
-            clientY: screen.y,
-            bubbles: true,
-            shiftKey: true,
-          }),
-        )
         if (position.pixelSize >= zoom) resolve()
         else requestAnimationFrame(scroll)
+        canvas.dispatchEvent(event)
       }
       scroll()
     })

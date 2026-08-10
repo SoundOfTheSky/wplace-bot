@@ -4,9 +4,7 @@
 @import 'https://fonts.googleapis.com/css2?family=Tiny5&display=swap';
 
 :root {
-  --hover: #dfdfdf;
   --text-invert: #fff;
-  --error: #f00;
   --resize: 8px;
   --text: #422e2c;
   --background: #fbe3cb;
@@ -44,8 +42,12 @@
 }
 
 .widget .title {
+  display: block;
+  width: 100%;
+  border: none;
   border-bottom: var(--text) 2px solid;
   background-color: var(--main);
+  color: var(--text);
   font-size: 32px;
   text-align: center;
 }
@@ -88,12 +90,12 @@
   align-items: center;
   width: 100%;
   height: 64px;
+  margin-bottom: 4px;
 }
 
 .widget .images .item img {
-  max-width: 100%;
-  max-height: 100%;
-  margin: 0 auto;
+  width: 30%;
+  margin-right: 4px;
   cursor: pointer;
 }
 
@@ -141,18 +143,17 @@
   cursor: all-scroll;
 }
 
-.image .form {
-  position: absolute;
-  display: none;
-  width: 100%;
-  min-width: 256px;
+dialog.form {
+  width: clamp(256px, 60vh, 512px);
+  height: 60vh;
+  margin: auto;
   border: var(--text) 2px solid;
   background-color: var(--background);
   color: var(--text);
 }
 
-.image:hover .wrapper .form {
-  display: block;
+dialog.form::backdrop {
+  background: rgb(0 0 0 / 70%);
 }
 
 /* Settings */
@@ -232,80 +233,46 @@
 
 .form .colors {
   position: relative;
+  display: block;
   width: 100%;
-  height: 32px;
   margin: 0;
-  background: repeating-linear-gradient(
-    25deg,
-    var(--background),
-    var(--background),
-    var(--hover) 8px,
-    var(--hover) 12px
-  );
-  cursor: ew-resize;
 }
 
 .form .colors > button {
   position: absolute;
-  top: 0;
   left: 0;
+  z-index: 1;
+  display: block;
   width: 100%;
-  height: 100%;
+  height: 20px;
   border: none;
-  cursor: grab;
-  transition:
-    0.2s left,
-    0.2s width,
-    0.2s filter;
+  font-size: 16px;
+  cursor: ns-resize;
+  transition: 0.5s top ease;
+}
+
+.form .colors > button.dark {
+  color: var(--text-invert);
 }
 
 .form .colors > button:hover {
   filter: brightness(0.6);
 }
 
-.form .colors > button.color-disabled::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  box-shadow: inset 0 0 0 2px var(--error);
-  pointer-events: none;
+.form .colors > button * {
+  float: left;
 }
 
-.form .colors > button.substitution button {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
+.form .colors > button .percent {
+  float: right;
+}
+
+.form .colors > button.dragging {
+  z-index: 100;
+}
+
+.form .colors > button > button {
   height: 100%;
-  padding: 0 4px;
-  color: var(--background);
-  transition: 0.2s filter;
-}
-
-.form .colors > button.substitution button:hover {
-  filter: brightness(0.6);
-}
-
-.form .colors > button.substitution button:first-child {
-  clip-path: polygon(0 0, 80% 0, 20% 100%, 0 100%);
-  background: var(--wreal-color);
-  text-align: left;
-}
-
-.form .colors > button.substitution button:last-child {
-  clip-path: polygon(100% 100%, 100% 0, 80% 0, 20% 100%);
-  background: var(--wsubstitution-color);
-  text-align: right;
-}
-
-.form .colors > button.substitution:hover {
-  filter: none;
-}
-
-.form .colors:hover > button {
-  left: var(--wleft) !important;
-  width: var(--wwidth) !important;
 }
 
 /* Topbar */

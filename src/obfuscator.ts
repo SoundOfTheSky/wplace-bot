@@ -43,7 +43,6 @@ export function querySelector<T extends Element>(
   el: HTMLElement,
   selector: string,
 ) {
-  if (selector === '.topbar') console.log(el, obfuscateLocalCSS(selector))
   return el.querySelector<T>(obfuscateLocalCSS(selector))
 }
 

@@ -2,6 +2,7 @@
   "extends": "@softsky/configs/tsconfig.json",
   "compilerOptions": {
     "types": ["bun"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "strict": true
   }
 }

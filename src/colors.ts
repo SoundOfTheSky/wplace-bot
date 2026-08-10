@@ -109,6 +109,7 @@ export function deltaE2000(
   )
 }
 
+/** oklab colors */
 export const COLORS = [
   [Number.NaN, Number.NaN, Number.NaN],
   [0, 0, 0],

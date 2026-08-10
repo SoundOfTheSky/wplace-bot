@@ -2,7 +2,7 @@
 
 ## Features
 
-1. Auto draw (still need to click captcha manually)
+1. Auto draw
 2. Multiple images
 3. Many strategies
 4. Auto image convert/scale
@@ -31,23 +31,6 @@
 9. Finally click "Draw" to start drawing :)
 
 ![Instruction1](https://github.com/SoundOfTheSky/wplace-bot/raw/refs/heads/main/Instruction.png)
-
-## Captcha bypass
-
-I recommend using simple autoclicker like this
-
-1. Reload tab "CTRL+SHIFT", wait 10 seconds (Optional, but recommended)
-2. Click "Draw", wait 15 seconds
-3. Click Captcha, wait 5s
-4. Click "Paint", wait 30 minutes
-5. Repeat
-
-Also I'm using [Firefox Multi-Account Containers](https://addons.mozilla.org/en-GB/firefox/addon/multi-account-containers/) to open multiple bots, each in it's own tab.
-
-## Known issues
-
-1. Once your session on website ends, bot obviously stops.
-2. Very big images make everything lag.
 
 ## Contribution
 

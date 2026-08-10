@@ -28,7 +28,10 @@ export class Pixels {
 
   public context = this.canvas.getContext('2d')!
 
-  /** Pixels of image. Use update() after changing variables */
+  /** Pixels of image. Use update() after changing variables. Use substitute color if can. */
+  public pixelsSubstitute!: number[][]
+
+  /** Pixels of image. Use update() after changing variables. Use only real color */
   public pixels!: number[][]
 
   /** Used colors */
@@ -80,10 +83,17 @@ export class Pixels {
       this.canvas.width,
       this.canvas.height,
     )
+
     this.pixels = Array.from(
       { length: this.canvas.height },
       () => new Array(this.canvas.width) as number[],
     )
+    this.pixelsSubstitute = this.exactColor
+      ? this.pixels
+      : Array.from(
+          { length: this.canvas.height },
+          () => new Array(this.canvas.width) as number[],
+        )
     const data = this.context.getImageData(
       0,
       0,
@@ -143,7 +153,8 @@ export class Pixels {
           this.context.fillRect(x, y, 1, 1)
         }
 
-        this.pixels[y][x] = min
+        this.pixelsSubstitute[y][x] = min
+        this.pixels[y][x] = minReal
 
         // Count colors
 

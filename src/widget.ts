@@ -49,6 +49,7 @@ export class Widget extends Base {
   protected readonly $status!: HTMLDivElement
   protected readonly $minimize!: HTMLButtonElement
   protected readonly $topbar!: HTMLDivElement
+  protected readonly $title!: HTMLInputElement
   protected readonly $draw!: HTMLButtonElement
   protected readonly $addImage!: HTMLButtonElement
   protected readonly $strategy!: HTMLInputElement
@@ -72,6 +73,7 @@ export class Widget extends Base {
       $status: '.status',
       $minimize: '.minimize',
       $topbar: '.topbar',
+      $title: '.title',
       $draw: '.draw',
       $addImage: '.add-image',
       $strategy: '.strategy',
@@ -84,6 +86,11 @@ export class Widget extends Base {
 
     // Button actions
     this.$openButton.addEventListener('click', () => (this.open = !this.open))
+    this.$title.addEventListener('change', () => {
+      this.bot.title = this.$title.value.trim()
+      save(this.bot)
+    })
+    this.bot.fixSpaceInInput(this.$title)
     this.$draw.addEventListener('click', () => this.bot.draw())
     // this.$pumpkinHunt.addEventListener('click', () => this.pumpkinHunt())
     this.$addImage.addEventListener('click', () => this.addImage())
@@ -151,6 +158,7 @@ export class Widget extends Base {
 
   /** Update widget position and contents */
   public update() {
+    this.$title.value = this.bot.title
     this.$strategy.value = this.bot.strategy
     // Progress
     let maxTasks = 0
@@ -191,6 +199,8 @@ export class Widget extends Base {
         this.update()
         save(this.bot)
       })
+      // Close on input to not consume space
+      this.bot.fixSpaceInInput($name)
       querySelector($image, '.up')!.addEventListener('click', () => {
         swap(this.bot.images, index, index - 1)
         this.update()
@@ -363,7 +373,6 @@ export class Widget extends Base {
   //       await wait(10 * 1000 * 60)
   //     }
   //   } catch (error) {
-  //     console.error(error)
   //     this.$pumpkinHunt.disabled = false
   //     this.$pumpkinHunt.textContent = `❌ Pumpkin Hunt!`
   //   }

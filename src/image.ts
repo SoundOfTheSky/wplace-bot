@@ -2,7 +2,7 @@ import { removeFromArray } from '@softsky/utils'
 
 import { Base } from './base'
 import { WPlaceBot } from './bot'
-import { colorToCSS } from './colors'
+import { COLORS, colorToCSS } from './colors'
 // @ts-ignore
 import html from './image.html' with { type: 'text' }
 import {
@@ -37,6 +37,12 @@ export enum ImageStrategy {
   SPIRAL_TO_CENTER = 'SPIRAL_TO_CENTER',
 }
 
+export enum UnownedColorStrategy {
+  BUY = 'BUY',
+  SKIP = 'SKIP',
+  SUBSTITUTE = 'SUBSTITUTE',
+}
+
 export class BotImage extends Base {
   public static async fromJSON(
     bot: WPlaceBot,
@@ -53,6 +59,7 @@ export class BotImage extends Base {
       data.colors,
       data.lock,
       data.name,
+      data.unownedColorStrategy,
     )
   }
 
@@ -89,6 +96,10 @@ export class BotImage extends Base {
   protected readonly $topbar!: HTMLDivElement
   protected readonly $wrapper!: HTMLDivElement
   protected readonly $name!: HTMLInputElement
+  protected readonly $unownedColorStrategyLabel!: HTMLLabelElement
+  protected readonly $unownedColorStrategy!: HTMLSelectElement
+  protected readonly $openSettings!: HTMLButtonElement
+  protected readonly $dialog!: HTMLDialogElement
 
   public constructor(
     protected bot: WPlaceBot,
@@ -97,7 +108,7 @@ export class BotImage extends Base {
     /** Parsed imageto draw */
     public pixels: Pixels,
     /** Order of pixels to draw */
-    public strategy = ImageStrategy.SPIRAL_FROM_CENTER,
+    public strategy = ImageStrategy.SPIRAL_TO_CENTER,
     /** Opacity of overlay */
     public opacity = 50,
     /** Should we erase pixels there transparency should be */
@@ -110,6 +121,8 @@ export class BotImage extends Base {
     public lock = false,
     /** Name of image */
     public name = `${pixels.width}x${pixels.height}`,
+    /** What to do with colors that user does not own */
+    public unownedColorStrategy = UnownedColorStrategy.BUY,
   ) {
     super()
     this.element.innerHTML = obfucsateHTML(html)
@@ -133,20 +146,42 @@ export class BotImage extends Base {
       $topbar: '.topbar',
       $wrapper: '.wrapper',
       $name: '.name',
+      $unownedColorStrategyLabel: '.unowned-color-strategy',
+      $openSettings: '.open-settings',
+      $dialog: 'dialog',
     })
+    this.$unownedColorStrategy =
+      this.$unownedColorStrategyLabel.querySelector<HTMLSelectElement>(
+        'select',
+      )!
     this.$resetSizeSpan =
       this.$resetSize.querySelector<HTMLSpanElement>('span')!
     this.$canvas = this.pixels.canvas
     this.$wrapper.prepend(this.pixels.canvas)
 
+    this.$openSettings.addEventListener('click', () => {
+      this.$dialog.showModal()
+    })
+    // Close on backdrop click
+    this.$dialog.addEventListener('click', (event) => {
+      if (event.target === this.$dialog) this.$dialog.close()
+    })
+    // Unowned color strategy
+    this.$unownedColorStrategy.addEventListener('change', () => {
+      this.unownedColorStrategy = this.$unownedColorStrategy
+        .value as UnownedColorStrategy
+      this.updateColors()
+      save(this.bot)
+    })
+
     // Strategy
-    this.registerEvent(this.$strategy, 'change', () => {
+    this.$strategy.addEventListener('change', () => {
       this.strategy = this.$strategy.value as ImageStrategy
       save(this.bot)
     })
 
     // Opacity
-    this.registerEvent(this.$opacity, 'input', () => {
+    this.$opacity.addEventListener('input', () => {
       this.opacity = this.$opacity.valueAsNumber
       this.$opacity.style.setProperty('--val', this.opacity + '%')
       this.update()
@@ -154,10 +189,9 @@ export class BotImage extends Base {
     })
     this.$opacity.style.setProperty('--val', this.opacity + '%')
 
-    // Brightness
     let timeout: ReturnType<typeof setTimeout> | undefined
 
-    this.registerEvent(this.$brightness, 'change', () => {
+    this.$brightness.addEventListener('change', () => {
       clearTimeout(timeout)
       timeout = setTimeout(() => {
         this.pixels.brightness = this.$brightness.valueAsNumber
@@ -169,7 +203,7 @@ export class BotImage extends Base {
     })
 
     // Reset
-    this.registerEvent(this.$resetSize, 'click', () => {
+    this.$resetSize.addEventListener('click', () => {
       this.pixels.width = this.pixels.image.naturalWidth
       this.pixels.update()
       this.updateColors()
@@ -178,46 +212,67 @@ export class BotImage extends Base {
     })
 
     // drawTransparent
-    this.registerEvent(this.$drawTransparent, 'click', () => {
+    this.$drawTransparent.addEventListener('click', () => {
       this.drawTransparentPixels = this.$drawTransparent.checked
       save(this.bot)
     })
 
     // drawColorsInOrder
-    this.registerEvent(this.$drawColorsInOrder, 'click', () => {
+    this.$drawColorsInOrder.addEventListener('click', () => {
       this.drawColorsInOrder = this.$drawColorsInOrder.checked
+      this.updateColors()
       save(this.bot)
     })
 
     // Lock
-    this.registerEvent(this.$lock, 'click', () => {
+    this.$lock.addEventListener('click', () => {
       this.lock = !this.lock
       this.update()
       save(this.bot)
     })
 
-    this.registerEvent(this.$delete, 'click', this.destroy.bind(this))
+    this.$delete.addEventListener('click', this.destroy.bind(this))
 
     // Export
-    this.registerEvent(this.$export, 'click', this.export.bind(this))
+    this.$export.addEventListener('click', this.export.bind(this))
 
     // Name
-    this.registerEvent(this.$name, 'change', () => {
+    this.$name.addEventListener('change', () => {
       this.name = this.$name.value
       this.update()
       this.bot.widget.update()
       save(this.bot)
     })
 
+    this.bot.fixSpaceInInput(this.$name)
+
     // Move
-    this.registerEvent(this.$topbar, 'mousedown', this.moveStart.bind(this))
-    this.registerEvent(this.$canvas, 'mousedown', this.moveStart.bind(this))
+    this.$canvas.addEventListener('mousedown', this.moveStart.bind(this))
+
+    // Forward wheel event to scroll through image
+    this.$wrapper.addEventListener('wheel', (event) =>
+      document
+        .querySelector<HTMLDivElement>('.maplibregl-canvas')!
+        .dispatchEvent(
+          new WheelEvent('wheel', {
+            bubbles: true,
+            deltaX: event.deltaX,
+            deltaY: event.deltaY,
+            deltaZ: event.deltaZ,
+            clientX: event.clientX,
+            clientY: event.clientY,
+          }),
+        ),
+    )
     this.registerEvent(document, 'mouseup', this.moveStop.bind(this))
     this.registerEvent(document, 'mousemove', this.move.bind(this))
 
     // Resize
-    for (const $resize of querySelectorAll(this.element, '.resize'))
-      this.registerEvent($resize, 'mousedown', this.resizeStart.bind(this))
+    for (const $resize of querySelectorAll<HTMLDivElement>(
+      this.element,
+      '.resize',
+    ))
+      $resize.addEventListener('mousedown', this.resizeStart.bind(this))
     this.update()
     this.updateColors()
   }
@@ -233,6 +288,7 @@ export class BotImage extends Base {
       colors: this.colors,
       lock: this.lock,
       name: this.name,
+      unownedColorStrategy: this.unownedColorStrategy,
     }
   }
 
@@ -244,11 +300,19 @@ export class BotImage extends Base {
     const colorsOrderMap = new Map<number, number>()
     for (let index = 0; index < this.colors.length; index++) {
       const drawColor = this.colors[index]
-      if (drawColor.disabled) skipColors.add(drawColor.realColor)
+      if (
+        drawColor.disabled ||
+        this.bot.unavailableColors.has(drawColor.realColor)
+      )
+        skipColors.add(drawColor.realColor)
       colorsOrderMap.set(drawColor.realColor, index)
     }
+    const isSubstitute =
+      this.unownedColorStrategy === UnownedColorStrategy.SUBSTITUTE
     for (const { x, y } of this.strategyPositionIterator()) {
-      const color = this.pixels.pixels[y][x]
+      const color = isSubstitute
+        ? this.pixels.pixelsSubstitute[y][x]
+        : this.pixels.pixels[y][x]
       if (skipColors.has(color)) continue
       position.globalX = this.position.globalX + x
       position.globalY = this.position.globalY + y
@@ -294,7 +358,7 @@ export class BotImage extends Base {
     this.$lock.textContent = this.lock ? '🔒' : '🔓'
   }
 
-  /** Removes image. Don't forget to remove from array inside widget. */
+  /** Removes image */
   public destroy() {
     super.destroy()
     this.element.remove()
@@ -305,9 +369,11 @@ export class BotImage extends Base {
 
   /** Update colors array */
   public updateColors() {
+    const LINE_HEIGHT = 20
+    if (this.bot.unavailableColors.size === 0)
+      addClass(this.$unownedColorStrategyLabel, 'hidden')
     this.$colors.innerHTML = ''
     const pixelsSum = this.pixels.pixels.length * this.pixels.pixels[0].length
-    const itemWidth = 100 / this.pixels.colors.size
 
     // If not the synced with colors then rebuild order
     if (
@@ -325,76 +391,99 @@ export class BotImage extends Base {
       save(this.bot)
     }
 
-    // Build colors UI
-    let nextXPosition = 0
+    this.$colors.style.height = `${LINE_HEIGHT * this.colors.length}px`
+
     for (let index = 0; index < this.colors.length; index++) {
       const drawColor = this.colors[index]
+      if (!this.drawTransparentPixels && drawColor.realColor === 0) continue
+      const css = (color: number) =>
+        color === 0
+          ? `repeating-linear-gradient(32deg, #ccc 0 8px, transparent 8px 16px)`
+          : colorToCSS(color)
       const color = this.pixels.colors.get(drawColor.realColor)!
-      let dragging = false
-      const toggleDisabled = () => {
-        if (dragging) return
-        drawColor.disabled = drawColor.disabled ? undefined : true
-        toggleClass($button, 'color-disabled')
-        save(this.bot)
-      }
       const $button = document.createElement('button')
-      if (drawColor.disabled) addClass($button, 'color-disabled')
-      if (color.realColor === color.color)
-        $button.style.background = colorToCSS(color.realColor)
-      else {
-        addClass($button, 'substitution')
-        $button.style.setProperty('--wreal-color', colorToCSS(color.realColor))
-        $button.style.setProperty(
-          '--wsubstitution-color',
-          colorToCSS(color.color),
-        )
-        const $button1 = document.createElement('button')
-        const $button2 = document.createElement('button')
-        $button1.textContent = '$'
-        $button2.textContent = '✓'
-        $button1.addEventListener('click', () => {
-          document.getElementById('color-' + color.realColor)?.click()
-        })
-        $button2.addEventListener('click', toggleDisabled)
-        $button.append($button1)
-        $button.append($button2)
+      // If dark make text white
+      if (COLORS[drawColor.realColor][0] < 0.6) addClass($button, 'dark')
+      $button.title = 'Drag to reorder. Click to disable.'
+      $button.style.top = `${index * LINE_HEIGHT}px`
+      if (drawColor.disabled) {
+        const $warning = document.createElement('div')
+        $warning.innerText = '❌'
+        $warning.title = 'Disabled and will be skipped.'
+        $button.appendChild($warning)
       }
-      $button.style.left = nextXPosition + '%'
-      const width = (color.amount / pixelsSum) * 100
-      $button.style.width = width + '%'
-      nextXPosition += width
-      $button.style.setProperty('--wleft', itemWidth * index + '%')
-      $button.style.setProperty('--wwidth', itemWidth + '%')
+      switch (this.unownedColorStrategy) {
+        case UnownedColorStrategy.SUBSTITUTE:
+          $button.style.background = css(color.color)
+          if (color.color !== color.realColor) {
+            const $warning = document.createElement('button')
+            $warning.style.backgroundColor = css(color.realColor)
+            $warning.title = 'This is the best color. Click to buy.'
+            $warning.addEventListener('click', async () => {
+              await this.bot.updateColors()
+              document.getElementById('color-' + color.realColor)?.click()
+            })
+            $button.appendChild($warning)
+          }
+          break
+        case UnownedColorStrategy.BUY:
+          $button.style.background = css(color.realColor)
+          if (this.bot.unavailableColors.has(color.realColor)) {
+            const $warning = document.createElement('div')
+            $warning.innerText = '⌛'
+            $warning.title = 'This color be automatically bought.'
+            $button.appendChild($warning)
+          }
+          break
+        case UnownedColorStrategy.SKIP:
+          $button.style.background = css(color.realColor)
+          if (this.bot.unavailableColors.has(color.realColor)) {
+            const $warning = document.createElement('div')
+            $warning.innerText = '⏩'
+            $warning.title = 'Unowned colors will be skipped.'
+            $button.appendChild($warning)
+          }
+          break
+      }
+      const $percent = document.createElement('span')
+      addClass($percent, 'percent')
+      $percent.innerText = `${color.amount}px ${((color.amount / pixelsSum) * 100) | 0}%`
+      $button.appendChild($percent)
       this.$colors.append($button)
 
-      // Drag functionality
+      let dragging = false
+
+      // Dragging
       const startDrag = (startEvent: MouseEvent) => {
+        addClass($button, 'dragging')
         let newIndex = index
-        const buttonWidth = $button.getBoundingClientRect().width
         const mouseMoveHandler = (event: MouseEvent) => {
           newIndex = Math.min(
             this.colors.length - 1,
             Math.max(
               0,
               Math.round(
-                index + (event.clientX - startEvent.clientX) / buttonWidth,
+                index + (event.clientY - startEvent.clientY) / LINE_HEIGHT,
               ),
             ),
           )
+          console.log(newIndex)
           if (newIndex !== index) dragging = true
           let childIndex = 0
           for (const $child of this.$colors.children as Iterable<HTMLElement>) {
             if ($child === $button) continue
             if (childIndex === newIndex) childIndex++
-            $child.style.setProperty('--wleft', itemWidth * childIndex + '%')
+            $child.style.top = `${LINE_HEIGHT * childIndex}px`
             childIndex++
           }
-          $button.style.setProperty('--wleft', itemWidth * newIndex + '%')
+          $button.style.top = `${LINE_HEIGHT * newIndex}px`
         }
-        document.addEventListener('mousemove', mouseMoveHandler)
-        document.addEventListener(
+        this.registerEvent(document, 'mousemove', mouseMoveHandler)
+        this.registerEvent(
+          document,
           'mouseup',
           () => {
+            removeClass($button, 'dragging')
             document.removeEventListener('mousemove', mouseMoveHandler)
             if (newIndex !== index)
               this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1))
@@ -410,15 +499,20 @@ export class BotImage extends Base {
         )
       }
       $button.addEventListener('mousedown', startDrag)
-      if (color.realColor === color.color)
-        $button.addEventListener('click', toggleDisabled)
+      $button.addEventListener('click', (event) => {
+        event.stopPropagation()
+        if (dragging) return
+        drawColor.disabled = drawColor.disabled ? undefined : true
+        toggleClass($button, 'color-disabled')
+        save(this.bot)
+      })
     }
   }
 
   /** Create iterator that generates positions based on strategy */
   protected *strategyPositionIterator(): Generator<Position> {
-    const width = this.pixels.pixels[0].length
     const height = this.pixels.pixels.length
+    const width = this.pixels.pixels[0].length
     switch (this.strategy) {
       case ImageStrategy.DOWN: {
         for (let y = 0; y < height; y++)
@@ -504,6 +598,7 @@ export class BotImage extends Base {
     }
   }
 
+  /** Called on move image start */
   protected moveStart(event: MouseEvent) {
     if (!this.lock)
       this.moveInfo = {
@@ -514,6 +609,7 @@ export class BotImage extends Base {
       }
   }
 
+  /** Called on move image stop */
   protected moveStop() {
     if (this.moveInfo) {
       this.moveInfo = undefined
@@ -574,11 +670,11 @@ export class BotImage extends Base {
     a.href = URL.createObjectURL(
       new Blob([JSON.stringify(this.toJSON())], { type: 'application/json' }),
     )
-    a.download = `${this.pixels.width}x${this.pixels.height}.wbot`
+    a.download = `${this.name}.wbot`
     a.click()
     URL.revokeObjectURL(a.href)
     a.href = this.pixels.canvas.toDataURL('image/webp', 1)
-    a.download = `${this.pixels.width}x${this.pixels.height}.webp`
+    a.download = `${this.name}.webp`
     a.click()
     URL.revokeObjectURL(a.href)
     a.remove()
