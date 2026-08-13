@@ -114,10 +114,6 @@ export function migrateImage(
 ): Awaited<ReturnType<BotImage['toJSON']>> {
   if (!old.version || old.version < SAVE_VERSION) {
     const { url, width, brightness } = old.pixels
-    const colors = old.colors.map((c: any) => c.realColor)
-    const disabledColors = old.colors
-      .filter((c: any) => c.disabled)
-      .map((c: any) => c.realColor)
     return {
       url,
       width,
@@ -127,8 +123,8 @@ export function migrateImage(
       opacity: old.opacity,
       drawTransparentPixels: old.drawTransparentPixels,
       drawColorsInOrder: old.drawColorsInOrder,
-      colors,
-      disabledColors,
+      colors: [],
+      disabledColors: [],
       lock: old.lock,
       disabled: false,
       name: `Unnamed image`,

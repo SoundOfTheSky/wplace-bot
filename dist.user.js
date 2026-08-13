@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.1.0
+// @version      5.1.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -499,8 +499,6 @@ async function migrateSaveFromLS() {
 function migrateImage(old) {
   if (!old.version || old.version < SAVE_VERSION) {
     const { url, width, brightness } = old.pixels;
-    const colors = old.colors.map((c) => c.realColor);
-    const disabledColors = old.colors.filter((c) => c.disabled).map((c) => c.realColor);
     return {
       url,
       width,
@@ -510,8 +508,8 @@ function migrateImage(old) {
       opacity: old.opacity,
       drawTransparentPixels: old.drawTransparentPixels,
       drawColorsInOrder: old.drawColorsInOrder,
-      colors,
-      disabledColors,
+      colors: [],
+      disabledColors: [],
       lock: old.lock,
       disabled: false,
       name: `Unnamed image`,
