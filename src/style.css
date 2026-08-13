@@ -80,48 +80,52 @@
 
 .widget .images {
   display: block;
-  overflow-y: auto;
-  height: auto;
-  max-height: 240px;
 }
 
 .widget .images .item {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-areas:
+    'canvas name name name'
+    'canvas toggle up down';
+  grid-template-columns: 64px 1fr auto auto; /* canvas fixed, name flexible, up/down auto */
+  gap: 4px;
   width: 100%;
   height: 64px;
   margin-bottom: 4px;
 }
 
-.widget .images .item img {
-  width: 30%;
+.widget .images .item canvas {
+  grid-area: canvas;
   margin-right: 4px;
   cursor: pointer;
 }
 
-.widget .images .item .buttons {
-  width: 100%;
-  height: 100%;
-}
-
-.widget .images .item .buttons input {
+.widget .images .item .name {
   display: block;
-  width: 100%;
-  height: 30px;
-  margin-bottom: 4px;
+  grid-area: name;
 }
 
-.widget .images .item .buttons button {
-  display: inline-block;
-  width: calc(50% - 2px);
-  height: 30px;
+.widget .images .item .toggle {
+  display: flex;
+  grid-area: toggle;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+  font-size: 18px;
+}
+
+.widget .images .item .up {
+  grid-area: up;
   font-weight: bolder;
   font-size: 24px;
   line-height: 100%;
 }
 
-.widget .images .item .buttons button:first-child {
-  margin-right: 4px;
+.widget .images .item .down {
+  grid-area: down;
+  font-weight: bolder;
+  font-size: 24px;
+  line-height: 100%;
 }
 
 /** Image */

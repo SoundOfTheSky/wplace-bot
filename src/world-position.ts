@@ -9,6 +9,11 @@ export const WORLD_TILE_SIZE = 1000
 export const WORLD_TILES = 2048
 export const WORLD_PIXEL_SIZE = WORLD_TILE_SIZE * WORLD_TILES
 
+export const packTile = (x: number, y: number) => (x << 10) | y
+export const unpackTile = (packed: number) => ({
+  x: packed & 0b1111111111,
+  y: packed >> 10,
+})
 // === Favoriote Locations ===
 export const FAVORITE_LOCATIONS_POSITIONS: Position[] = []
 export const FAVORITE_LOCATIONS: Me['favoriteLocations'] = []
@@ -183,13 +188,6 @@ export class WorldPosition {
       x: (this.globalX - worldPosition.x) * this.pixelSize + screenPosition.x,
       y: (this.globalY - worldPosition.y) * this.pixelSize + screenPosition.y,
     }
-  }
-
-  /** Get map color at this position */
-  public getMapColor() {
-    return this.bot.mapsCache.get(this.tileX + '/' + this.tileY)!.pixels[
-      this.y
-    ][this.x]
   }
 
   /** Scroll screen to this position */

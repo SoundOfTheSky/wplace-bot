@@ -13,11 +13,9 @@ import {
   SID,
   toggleClass,
 } from './obfuscator'
-import { Pixels } from './pixels'
-import { save } from './save'
+import { migrateImage, save } from './save'
 // @ts-ignore
 import html from './widget.html' with { type: 'text' }
-import { WorldPosition } from './world-position'
 
 export enum BotStrategy {
   ALL = 'ALL',
@@ -88,7 +86,7 @@ export class Widget extends Base {
     this.$openButton.addEventListener('click', () => (this.open = !this.open))
     this.$title.addEventListener('change', () => {
       this.bot.title = this.$title.value.trim()
-      save(this.bot)
+      void save(this.bot)
     })
     this.bot.fixSpaceInInput(this.$title)
     this.$draw.addEventListener('click', () => this.bot.draw())
@@ -117,37 +115,24 @@ export class Widget extends Base {
         await promisifyEventSource(input, ['change'], ['cancel', 'error'])
         const file = input.files?.[0]
         if (!file) throw new NoImageError(this.bot)
-        let botImage
         if (file.name.endsWith('.wbot')) {
-          botImage = await BotImage.fromJSON(
+          await BotImage.fromJSON(
             this.bot,
-            JSON.parse(await file.text()) as ReturnType<BotImage['toJSON']>,
+            migrateImage(
+              JSON.parse(await file.text()) as Awaited<
+                ReturnType<BotImage['toJSON']>
+              >,
+            ),
           )
         } else {
           const reader = new FileReader()
           reader.readAsDataURL(file)
           await promisifyEventSource(reader, ['load'], ['error'])
-          const image = new Image()
-          image.src = reader.result as string
-          await promisifyEventSource(image, ['load'], ['error'])
-          botImage = new BotImage(
-            this.bot,
-            WorldPosition.fromScreenPosition(this.bot, {
-              x: 256,
-              y: 32,
-            }),
-            new Pixels(this.bot, image),
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            file.name,
-          )
+          await BotImage.fromJSON(this.bot, {
+            url: reader.result as string,
+          })
         }
-        this.bot.images.push(botImage)
-        save(this.bot, true)
+        await save(this.bot, true)
         document.location.reload()
       },
       () => {
@@ -165,11 +150,12 @@ export class Widget extends Base {
     let totalTasks = 0
     for (let index = 0; index < this.bot.images.length; index++) {
       const image = this.bot.images[index]
-      maxTasks += image.pixels.pixels.length * image.pixels.pixels[0].length
-      totalTasks += image.tasks.length
+      if (image.disabled) continue
+      maxTasks += image.width * image.height
+      totalTasks += image.tasks.length / 2
     }
     const doneTasks = maxTasks - totalTasks
-    const percent = ((doneTasks / maxTasks) * 100) | 0
+    const percent = maxTasks === 0 ? 0 : ((doneTasks / maxTasks) * 100) | 0
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${(totalTasks / 120) | 0}h`
     this.$progressLine.style.transform = `scaleX(${percent}%)`
 
@@ -180,36 +166,55 @@ export class Widget extends Base {
       const $image = document.createElement('div')
       this.$images.append($image)
       $image.className = SID + 'item'
-      $image.innerHTML = obfucsateHTML(`<img src="${image.pixels.image.src}">
-<div class="buttons">
+      $image.innerHTML = obfucsateHTML(`
+<canvas></canvas>
 <input type="text" class="name">
+<label class="toggle">
+  <input type="checkbox" class="enabled" ${image.disabled ? '' : 'checked'}>
+  <span>${image.disabled ? 'Disabled' : 'Enabled'}</span>
+</label>
 <button class="up" title="Move up" ${index === 0 ? 'disabled' : ''}>▴</button>
-<button class="down" title="Move down" ${index === this.bot.images.length - 1 ? 'disabled' : ''}>▾</button>
-</div>`)
-      $image
-        .querySelector<HTMLButtonElement>('img')!
-        .addEventListener('click', () => {
-          image.position.moveScreenTo()
-        })
+<button class="down" title="Move down" ${index === this.bot.images.length - 1 ? 'disabled' : ''}>▾</button>`)
+
+      // Draw copy in center
+      const $canvas = $image.querySelector<HTMLCanvasElement>('canvas')!
+      $canvas.width = 64
+      $canvas.height = 64
+      const scale = Math.min(64 / image.width, 64 / image.height)
+      const w = image.width * scale
+      const h = image.height * scale
+      $canvas
+        .getContext('2d')!
+        .drawImage(image.$canvas, (64 - w) / 2, (64 - h) / 2, w, h)
+      $canvas.addEventListener('click', () => {
+        image.position.moveScreenTo()
+      })
+
       const $name = querySelector<HTMLInputElement>($image, '.name')!
       $name.value = image.name
       $name.addEventListener('change', () => {
         image.name = $name.value
-        image.update()
+        image.updateUI()
         this.update()
-        save(this.bot)
+        void save(this.bot)
+      })
+      const $enabled = querySelector<HTMLInputElement>($image, '.enabled')!
+      $enabled.addEventListener('change', async () => {
+        image.disabled = !$enabled.checked
+        await image.updatePixels()
+        await save(this.bot)
       })
       // Close on input to not consume space
       this.bot.fixSpaceInInput($name)
       querySelector($image, '.up')!.addEventListener('click', () => {
         swap(this.bot.images, index, index - 1)
         this.update()
-        save(this.bot)
+        void save(this.bot)
       })
       querySelector($image, '.down')!.addEventListener('click', () => {
         swap(this.bot.images, index, index + 1)
         this.update()
-        save(this.bot)
+        void save(this.bot)
       })
     }
   }
@@ -223,14 +228,15 @@ export class Widget extends Base {
   /** Show status of running task */
   public async run<T>(
     status: string,
-    run: () => Promise<T>,
+    run: (progress: (progress: number) => void) => Promise<T>,
     fin?: () => unknown,
     emoji = '⌛',
   ): Promise<T> {
     const originalStatus = this.status
-    this.status = `${emoji} ${status}`
     try {
-      const result = await run()
+      const result = await run((p) => {
+        this.status = `${emoji} ${status} ${(p * 100) | 0}%`
+      })
       this.status = originalStatus
       return result
     } catch (error) {
