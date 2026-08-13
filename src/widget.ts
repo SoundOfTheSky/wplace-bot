@@ -178,14 +178,14 @@ export class Widget extends Base {
 
       // Draw copy in center
       const $canvas = $image.querySelector<HTMLCanvasElement>('canvas')!
-      $canvas.width = 64
+      $canvas.width = 48
       $canvas.height = 64
-      const scale = Math.min(64 / image.width, 64 / image.height)
+      const scale = Math.min(48 / image.width, 64 / image.height)
       const w = image.width * scale
       const h = image.height * scale
       $canvas
         .getContext('2d')!
-        .drawImage(image.$canvas, (64 - w) / 2, (64 - h) / 2, w, h)
+        .drawImage(image.$canvas, (48 - w) / 2, (64 - h) / 2, w, h)
       $canvas.addEventListener('click', () => {
         image.position.moveScreenTo()
       })

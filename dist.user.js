@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.1.1
+// @version      5.1.2
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -1925,7 +1925,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
   grid-template-areas:
     'canvas name name name'
     'canvas toggle up down';
-  grid-template-columns: 64px 1fr auto auto; /* canvas fixed, name flexible, up/down auto */
+  grid-template-columns: 48px 1fr auto auto; /* canvas fixed, name flexible, up/down auto */
   gap: 4px;
   width: 100%;
   height: 64px;
@@ -2363,12 +2363,12 @@ class Widget extends Base2 {
 <button class="up" title="Move up" ${index === 0 ? "disabled" : ""}>▴</button>
 <button class="down" title="Move down" ${index === this.bot.images.length - 1 ? "disabled" : ""}>▾</button>`);
       const $canvas = $image.querySelector("canvas");
-      $canvas.width = 64;
+      $canvas.width = 48;
       $canvas.height = 64;
-      const scale = Math.min(64 / image.width, 64 / image.height);
+      const scale = Math.min(48 / image.width, 64 / image.height);
       const w = image.width * scale;
       const h = image.height * scale;
-      $canvas.getContext("2d").drawImage(image.$canvas, (64 - w) / 2, (64 - h) / 2, w, h);
+      $canvas.getContext("2d").drawImage(image.$canvas, (48 - w) / 2, (64 - h) / 2, w, h);
       $canvas.addEventListener("click", () => {
         image.position.moveScreenTo();
       });
