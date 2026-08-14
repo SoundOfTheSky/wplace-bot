@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.1.4
+// @version      5.1.5
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -1318,7 +1318,7 @@ class BotImage extends Base2 {
   constructor(bot, position = WorldPosition.fromScreenPosition(bot, {
     x: 256,
     y: 32
-  }), image, width = image.width, brightness = 0, strategy = "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */, opacity = 50, drawTransparentPixels = false, drawColorsInOrder = false, colors = [], disabledColors = new Set, lock = false, disabled = false, name = `${image.width}x${image.height}`, unownedColorStrategy = "BUY" /* BUY */) {
+  }), image, width = image.width, brightness = 0, strategy = "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */, opacity = 50, drawTransparentPixels = false, drawColorsInOrder = true, colors = [], disabledColors = new Set, lock = false, disabled = false, name = `${image.width}x${image.height}`, unownedColorStrategy = "BUY" /* BUY */) {
     super();
     this.bot = bot;
     this.position = position;
@@ -1471,12 +1471,10 @@ class BotImage extends Base2 {
       version: SAVE_VERSION
     };
   }
-  async updatePixels(progress = (p) => this.bot.widget.status = `⌛ Loading ${p * 100 | 0}%`) {
-    if (this.disabled) {
-      this.updateUI();
-      this.bot.widget.update();
-      return;
-    }
+  async updatePixels(progress) {
+    const progress2 = progress ?? ((p) => {
+      this.bot.widget.status = `⌛ Loading ${p * 100 | 0}%`;
+    });
     const height = this.height;
     const width = this.width;
     const result = await workerPixels({
@@ -1495,9 +1493,9 @@ class BotImage extends Base2 {
       strategy: this.strategy,
       unavailableColors: this.bot.unavailableColors,
       unownedColorStrategy: this.unownedColorStrategy
-    }, progress);
+    }, progress2);
     this.colorsStat = result.colorStat;
-    this.tasks = result.taskPositions;
+    this.tasks = this.disabled ? new Uint32Array(0) : result.taskPositions;
     this.pixels = result.pixels;
     this.$canvas.width = width;
     this.$canvas.height = height;
@@ -1517,7 +1515,8 @@ class BotImage extends Base2 {
     this.context.putImageData(new ImageData(rgbPixels, width, height), 0, 0);
     this.updateUI();
     this.updateColors();
-    this.bot.widget.status = "";
+    if (!progress)
+      this.bot.widget.status = "";
     this.bot.widget.update();
   }
   updateUI() {
@@ -1768,6 +1767,8 @@ var style_default = `/* stylelint-disable declaration-no-important */
   top: 0;
   left: 0;
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
   width: 256px;
   height: 100dvh;
   border-right: var(--text) 2px solid;
@@ -1901,6 +1902,11 @@ dialog.form::backdrop {
 }
 
 /* Settings */
+.form {
+  flex-grow: 1;
+  overflow-y: auto;
+}
+
 .form > * {
   display: flex;
   justify-content: center;

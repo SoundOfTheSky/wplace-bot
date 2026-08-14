@@ -163,7 +163,7 @@ export class BotImage extends Base {
     /** Should we erase pixels there transparency should be */
     public drawTransparentPixels = false,
     /** Should bot draw colors in order */
-    public drawColorsInOrder = false,
+    public drawColorsInOrder = true,
     /** Colors order */
     public colors: number[] = [],
     /** Colors not to draw */
@@ -363,15 +363,12 @@ export class BotImage extends Base {
   }
 
   /** Calculates everything we need to do. Very expensive task! */
-  public async updatePixels(
-    progress: (p: number) => void = (p) =>
-      (this.bot.widget.status = `⌛ Loading ${(p * 100) | 0}%`),
-  ) {
-    if (this.disabled) {
-      this.updateUI()
-      this.bot.widget.update()
-      return
-    }
+  public async updatePixels(progress?: (p: number) => void) {
+    const progress2 =
+      progress ??
+      ((p: number) => {
+        this.bot.widget.status = `⌛ Loading ${(p * 100) | 0}%`
+      })
     const height = this.height
     const width = this.width
     const result = await workerPixels(
@@ -392,10 +389,10 @@ export class BotImage extends Base {
         unavailableColors: this.bot.unavailableColors,
         unownedColorStrategy: this.unownedColorStrategy,
       },
-      progress,
+      progress2,
     )
     this.colorsStat = result.colorStat
-    this.tasks = result.taskPositions
+    this.tasks = this.disabled ? new Uint32Array(0) : result.taskPositions
     this.pixels = result.pixels
     this.$canvas.width = width
     this.$canvas.height = height
@@ -414,7 +411,7 @@ export class BotImage extends Base {
     this.context.putImageData(new ImageData(rgbPixels, width, height), 0, 0)
     this.updateUI()
     this.updateColors()
-    this.bot.widget.status = ''
+    if (!progress) this.bot.widget.status = ''
     this.bot.widget.update()
   }
 
