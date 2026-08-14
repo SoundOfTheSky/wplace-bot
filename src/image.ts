@@ -656,11 +656,13 @@ export class BotImage extends Base {
   }
 
   /** export image */
-  protected export() {
+  protected async export() {
     const a = document.createElement('a')
     document.body.append(a)
     a.href = URL.createObjectURL(
-      new Blob([JSON.stringify(this.toJSON())], { type: 'application/json' }),
+      new Blob([JSON.stringify(await this.toJSON())], {
+        type: 'application/json',
+      }),
     )
     a.download = `${this.name}.wbot`
     a.click()

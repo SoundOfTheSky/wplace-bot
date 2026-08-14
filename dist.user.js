@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.1.5
+// @version      5.1.6
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -1721,10 +1721,12 @@ class BotImage extends Base2 {
       this.moveInfo.globalX = this.position.globalX;
     }
   }
-  export() {
+  async export() {
     const a = document.createElement("a");
     document.body.append(a);
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(this.toJSON())], { type: "application/json" }));
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(await this.toJSON())], {
+      type: "application/json"
+    }));
     a.download = `${this.name}.wbot`;
     a.click();
     URL.revokeObjectURL(a.href);
