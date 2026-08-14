@@ -107,7 +107,7 @@ export class Widget extends Base {
     return this.run(
       'Adding image',
       async () => {
-        await this.bot.updateColors()
+        await this.bot.updateColorsData()
         const input = document.createElement('input')
         input.type = 'file'
         input.accept = 'image/*,.wbot'
@@ -149,7 +149,7 @@ export class Widget extends Base {
     let maxTasks = 0
     let totalTasks = 0
     for (let index = 0; index < this.bot.images.length; index++) {
-      const image = this.bot.images[index]
+      const image = this.bot.images[index]!
       if (image.disabled) continue
       maxTasks += image.width * image.height
       totalTasks += image.tasks.length / 2
@@ -162,7 +162,7 @@ export class Widget extends Base {
     // Images
     this.$images.innerHTML = ''
     for (let index = 0; index < this.bot.images.length; index++) {
-      const image = this.bot.images[index]
+      const image = this.bot.images[index]!
       const $image = document.createElement('div')
       this.$images.append($image)
       $image.className = SID + 'item'

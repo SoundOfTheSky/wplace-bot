@@ -7,14 +7,14 @@ const build = await Bun.build({
   target: 'browser',
 })
 for (const log of build.logs) console.log(log)
-let content = await build.outputs[0].text()
+let content = await build.outputs[0]!.text()
 const buildWorker = await Bun.build({
   entrypoints: ['./src/worker.ts'],
   format: 'iife',
   target: 'browser',
 })
 for (const log of buildWorker.logs) console.log(log)
-const workerBody = await buildWorker.outputs[0].text()
+const workerBody = await buildWorker.outputs[0]!.text()
 content = content
   .replaceAll('export {', '{')
   .replace(

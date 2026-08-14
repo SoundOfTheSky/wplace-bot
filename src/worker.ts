@@ -5,7 +5,11 @@ import {
   deltaE2000,
   rgbToOklab,
 } from './colors'
-import { ImageStrategy, PixelColorStat, UnownedColorStrategy } from './image'
+import {
+  ImageStrategy,
+  type PixelColorStat,
+  UnownedColorStrategy,
+} from './image'
 import { WORLD_TILE_SIZE } from './world-position'
 
 export type WorkerPixelsRequest = {
@@ -94,10 +98,10 @@ function pixels(request: WorkerPixelsRequest) {
         const sx = Math.min(nativeWidth - 1, Math.floor(x * xRatio))
         const si = (sy * nativeWidth + sx) * 4
         const di = (y * width + x) * 4
-        scaled[di] = data[si]
-        scaled[di + 1] = data[si + 1]
-        scaled[di + 2] = data[si + 2]
-        scaled[di + 3] = data[si + 3]
+        scaled[di] = data[si]!
+        scaled[di + 1] = data[si + 1]!
+        scaled[di + 2] = data[si + 2]!
+        scaled[di + 3] = data[si + 3]!
       }
       const progress = ((y / height) * 5) | 0
       if (progress !== lastProgress) {
@@ -113,7 +117,7 @@ function pixels(request: WorkerPixelsRequest) {
   const colorCache = new Map<number, [number, number]>()
   for (let index = 1; index < 64; index++)
     if (!unavailableColors.has(index))
-      colorCache.set(COLORS_RGB[index], [index, index])
+      colorCache.set(COLORS_RGB[index]!, [index, index])
 
   let i = 0
   let pi = 0
@@ -125,10 +129,10 @@ function pixels(request: WorkerPixelsRequest) {
         lastProgress = progress
         sendProgress(id, 0.15 + progress / 100)
       }
-      const r = scaled[i]
-      const g = scaled[i + 1]
-      const b = scaled[i + 2]
-      const a = scaled[i + 3]
+      const r = scaled[i]!
+      const g = scaled[i + 1]!
+      const b = scaled[i + 2]!
+      const a = scaled[i + 3]!
       const key = (r << 16) | (g << 8) | b
       let min!: number
       let minReal!: number
@@ -142,7 +146,7 @@ function pixels(request: WorkerPixelsRequest) {
         for (let colorIndex = 1; colorIndex < 64; colorIndex++) {
           const delta = deltaE2000(
             rgbToOklab(r, g, b),
-            COLORS[colorIndex],
+            COLORS[colorIndex]!,
             brightness,
           )
           if (!unavailableColors.has(colorIndex) && delta < minDelta) {
@@ -171,7 +175,7 @@ function pixels(request: WorkerPixelsRequest) {
   const skipColors = new Set<number>()
   const colorsOrderMap = new Map<number, number>()
   for (let index = 0; index < colors.length; index++) {
-    const drawColor = colors[index]
+    const drawColor = colors[index]!
     if (disabledColors.has(drawColor) || unavailableColors.has(drawColor))
       skipColors.add(drawColor)
     colorsOrderMap.set(drawColor, index)
@@ -185,9 +189,9 @@ function pixels(request: WorkerPixelsRequest) {
       lastProgress = progress
       sendProgress(id, 0.9 + progress / 100)
     }
-    const dx = positions[index]
-    const dy = positions[index + 1]
-    const color = pixels[dy * width + dx]
+    const dx = positions[index]!
+    const dy = positions[index + 1]!
+    const color = pixels[dy * width + dx]!
     if (skipColors.has(color)) continue
 
     const gx = globalX + dx
@@ -212,7 +216,7 @@ function pixels(request: WorkerPixelsRequest) {
   // Sending
   const taskPositions = new Uint32Array(tasks.length * 2)
   for (let index = 0; index < tasks.length; index++) {
-    const task = tasks[index]
+    const task = tasks[index]!
     const dIndex = index * 2
     taskPositions[dIndex] = task.gx
     taskPositions[dIndex + 1] = task.gy
@@ -284,8 +288,8 @@ function strategyPosition(
       for (let index = SIZE - 1; index >= 0; index--) {
         const randIndex = Math.floor(Math.random() * (index + 1)) * 2
         const realIndex = index * 2
-        const temporaryX = result[realIndex]
-        const temporaryY = result[realIndex + 1]
+        const temporaryX = result[realIndex]!
+        const temporaryY = result[realIndex + 1]!
         result[realIndex] = result[randIndex]!
         result[realIndex + 1] = result[randIndex + 1]!
         result[randIndex] = temporaryX
@@ -383,10 +387,10 @@ async function updateMapPixels(tileX: number, tileY: number) {
   const SIZE = bitmap.height * bitmap.width
   const pixels = new Uint8Array(SIZE)
   for (let i = 0, pi = 0; i < data.length; i += 4, pi++) {
-    const r = data[i]
-    const g = data[i + 1]
-    const b = data[i + 2]
-    const a = data[i + 3]
+    const r = data[i]!
+    const g = data[i + 1]!
+    const b = data[i + 2]!
+    const a = data[i + 3]!
     const key = (r << 16) | (g << 8) | b
     pixels[pi] = a < 100 ? 0 : (COLORS_RGB_MAP.get(key) ?? 0)
   }
@@ -394,7 +398,7 @@ async function updateMapPixels(tileX: number, tileY: number) {
   return pixels
 }
 
-const packTile = (tileX: number, tileY: number) => (tileX << 10) | tileY
+const packTile = (tileX: number, tileY: number) => (tileX << 11) | tileY
 const toTile = (n: number) => (n / WORLD_TILE_SIZE) | 0
 const toTilePosition = (n: number) => n % WORLD_TILE_SIZE
 function sendProgress(id: number, progress: number) {

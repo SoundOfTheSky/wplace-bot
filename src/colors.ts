@@ -246,10 +246,10 @@ export const COLORS_RGB = [
 
 export const COLORS_RGB_MAP = new Map<number, number>()
 for (let index = 0; index < COLORS_RGB.length; index++)
-  COLORS_RGB_MAP.set(COLORS_RGB[index], index)
+  COLORS_RGB_MAP.set(COLORS_RGB[index]!, index)
 
 export function colorToCSS(colorId: number) {
   if (colorId === 0) return 'transparent'
-  const color = COLORS[colorId]
+  const color = COLORS[colorId]!
   return `oklab(${color[0] * 100}% ${color[1]} ${color[2]})`
 }

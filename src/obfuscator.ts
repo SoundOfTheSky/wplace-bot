@@ -19,7 +19,7 @@ export function obfuscateLocalCSS(css: string) {
 
 export function obfuscateCSS(css: string) {
   const [global, local] = css.split('/** LOCAL STYLES */')
-  return global + '\n' + obfuscateLocalCSS(local)
+  return global + '\n' + obfuscateLocalCSS(local!)
 }
 
 export function toggleClass(el: HTMLElement, className: string) {

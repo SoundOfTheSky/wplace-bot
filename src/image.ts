@@ -1,7 +1,7 @@
 import {
   promisifyEventSource,
   removeFromArray,
-  RequiredKey,
+  type RequiredKey,
 } from '@softsky/utils'
 
 import { Base } from './base'
@@ -19,7 +19,7 @@ import {
 } from './obfuscator'
 import { save, SAVE_VERSION } from './save'
 import { workerPixels } from './worker-client'
-import { Position, WorldPosition } from './world-position'
+import { WorldPosition } from './world-position'
 
 export type DrawTask = {
   position: WorldPosition
@@ -255,9 +255,7 @@ export class BotImage extends Base {
       timeout = setTimeout(async () => {
         this.brightness = this.$brightness.valueAsNumber
         await this.updatePixels()
-        this.updateColors()
-        this.updateUI()
-        void save(this.bot)
+        await save(this.bot)
       }, 1000)
     })
 
@@ -265,9 +263,7 @@ export class BotImage extends Base {
     this.$resetSize.addEventListener('click', async () => {
       this.width = this.image.width
       await this.updatePixels()
-      this.updateColors()
-      this.updateUI()
-      void save(this.bot)
+      await save(this.bot)
     })
 
     // drawTransparent
@@ -332,8 +328,6 @@ export class BotImage extends Base {
       '.resize',
     ))
       $resize.addEventListener('mousedown', this.resizeStart.bind(this))
-    this.updateUI()
-    this.updateColors()
   }
 
   public async toJSON() {
@@ -408,10 +402,10 @@ export class BotImage extends Base {
     this.context.clearRect(0, 0, width, height)
     const rgbPixels = new Uint8ClampedArray(this.pixels.length * 4)
     for (let index = 0; index < this.pixels.length; index++) {
-      const pixel = this.pixels[index]
+      const pixel = this.pixels[index]!
       if (pixel === 0) continue
       const qIndex = index * 4
-      const color = COLORS_RGB[pixel]
+      const color = COLORS_RGB[pixel]!
       rgbPixels[qIndex] = color >> 16
       rgbPixels[qIndex + 1] = (color >> 8) & 0xff
       rgbPixels[qIndex + 2] = color & 0xff
@@ -451,7 +445,7 @@ export class BotImage extends Base {
   }
 
   /** Removes image */
-  public destroy() {
+  public override destroy() {
     super.destroy()
     this.element.remove()
     removeFromArray(this.bot.images, this)
@@ -483,7 +477,7 @@ export class BotImage extends Base {
     this.$colors.style.height = `${LINE_HEIGHT * this.colors.length}px`
 
     for (let index = 0; index < this.colors.length; index++) {
-      const drawColor = this.colors[index]
+      const drawColor = this.colors[index]!
       if (!this.drawTransparentPixels && drawColor === 0) continue
       const css = (color: number) =>
         color === 0
@@ -492,7 +486,7 @@ export class BotImage extends Base {
       const colorStat = this.colorsStat.get(drawColor)!
       const $button = document.createElement('button')
       // If dark make text white
-      if (COLORS[drawColor][0] < 0.6) addClass($button, 'dark')
+      if (COLORS[drawColor]![0] < 0.6) addClass($button, 'dark')
       $button.title = 'Drag to reorder. Click to disable.'
       $button.style.top = `${index * LINE_HEIGHT}px`
       if (this.disabledColors.has(drawColor)) {
@@ -509,7 +503,7 @@ export class BotImage extends Base {
             $warning.style.backgroundColor = css(colorStat.realColor)
             $warning.title = 'This is the best color. Click to buy.'
             $warning.addEventListener('click', async () => {
-              await this.bot.updateColors()
+              await this.bot.updateColorsData() // Will open colors to click
               document.getElementById('color-' + colorStat.realColor)?.click()
             })
             $button.appendChild($warning)
@@ -595,97 +589,8 @@ export class BotImage extends Base {
         else this.disabledColors.add(drawColor)
         toggleClass($button, 'color-disabled')
         await this.updatePixels()
-        void save(this.bot)
+        await save(this.bot)
       })
-    }
-  }
-
-  /** Create iterator that generates positions based on strategy */
-  protected *strategyPositionIterator(): Generator<Position> {
-    const height = this.height
-    const width = this.width
-    switch (this.strategy) {
-      case ImageStrategy.DOWN: {
-        for (let y = 0; y < height; y++)
-          for (let x = 0; x < width; x++) yield { x, y }
-        break
-      }
-      case ImageStrategy.UP: {
-        for (let y = height - 1; y >= 0; y--)
-          for (let x = 0; x < width; x++) yield { x, y }
-        break
-      }
-      case ImageStrategy.LEFT: {
-        for (let x = 0; x < width; x++)
-          for (let y = 0; y < height; y++) yield { x, y }
-        break
-      }
-      case ImageStrategy.RIGHT: {
-        for (let x = width - 1; x >= 0; x--)
-          for (let y = 0; y < height; y++) yield { x, y }
-        break
-      }
-      case ImageStrategy.RANDOM: {
-        const positions: Position[] = []
-        for (let y = 0; y < height; y++)
-          for (let x = 0; x < width; x++) positions.push({ x, y })
-        for (let index = positions.length - 1; index >= 0; index--) {
-          const index_ = Math.floor(Math.random() * (index + 1))
-          const temporary = positions[index]
-          positions[index] = positions[index_]!
-          positions[index_] = temporary
-        }
-        yield* positions
-        break
-      }
-
-      case ImageStrategy.SPIRAL_FROM_CENTER:
-      case ImageStrategy.SPIRAL_TO_CENTER: {
-        const visited = new Set<string>()
-        const total = width * height
-        let x = Math.floor(width / 2)
-        let y = Math.floor(height / 2)
-        const directories = [
-          [1, 0],
-          [0, 1],
-          [-1, 0],
-          [0, -1],
-        ]
-        let directionIndex = 0
-        let steps = 1
-        const inBounds = (x: number, y: number) =>
-          x >= 0 && x < width && y >= 0 && y < height
-        const emit = function* () {
-          let count = 0
-          while (count < total) {
-            for (let twice = 0; twice < 2; twice++) {
-              for (let index = 0; index < steps; index++) {
-                if (inBounds(x, y)) {
-                  const key = `${x},${y}`
-                  if (!visited.has(key)) {
-                    visited.add(key)
-                    yield { x, y }
-                    count++
-                    if (count >= total) return
-                  }
-                }
-                x += directories[directionIndex][0]
-                y += directories[directionIndex][1]
-              }
-              directionIndex = (directionIndex + 1) % 4
-            }
-            steps++
-          }
-        }
-
-        if (this.strategy === ImageStrategy.SPIRAL_FROM_CENTER) yield* emit()
-        else {
-          const collected = [...emit()]
-          for (let index = collected.length - 1; index >= 0; index--)
-            yield collected[index]
-        }
-        break
-      }
     }
   }
 
@@ -706,7 +611,6 @@ export class BotImage extends Base {
       this.moveInfo = undefined
       this.position.updateAnchor()
       await this.updatePixels()
-      this.updateColors()
     }
   }
 

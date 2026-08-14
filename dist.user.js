@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.1.2
+// @version      5.1.3
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -1079,7 +1079,7 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
     mapsCache.set(packTile(tileX, tileY), pixels2);
     return pixels2;
   }
-  var packTile = (tileX, tileY) => tileX << 10 | tileY;
+  var packTile = (tileX, tileY) => tileX << 11 | tileY;
   var toTile = (n) => n / WORLD_TILE_SIZE | 0;
   var toTilePosition = (n) => n % WORLD_TILE_SIZE;
   function sendProgress(id, progress) {
@@ -1395,17 +1395,13 @@ class BotImage extends Base2 {
       timeout = setTimeout(async () => {
         this.brightness = this.$brightness.valueAsNumber;
         await this.updatePixels();
-        this.updateColors();
-        this.updateUI();
-        save(this.bot);
+        await save(this.bot);
       }, 1000);
     });
     this.$resetSize.addEventListener("click", async () => {
       this.width = this.image.width;
       await this.updatePixels();
-      this.updateColors();
-      this.updateUI();
-      save(this.bot);
+      await save(this.bot);
     });
     this.$drawTransparent.addEventListener("click", () => {
       this.drawTransparentPixels = this.$drawTransparent.checked;
@@ -1443,8 +1439,6 @@ class BotImage extends Base2 {
     this.registerEvent(document, "mousemove", this.move.bind(this));
     for (const $resize of querySelectorAll(this.element, ".resize"))
       $resize.addEventListener("mousedown", this.resizeStart.bind(this));
-    this.updateUI();
-    this.updateColors();
   }
   async toJSON() {
     const blob = await this.image.convertToBlob({
@@ -1594,7 +1588,7 @@ class BotImage extends Base2 {
             $warning.style.backgroundColor = css(colorStat.realColor);
             $warning.title = "This is the best color. Click to buy.";
             $warning.addEventListener("click", async () => {
-              await this.bot.updateColors();
+              await this.bot.updateColorsData();
               document.getElementById("color-" + colorStat.realColor)?.click();
             });
             $button.appendChild($warning);
@@ -1669,99 +1663,8 @@ class BotImage extends Base2 {
           this.disabledColors.add(drawColor);
         toggleClass($button, "color-disabled");
         await this.updatePixels();
-        save(this.bot);
+        await save(this.bot);
       });
-    }
-  }
-  *strategyPositionIterator() {
-    const height = this.height;
-    const width = this.width;
-    switch (this.strategy) {
-      case "DOWN" /* DOWN */: {
-        for (let y = 0;y < height; y++)
-          for (let x = 0;x < width; x++)
-            yield { x, y };
-        break;
-      }
-      case "UP" /* UP */: {
-        for (let y = height - 1;y >= 0; y--)
-          for (let x = 0;x < width; x++)
-            yield { x, y };
-        break;
-      }
-      case "LEFT" /* LEFT */: {
-        for (let x = 0;x < width; x++)
-          for (let y = 0;y < height; y++)
-            yield { x, y };
-        break;
-      }
-      case "RIGHT" /* RIGHT */: {
-        for (let x = width - 1;x >= 0; x--)
-          for (let y = 0;y < height; y++)
-            yield { x, y };
-        break;
-      }
-      case "RANDOM" /* RANDOM */: {
-        const positions = [];
-        for (let y = 0;y < height; y++)
-          for (let x = 0;x < width; x++)
-            positions.push({ x, y });
-        for (let index = positions.length - 1;index >= 0; index--) {
-          const index_ = Math.floor(Math.random() * (index + 1));
-          const temporary = positions[index];
-          positions[index] = positions[index_];
-          positions[index_] = temporary;
-        }
-        yield* positions;
-        break;
-      }
-      case "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */:
-      case "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */: {
-        const visited = new Set;
-        const total = width * height;
-        let x = Math.floor(width / 2);
-        let y = Math.floor(height / 2);
-        const directories = [
-          [1, 0],
-          [0, 1],
-          [-1, 0],
-          [0, -1]
-        ];
-        let directionIndex = 0;
-        let steps = 1;
-        const inBounds = (x2, y2) => x2 >= 0 && x2 < width && y2 >= 0 && y2 < height;
-        const emit = function* () {
-          let count = 0;
-          while (count < total) {
-            for (let twice = 0;twice < 2; twice++) {
-              for (let index = 0;index < steps; index++) {
-                if (inBounds(x, y)) {
-                  const key = `${x},${y}`;
-                  if (!visited.has(key)) {
-                    visited.add(key);
-                    yield { x, y };
-                    count++;
-                    if (count >= total)
-                      return;
-                  }
-                }
-                x += directories[directionIndex][0];
-                y += directories[directionIndex][1];
-              }
-              directionIndex = (directionIndex + 1) % 4;
-            }
-            steps++;
-          }
-        };
-        if (this.strategy === "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */)
-          yield* emit();
-        else {
-          const collected = [...emit()];
-          for (let index = collected.length - 1;index >= 0; index--)
-            yield collected[index];
-        }
-        break;
-      }
     }
   }
   moveStart(event) {
@@ -1778,7 +1681,6 @@ class BotImage extends Base2 {
       this.moveInfo = undefined;
       this.position.updateAnchor();
       await this.updatePixels();
-      this.updateColors();
     }
   }
   move(event) {
@@ -2209,6 +2111,7 @@ class WPlaceBotError extends Error {
     bot.widget.status = message;
   }
 }
+
 class NoImageError extends WPlaceBotError {
   name = "NoImageError";
   constructor(bot) {
@@ -2306,7 +2209,7 @@ class Widget extends Base2 {
   addImage() {
     this.setDisabled("add-image", true);
     return this.run("Adding image", async () => {
-      await this.bot.updateColors();
+      await this.bot.updateColorsData();
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "image/*,.wbot";
@@ -2474,7 +2377,8 @@ class WPlaceBot {
             this.updateStars();
             break;
           }
-        this.updateImages();
+        for (let index = 0;index < this.images.length; index++)
+          this.images[index].updateUI();
       }).observe($canvasContainer, {
         attributes: true,
         childList: true,
@@ -2483,7 +2387,7 @@ class WPlaceBot {
       this.updateStars();
       await wait(500);
       progress(0.04);
-      await this.updateColors();
+      await this.updateColorsData();
       progress(0.05);
       if (save2) {
         const batchSize = 1 / save2.images.length;
@@ -2536,7 +2440,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
       await this.widget.run("Loading", (progress2) => Promise.all([
-        this.updateColors().then(async () => {
+        this.updateColorsData().then(async () => {
           workerClearMapCache();
           await wait(100);
           const batchSize = 1 / this.images.length;
@@ -2577,22 +2481,25 @@ Developer will try to fix your save. Be vary that github issues are public, and 
           }
         }
       }
-      const colorsToBuy = [...colorsToBuyMap.values()].sort((a, b) => b.amount - a.amount);
-      for (let index = 0;index < Math.min(colorsToBuy.length, this.me.droplets / 2000 | 0); index++) {
-        document.getElementById("color-" + colorsToBuy[index].color)?.click();
+      const colorToBuy = [...colorsToBuyMap.values()].sort((a, b) => b.amount - a.amount)[0]?.color;
+      if (this.me.droplets >= 2000 && colorToBuy !== undefined) {
+        document.getElementById("color-" + colorToBuy)?.click();
         await wait(500);
         document.querySelector(".modal-box .flex.w-max.flex-col button")?.click();
         await wait(1000);
         await this.closeAll();
         await wait(500);
+        return this.draw();
       }
       const indexes = new Map;
       const drawTask = async (image) => {
         let index = indexes.get(image);
         if (index === undefined)
           indexes.set(image, index = 0);
-        indexes.set(image, index + 1);
         const dIndex = index * 2;
+        if (dIndex === image.tasks.length)
+          return false;
+        indexes.set(image, index + 1);
         const worldPosition = new WorldPosition(this, image.tasks[dIndex], image.tasks[dIndex + 1]);
         const color = image.pixels[(worldPosition.globalY - image.position.globalY) * image.width + (worldPosition.globalX - image.position.globalX)];
         if (this.lastColor !== color) {
@@ -2626,6 +2533,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
         charges--;
         progress((initialCharges - charges) / initialCharges);
         await wait(1);
+        return true;
       };
       switch (this.strategy) {
         case "ALL" /* ALL */: {
@@ -2635,8 +2543,8 @@ Developer will try to fix your save. Be vary that github issues are public, and 
               const image = this.images[imageIndex];
               if (image.disabled)
                 continue;
-              await drawTask(image);
-              end = false;
+              if (await drawTask(image))
+                end = false;
             }
             if (end)
               break;
@@ -2657,7 +2565,8 @@ Developer will try to fix your save. Be vary that github issues are public, and 
                 minImage = image;
               }
             }
-            await drawTask(minImage);
+            if (minImage)
+              await drawTask(minImage);
           }
           break;
         }
@@ -2717,13 +2626,12 @@ Developer will try to fix your save. Be vary that github issues are public, and 
       title: this.title
     };
   }
-  async updateColors() {
+  async updateColorsData() {
     await this.openColors();
     this.unavailableColors.clear();
     for (const $button of document.querySelectorAll("button.btn.relative.w-full"))
       if ($button.children.length !== 0)
         this.unavailableColors.add(Math.abs(Number.parseInt($button.id.slice(6))));
-    this.updateImageColors();
   }
   moveMap(delta) {
     const canvas = document.querySelector(".maplibregl-canvas");
@@ -2820,14 +2728,6 @@ Developer will try to fix your save. Be vary that github issues are public, and 
     this.$stars = [
       ...document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")
     ].slice(0, FAVORITE_LOCATIONS.length);
-  }
-  updateImages() {
-    for (let index = 0;index < this.images.length; index++)
-      this.images[index].updateUI();
-  }
-  updateImageColors() {
-    for (let index = 0;index < this.images.length; index++)
-      this.images[index].updateColors();
   }
   async zoomIn(zoom, canvas = document.querySelector(".maplibregl-canvas")) {
     const position = new WorldPosition(this, WORLD_PIXEL_SIZE / 2, WORLD_PIXEL_SIZE / 2);

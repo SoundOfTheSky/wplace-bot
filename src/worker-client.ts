@@ -1,7 +1,7 @@
 import {
-  WorkerPixelsRequest,
-  WorkerPixelsResponse,
-  WorkerResponse,
+  type WorkerPixelsRequest,
+  type WorkerPixelsResponse,
+  type WorkerResponse,
 } from './worker'
 
 export const worker = new Worker(

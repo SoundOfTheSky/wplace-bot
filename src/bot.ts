@@ -12,7 +12,7 @@ import {
   extractScreenPositionFromStar,
   FAVORITE_LOCATIONS,
   FAVORITE_LOCATIONS_POSITIONS,
-  Position,
+  type Position,
   WORLD_PIXEL_SIZE,
   WorldPosition,
 } from './world-position'
@@ -95,7 +95,7 @@ export class WPlaceBot {
     // Preinit save data before page has loaded
     if (save) {
       for (let index = 0; index < save.images.length; index++) {
-        const image = save.images[index]
+        const image = save.images[index]!
         addFavoriteLocation({
           x: image.position[0] - 1000,
           y: image.position[1] - 1000,
@@ -140,11 +140,12 @@ export class WPlaceBot {
         new MutationObserver((mutations: MutationRecord[]) => {
           // If elements were removed, update stars
           for (let index = 0; index < mutations.length; index++)
-            if (mutations[index].removedNodes.length !== 0) {
+            if (mutations[index]!.removedNodes.length !== 0) {
               this.updateStars()
               break
             }
-          this.updateImages()
+          for (let index = 0; index < this.images.length; index++)
+            this.images[index]!.updateUI()
         }).observe($canvasContainer, {
           attributes: true,
           childList: true,
@@ -153,13 +154,13 @@ export class WPlaceBot {
         this.updateStars()
         await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
         progress(0.04)
-        await this.updateColors()
+        await this.updateColorsData()
         progress(0.05)
         // Load images
         if (save) {
           const batchSize = 1 / save.images.length
           for (let index = 0; index < save.images.length; index++) {
-            await BotImage.fromJSON(this, save.images[index], (p) => {
+            await BotImage.fromJSON(this, save.images[index]!, (p) => {
               progress(0.05 + (index * batchSize + p * batchSize) * 0.95)
             })
           }
@@ -200,7 +201,7 @@ export class WPlaceBot {
   }
 
   /** Start drawing */
-  public draw() {
+  public draw(): Promise<void> {
     this.widget.setDisabled('draw', true)
     this.widget.status = ''
     // Clear maps cache to refetch pixels
@@ -212,7 +213,7 @@ export class WPlaceBot {
     return this.widget.run(
       'Drawing',
       async (progress) => {
-        const firstImage = this.images[0] as BotImage | undefined
+        const firstImage = this.images[0]
         if (!firstImage) return
 
         // Stop mouse messing with drawing by capturing event
@@ -221,12 +222,12 @@ export class WPlaceBot {
 
         await this.widget.run('Loading', (progress) =>
           Promise.all([
-            this.updateColors().then(async () => {
+            this.updateColorsData().then(async () => {
               workerClearMapCache()
               await wait(100)
               const batchSize = 1 / this.images.length
               for (let index = 0; index < this.images.length; index++)
-                await this.images[index].updatePixels((p) => {
+                await this.images[index]!.updatePixels((p) => {
                   progress(index * batchSize + p * batchSize)
                 })
             }),
@@ -251,12 +252,12 @@ export class WPlaceBot {
           { color: number; amount: number }
         >()
         for (let index = 0; index < this.images.length; index++) {
-          const image = this.images[index]
+          const image = this.images[index]!
           if (image.disabled) continue
           tasksLength += image.tasks.length / 2
           if (image.unownedColorStrategy === UnownedColorStrategy.BUY) {
             for (let index = 0; index < image.colors.length; index++) {
-              const color = image.colors[index]
+              const color = image.colors[index]!
               if (
                 image.disabledColors.has(color) ||
                 !this.unavailableColors.has(color)
@@ -272,15 +273,11 @@ export class WPlaceBot {
             }
           }
         }
-        const colorsToBuy = [...colorsToBuyMap.values()].sort(
+        const colorToBuy = [...colorsToBuyMap.values()].sort(
           (a, b) => b.amount - a.amount,
-        )
-        for (
-          let index = 0;
-          index < Math.min(colorsToBuy.length, (this.me!.droplets / 2000) | 0);
-          index++
-        ) {
-          document.getElementById('color-' + colorsToBuy[index].color)?.click()
+        )[0]?.color
+        if (this.me!.droplets >= 2000 && colorToBuy !== undefined) {
+          document.getElementById('color-' + colorToBuy)?.click()
           await wait(500)
           document
             .querySelector<HTMLButtonElement>(
@@ -290,18 +287,21 @@ export class WPlaceBot {
           await wait(1000)
           await this.closeAll()
           await wait(500)
+          // Retry after color bought
+          return this.draw()
         }
         const indexes = new Map<BotImage, number>()
 
         const drawTask = async (image: BotImage) => {
           let index = indexes.get(image)
           if (index === undefined) indexes.set(image, (index = 0))
-          indexes.set(image, index + 1)
           const dIndex = index * 2
+          if (dIndex === image.tasks.length) return false
+          indexes.set(image, index + 1)
           const worldPosition = new WorldPosition(
             this,
-            image.tasks[dIndex],
-            image.tasks[dIndex + 1],
+            image.tasks[dIndex]!,
+            image.tasks[dIndex + 1]!,
           )
           const color =
             image.pixels[
@@ -348,6 +348,7 @@ export class WPlaceBot {
           charges--
           progress((initialCharges - charges) / initialCharges)
           await wait(1)
+          return true
         }
 
         switch (this.strategy) {
@@ -359,10 +360,9 @@ export class WPlaceBot {
                 imageIndex < this.images.length;
                 imageIndex++
               ) {
-                const image = this.images[imageIndex]
+                const image = this.images[imageIndex]!
                 if (image.disabled) continue
-                await drawTask(image)
-                end = false
+                if (await drawTask(image)) end = false
               }
               if (end) break
             }
@@ -375,13 +375,13 @@ export class WPlaceBot {
               taskIndex++
             ) {
               let minPercent = 1
-              let minImage!: BotImage
+              let minImage: BotImage | undefined
               for (
                 let imageIndex = 0;
                 imageIndex < this.images.length;
                 imageIndex++
               ) {
-                const image = this.images[imageIndex]
+                const image = this.images[imageIndex]!
                 if (image.disabled) continue
                 const percent =
                   1 - image.tasks.length / 2 / (image.width * image.height)
@@ -390,7 +390,7 @@ export class WPlaceBot {
                   minImage = image
                 }
               }
-              await drawTask(minImage)
+              if (minImage) await drawTask(minImage)
             }
             break
           }
@@ -400,7 +400,7 @@ export class WPlaceBot {
               imageIndex < this.images.length;
               imageIndex++
             ) {
-              const image = this.images[imageIndex]
+              const image = this.images[imageIndex]!
               if (image.disabled) continue
               for (let i = 0; i < image.tasks.length / 2 && charges > 0; i++)
                 await drawTask(image)
@@ -467,7 +467,7 @@ export class WPlaceBot {
   }
 
   /** Read colors */
-  public async updateColors() {
+  public async updateColorsData() {
     await this.openColors()
     this.unavailableColors.clear()
     for (const $button of document.querySelectorAll<HTMLButtonElement>(
@@ -477,7 +477,6 @@ export class WPlaceBot {
         this.unavailableColors.add(
           Math.abs(Number.parseInt($button.id.slice(6))),
         )
-    this.updateImageColors()
   }
 
   /** Move map */
@@ -510,7 +509,7 @@ export class WPlaceBot {
     let min1 = Infinity
     let min2 = Infinity
     for (let index = 0; index < this.$stars.length; index++) {
-      const { x, y } = extractScreenPositionFromStar(this.$stars[index])
+      const { x, y } = extractScreenPositionFromStar(this.$stars[index]!)
       if (x < position.x && y < position.y) {
         const delta = position.x - x + (position.y - y)
         if (delta < min1) {
@@ -526,16 +525,16 @@ export class WPlaceBot {
       }
     }
     const anchorScreenPosition = extractScreenPositionFromStar(
-      this.$stars[anchorIndex],
+      this.$stars[anchorIndex]!,
     )
-    const anchorWorldPosition = FAVORITE_LOCATIONS_POSITIONS[anchorIndex]
+    const anchorWorldPosition = FAVORITE_LOCATIONS_POSITIONS[anchorIndex]!
     return {
       anchorScreenPosition,
       anchorWorldPosition,
       pixelSize:
-        (extractScreenPositionFromStar(this.$stars[minI2]).x -
+        (extractScreenPositionFromStar(this.$stars[minI2]!).x -
           anchorScreenPosition.x) /
-        (FAVORITE_LOCATIONS_POSITIONS[minI2].x - anchorWorldPosition.x),
+        (FAVORITE_LOCATIONS_POSITIONS[minI2]!.x - anchorWorldPosition.x),
     }
   }
 
@@ -616,18 +615,6 @@ export class WPlaceBot {
     ].slice(0, FAVORITE_LOCATIONS.length)
   }
 
-  /** Update images position and contents */
-  protected updateImages() {
-    for (let index = 0; index < this.images.length; index++)
-      this.images[index].updateUI()
-  }
-
-  /** Update colors of all images */
-  protected updateImageColors() {
-    for (let index = 0; index < this.images.length; index++)
-      this.images[index].updateColors()
-  }
-
   /** Zoom in canvas */
   protected async zoomIn(
     zoom: number,
@@ -682,13 +669,13 @@ export class WPlaceBot {
           index < this.markerPixelPositionResolvers.length;
           index++
         )
-          this.markerPixelPositionResolvers[index](
+          this.markerPixelPositionResolvers[index]!(
             new WorldPosition(
               this,
-              +pixelMatch[1],
-              +pixelMatch[2],
-              +pixelMatch[3],
-              +pixelMatch[4],
+              +pixelMatch[1]!,
+              +pixelMatch[2]!,
+              +pixelMatch[3]!,
+              +pixelMatch[4]!,
             ),
           )
         this.markerPixelPositionResolvers.length = 0

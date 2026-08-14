@@ -1,4 +1,4 @@
-import { Me, WPlaceBot } from './bot'
+import { type Me, WPlaceBot } from './bot'
 
 export type Position = {
   x: number
@@ -9,11 +9,6 @@ export const WORLD_TILE_SIZE = 1000
 export const WORLD_TILES = 2048
 export const WORLD_PIXEL_SIZE = WORLD_TILE_SIZE * WORLD_TILES
 
-export const packTile = (x: number, y: number) => (x << 10) | y
-export const unpackTile = (packed: number) => ({
-  x: packed & 0b1111111111,
-  y: packed >> 10,
-})
 // === Favoriote Locations ===
 export const FAVORITE_LOCATIONS_POSITIONS: Position[] = []
 export const FAVORITE_LOCATIONS: Me['favoriteLocations'] = []
@@ -130,10 +125,10 @@ export class WorldPosition {
   /** Pixel size around with world position. Calculated on every read */
   public get pixelSize() {
     return (
-      (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]).x -
-        extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]).x) /
-      (FAVORITE_LOCATIONS_POSITIONS[this.anchor2Index].x -
-        FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index].x)
+      (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]!).x -
+        extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]!).x) /
+      (FAVORITE_LOCATIONS_POSITIONS[this.anchor2Index]!.x -
+        FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]!.x)
     )
   }
 
@@ -161,7 +156,7 @@ export class WorldPosition {
     let min1 = Infinity
     let min2 = Infinity
     for (let index = 0; index < FAVORITE_LOCATIONS_POSITIONS.length; index++) {
-      const { x, y } = FAVORITE_LOCATIONS_POSITIONS[index]
+      const { x, y } = FAVORITE_LOCATIONS_POSITIONS[index]!
       if (x < this.globalX && y < this.globalY) {
         const delta = this.globalX - x + (this.globalY - y)
         if (delta < min1) {
@@ -180,9 +175,9 @@ export class WorldPosition {
 
   /** Get screen position */
   public toScreenPosition(): Position {
-    const worldPosition = FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]
+    const worldPosition = FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]!
     const screenPosition = extractScreenPositionFromStar(
-      this.bot.$stars[this.anchor1Index],
+      this.bot.$stars[this.anchor1Index]!,
     )
     return {
       x: (this.globalX - worldPosition.x) * this.pixelSize + screenPosition.x,

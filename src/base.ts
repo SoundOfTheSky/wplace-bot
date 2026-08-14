@@ -1,4 +1,4 @@
-import { AnyFunction } from '@softsky/utils'
+import { type AnyFunction } from '@softsky/utils'
 
 import { querySelector } from './obfuscator'
 
@@ -8,7 +8,7 @@ export class Base {
   /** Will run all runOnDestroy functions and unregister from all events */
   public destroy() {
     for (let index = 0; index < this.runOnDestroy.length; index++)
-      this.runOnDestroy[index]()
+      this.runOnDestroy[index]!()
   }
 
   /** Build object with all found objects via querySelector */
@@ -19,7 +19,7 @@ export class Base {
     for (const key in selectors) {
       ;(this as unknown as Record<string, HTMLElement>)[key] = querySelector(
         element,
-        selectors[key],
+        selectors[key]!,
       )!
     }
   }
