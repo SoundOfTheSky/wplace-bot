@@ -437,7 +437,7 @@ export class WPlaceBot {
       if (deltaTime > 0)
         this.widget.$autoDraw.innerText = `Auto-Draw in (${(deltaTime / 60000) | 0}:${(((deltaTime % 60000) / 1000) | 0).toString().padStart(2, '0')})!`
       else {
-        drawTime = Date.now() + (this.me?.charges.max ?? 100) * 30000
+        drawTime = Date.now() + (this.me?.charges.max ?? 100) * 0.9 * 30000
         try {
           await this.draw()
           // Click draw

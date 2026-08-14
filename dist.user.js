@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.1.3
+// @version      5.1.4
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -2604,7 +2604,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
       if (deltaTime > 0)
         this.widget.$autoDraw.innerText = `Auto-Draw in (${deltaTime / 60000 | 0}:${(deltaTime % 60000 / 1000 | 0).toString().padStart(2, "0")})!`;
       else {
-        drawTime = Date.now() + (this.me?.charges.max ?? 100) * 30000;
+        drawTime = Date.now() + (this.me?.charges.max ?? 100) * 0.9 * 30000;
         try {
           await this.draw();
           document.querySelector(".absolute.bottom-0  .btn.btn-lg.relative.btn-primary")?.click();
