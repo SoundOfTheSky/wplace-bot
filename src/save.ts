@@ -1,12 +1,29 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/prefer-promise-reject-errors */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 import { WPlaceBot } from './bot'
+import { IDB } from './idb'
 import { BotImage, ImageStrategy, UnownedColorStrategy } from './image'
+
+// Test wplace templates access
+// TODO: REMOVE
+void IDB.open<{ images: Blob }>('wplace-templates', 1, () => {
+  throw new Error('WPlace database has updated')
+}).then((x) =>
+  x.getAll('images').then((data) => {
+    for (let index = 0; index < data.length; index++) {
+      const item = data[index]!
+      const a = document.createElement('a')
+      document.body.append(a)
+      a.href = URL.createObjectURL(item)
+      a.download = `image.png`
+      a.click()
+    }
+  }),
+)
 
 const DB_NAME = 'wbot'
 const STORE_NAME = 'saves'
