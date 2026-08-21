@@ -2,28 +2,33 @@ function srgbNonlinearTransformInv(c: number) {
   return c > 0.040_45 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92
 }
 
-export function rgbToOklab(r: number, g: number, b: number) {
+/**
+ * CIELAB (D65). Constants are wplace's own, down to the rounding: matching
+ * their pick on borderline colors matters more here than precision.
+ */
+export function rgbToLab(r: number, g: number, b: number) {
   const lr = srgbNonlinearTransformInv(r / 255)
   const lg = srgbNonlinearTransformInv(g / 255)
   const lb = srgbNonlinearTransformInv(b / 255)
 
-  const lp = Math.cbrt(
-    0.412_221_470_8 * lr + 0.536_332_536_3 * lg + 0.051_445_992_9 * lb,
-  )
-  const mp = Math.cbrt(
-    0.211_903_498_2 * lr + 0.680_699_545_1 * lg + 0.107_396_956_6 * lb,
-  )
-  const sp = Math.cbrt(
-    0.088_302_461_9 * lr + 0.281_718_837_6 * lg + 0.629_978_700_5 * lb,
-  )
+  const f = (t: number) => (t > 0.008_856 ? Math.cbrt(t) : 7.787 * t + 16 / 116)
+  const fx = f((lr * 0.4124 + lg * 0.3576 + lb * 0.1805) / 0.950_47)
+  const fy = f(lr * 0.2126 + lg * 0.7152 + lb * 0.0722)
+  const fz = f((lr * 0.0193 + lg * 0.1192 + lb * 0.9505) / 1.088_83)
 
-  const l = 0.210_454_255_3 * lp + 0.793_617_785 * mp - 0.004_072_046_8 * sp
-  const aa = 1.977_998_495_1 * lp - 2.428_592_205 * mp + 0.450_593_709_9 * sp
-  const bb = 0.025_904_037_1 * lp + 0.782_771_766_2 * mp - 0.808_675_766 * sp
-
-  return [l, aa, bb] as [number, number, number]
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)] as [
+    number,
+    number,
+    number,
+  ]
 }
 
+/**
+ * CIEDE2000 color difference.
+ * `brightness` is ours, not part of the standard: it biases the result towards
+ * lighter or darker palette colors. Scaled by L*'s range so the numbers users
+ * already have in their saves keep meaning the same thing.
+ */
 export function deltaE2000(
   lab1: [number, number, number],
   lab2: [number, number, number],
@@ -32,53 +37,46 @@ export function deltaE2000(
   const [L1, a1, b1] = lab1
   const [L2, a2, b2] = lab2
 
-  // Helper functions
   const rad2deg = (rad: number) => (rad * 180) / Math.PI
   const deg2rad = (deg: number) => (deg * Math.PI) / 180
+  /** atan2 gives (-180, 180], hue angles are [0, 360) */
+  const hue = (y: number, x: number) =>
+    y === 0 && x === 0 ? 0 : (rad2deg(Math.atan2(y, x)) + 360) % 360
 
-  // Weighting factors
-  const kL = 1,
-    kC = 1,
-    kH = 1
+  const kL = 1
+  const kC = 1
+  const kH = 1
 
-  // Step 1: Calculate CIELAB values
   const C1 = Math.sqrt(a1 ** 2 + b1 ** 2)
   const C2 = Math.sqrt(a2 ** 2 + b2 ** 2)
   const avgC = (C1 + C2) / 2
   const G = 0.5 * (1 - Math.sqrt(avgC ** 7 / (avgC ** 7 + 25 ** 7)))
 
-  // Step 2: Calculate a', C', h'
   const a1p = a1 * (1 + G)
   const a2p = a2 * (1 + G)
   const C1p = Math.sqrt(a1p ** 2 + b1 ** 2)
   const C2p = Math.sqrt(a2p ** 2 + b2 ** 2)
+  const h1p = hue(b1, a1p)
+  const h2p = hue(b2, a2p)
 
-  const h1p = b1 === 0 && a1p === 0 ? 0 : rad2deg(Math.atan2(b1, a1p)) % 360
-  const h2p = b2 === 0 && a2p === 0 ? 0 : rad2deg(Math.atan2(b2, a2p)) % 360
-
-  // Step 3: Calculate ΔL', ΔC', ΔH'
   const Lp = L2 - L1
   const Cp = C2p - C1p
-  let hp = 0
 
+  let hp = 0
   if (C1p * C2p !== 0) {
     hp = h2p - h1p
-    if (hp > 180) {
-      hp -= 360
-    } else if (hp < -180) {
-      hp += 360
-    }
+    if (hp > 180) hp -= 360
+    else if (hp < -180) hp += 360
   }
-
   const Hp = 2 * Math.sqrt(C1p * C2p) * Math.sin(deg2rad(hp) / 2)
 
-  // Step 4: Calculate weighting functions
   const avgLp = (L1 + L2) / 2
   const avgCp = (C1p + C2p) / 2
 
-  let avghp = (h1p + h2p) / 2
-  if (Math.abs(h1p - h2p) > 180) {
-    avghp += 180
+  let avghp = h1p + h2p
+  if (C1p * C2p !== 0) {
+    if (Math.abs(h1p - h2p) > 180) avghp += avghp < 360 ? 360 : -360
+    avghp /= 2
   }
 
   const T =
@@ -92,90 +90,85 @@ export function deltaE2000(
   const SC = 1 + 0.045 * avgCp
   const SH = 1 + 0.015 * avgCp * T
 
-  // Step 5: Calculate rotation term
-  const θ = 30 * Math.exp((-((avghp - 275) / 25)) ** 2)
   const RC = 2 * Math.sqrt(avgCp ** 7 / (avgCp ** 7 + 25 ** 7))
-  const RT = -RC * Math.sin(deg2rad(2 * θ))
+  const RT =
+    -RC * Math.sin(deg2rad(60 * Math.exp(-(((avghp - 275) / 25) ** 2))))
 
-  // Final calculation
+  const dL = Lp / (kL * SL)
+  const dC = Cp / (kC * SC)
+  const dH = Hp / (kH * SH)
+
   return (
-    Math.sqrt(
-      (Lp / (kL * SL)) ** 2 +
-        (Cp / (kC * SC)) ** 2 +
-        (Hp / (kH * SH)) ** 2 +
-        RT * (Cp / (kC * SC)) * (Hp / (kH * SH)),
-    ) -
-    Lp * brightness
+    Math.sqrt(Math.max(0, dL ** 2 + dC ** 2 + dH ** 2 + RT * dC * dH)) -
+    (Lp / 100) * brightness
   )
 }
 
-/** oklab colors */
-export const COLORS = [
-  [Number.NaN, Number.NaN, Number.NaN],
-  [0, 0, 0],
-  [0.356, 0, 0],
-  [0.573, 0, 0],
-  [0.864, 0, 0],
-  [1, 0, 0],
-  [0.31, 0.119, 0.037],
-  [0.603, 0.209, 0.107],
-  [0.732, 0.118, 0.137],
-  [0.791, 0.039, 0.16],
-  [0.895, -0.026, 0.168],
-  [0.974, -0.019, 0.077],
-  [0.691, -0.154, 0.075],
-  [0.812, -0.185, 0.096],
-  [0.898, -0.17, 0.149],
-  [0.541, -0.097, 0.005],
-  [0.678, -0.114, -0.018],
-  [0.814, -0.15, 0.011],
-  [0.447, -0.019, -0.134],
-  [0.65, -0.048, -0.137],
-  [0.895, -0.124, -0.027],
-  [0.561, 0.054, -0.229],
-  [0.771, 0, -0.11],
-  [0.431, 0.145, -0.143],
-  [0.557, 0.168, -0.127],
-  [0.796, 0.102, -0.097],
-  [0.551, 0.225, -0.023],
-  [0.62, 0.238, 0],
-  [0.759, 0.127, 0.006],
-  [0.428, 0.036, 0.041],
-  [0.552, 0.03, 0.092],
-  [0.817, 0.055, 0.097],
-  [0.738, 0, 0],
-  [0.46, 0.163, 0.074],
-  [0.735, 0.134, 0.071],
-  [0.642, 0.137, 0.122],
-  [0.794, 0.023, 0.054],
-  [0.62, -0.005, 0.105],
-  [0.747, -0.019, 0.138],
-  [0.864, -0.023, 0.136],
-  [0.489, -0.06, 0.058],
-  [0.609, -0.092, 0.08],
-  [0.76, -0.099, 0.085],
-  [0.54, -0.067, -0.079],
-  [0.941, -0.064, -0.007],
-  [0.803, -0.05, -0.096],
-  [0.438, 0.048, -0.192],
-  [0.421, 0.03, -0.102],
-  [0.593, 0.036, -0.119],
-  [0.781, 0.031, -0.09],
-  [0.757, 0.036, 0.098],
-  [0.676, 0.076, 0.09],
-  [0.868, 0.051, 0.061],
-  [0.524, 0.087, 0.047],
-  [0.684, 0.091, 0.045],
-  [0.835, 0.068, 0.048],
-  [0.519, 0.022, 0.034],
-  [0.629, 0.017, 0.043],
-  [0.342, -0.004, -0.016],
-  [0.564, 0, -0.038],
-  [0.789, 0.003, -0.035],
-  [0.502, -0.006, 0.055],
-  [0.638, -0.005, 0.047],
-  [0.82, -0.007, 0.053],
-] as [number, number, number][]
+/**
+ * CIE94, graphic arts weights. This is what wplace calls the "lab" metric and
+ * uses by default, so it is our default too.
+ */
+export function deltaE94(
+  lab1: [number, number, number],
+  lab2: [number, number, number],
+  brightness: number,
+): number {
+  const [L1, a1, b1] = lab1
+  const [L2, a2, b2] = lab2
+  const dL = L2 - L1
+  const da = a2 - a1
+  const db = b2 - b1
+  const C1 = Math.sqrt(a1 ** 2 + b1 ** 2)
+  const dC = Math.sqrt(a2 ** 2 + b2 ** 2) - C1
+  // Hue difference, via the identity dH^2 = da^2 + db^2 - dC^2
+  const dH = Math.sqrt(Math.max(0, da ** 2 + db ** 2 - dC ** 2))
+  return (
+    Math.sqrt(
+      dL ** 2 + (dC / (1 + 0.045 * C1)) ** 2 + (dH / (1 + 0.015 * C1)) ** 2,
+    ) -
+    (dL / 100) * brightness
+  )
+}
+
+/**
+ * Compuphase, a weighted RGB distance. Takes packed rgb triples, not lab.
+ * https://www.compuphase.com/cmetric.htm
+ */
+export function deltaCompuphase(
+  rgb1: [number, number, number],
+  rgb2: [number, number, number],
+  brightness: number,
+): number {
+  const [r1, g1, b1] = rgb1
+  const [r2, g2, b2] = rgb2
+  const avgR = (r1 + r2) / 2
+  const dr = r1 - r2
+  const dg = g1 - g2
+  const db = b1 - b2
+  return (
+    Math.sqrt(
+      (2 + avgR / 256) * dr ** 2 +
+        4 * dg ** 2 +
+        (2 + (255 - avgR) / 256) * db ** 2,
+    ) -
+    ((0.299 * (r2 - r1) + 0.587 * (g2 - g1) + 0.114 * (b2 - b1)) / 255) *
+      brightness
+  )
+}
+
+/** Metrics wplace offers, by its own names */
+export type ColorMetric = 'lab' | 'ciede2000' | 'compuphase'
+
+export function metricFunction(metric: ColorMetric) {
+  switch (metric) {
+    case 'ciede2000':
+      return deltaE2000
+    case 'compuphase':
+      return deltaCompuphase
+    case 'lab':
+      return deltaE94
+  }
+}
 
 export const COLORS_RGB = [
   NaN,
@@ -243,6 +236,19 @@ export const COLORS_RGB = [
   9735275,
   13485470,
 ]
+
+/** Palette as rgb triples, for metrics that work in rgb */
+export const COLORS_RGB_TRIPLES = COLORS_RGB.map(
+  (rgb) =>
+    [rgb >> 16, (rgb >> 8) & 0xff, rgb & 0xff] as [number, number, number],
+)
+
+/** Palette in CIELAB. Index 0 is transparent, hence the NaNs */
+export const COLORS = COLORS_RGB.map((rgb, index) =>
+  index === 0
+    ? ([Number.NaN, Number.NaN, Number.NaN] as [number, number, number])
+    : rgbToLab(rgb >> 16, (rgb >> 8) & 0xff, rgb & 0xff),
+)
 
 export const COLORS_RGB_MAP = new Map<number, number>()
 for (let index = 0; index < COLORS_RGB.length; index++)

@@ -118,6 +118,7 @@ export function migrateImage(
       url,
       width,
       brightness,
+      colorMetric: 'lab' as const,
       position: old.position,
       strategy: ImageStrategy.SPIRAL_TO_CENTER,
       opacity: old.opacity,

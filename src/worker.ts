@@ -1,9 +1,11 @@
 import {
+  type ColorMetric,
   COLORS,
   COLORS_RGB,
   COLORS_RGB_MAP,
-  deltaE2000,
-  rgbToOklab,
+  COLORS_RGB_TRIPLES,
+  metricFunction,
+  rgbToLab,
 } from './colors'
 import {
   ImageStrategy,
@@ -21,6 +23,7 @@ export type WorkerPixelsRequest = {
   height: number
   unavailableColors: Set<number>
   brightness: number
+  colorMetric: ColorMetric
   drawColorsInOrder: boolean
   colors: number[]
   disabledColors: Set<number>
@@ -74,6 +77,7 @@ function pixels(request: WorkerPixelsRequest) {
     height,
     unavailableColors,
     brightness,
+    colorMetric,
     colors,
     disabledColors,
     drawColorsInOrder,
@@ -111,6 +115,9 @@ function pixels(request: WorkerPixelsRequest) {
     }
   }
   const SIZE = width * height
+  const metricFn = metricFunction(colorMetric)
+  const isRgbMetric = colorMetric === 'compuphase'
+  const palette = isRgbMetric ? COLORS_RGB_TRIPLES : COLORS
   const pixels = new Uint8Array(SIZE)
   const isSubstitute = unownedColorStrategy === UnownedColorStrategy.SUBSTITUTE
   const colorStat = new Map<number, PixelColorStat>()
@@ -140,15 +147,14 @@ function pixels(request: WorkerPixelsRequest) {
       if (a < 100) min = minReal = 0
       else if (colorCache.has(key)) [min, minReal] = colorCache.get(key)!
       else {
-        // Find closest color
+        // Find closest color. Converted once per pixel, not once per candidate
+        const source: [number, number, number] = isRgbMetric
+          ? [r, g, b]
+          : rgbToLab(r, g, b)
         let minDelta = Infinity
         let minDeltaReal = Infinity
         for (let colorIndex = 1; colorIndex < 64; colorIndex++) {
-          const delta = deltaE2000(
-            rgbToOklab(r, g, b),
-            COLORS[colorIndex]!,
-            brightness,
-          )
+          const delta = metricFn(source, palette[colorIndex]!, brightness)
           if (!unavailableColors.has(colorIndex) && delta < minDelta) {
             minDelta = delta
             min = colorIndex
