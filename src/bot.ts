@@ -13,7 +13,6 @@ import {
   FAVORITE_LOCATIONS,
   FAVORITE_LOCATIONS_POSITIONS,
   type Position,
-  WORLD_PIXEL_SIZE,
   WorldPosition,
 } from './world-position'
 
@@ -620,11 +619,12 @@ export class WPlaceBot {
     zoom: number,
     canvas = document.querySelector<HTMLDivElement>('.maplibregl-canvas')!,
   ) {
-    const position = new WorldPosition(
-      this,
-      WORLD_PIXEL_SIZE / 2,
-      WORLD_PIXEL_SIZE / 2,
-    )
+    // Measure pixel size at the first image, not at world center: the world
+    // center's anchors are the two global stars ~120° of longitude apart, and
+    // maplibre re-wraps markers further than 180° from the view center to the
+    // nearest world copy, flipping the measured delta. For users viewing at
+    // lng > 120° or < -120° pixelSize went negative and this loop never ended.
+    const position = this.images[0]!.position
     if (position.pixelSize >= zoom) return
     const event = new WheelEvent('wheel', {
       deltaY: -10,
