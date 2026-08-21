@@ -354,54 +354,54 @@ function colorToCSS(colorId) {
 }
 
 // src/image.html
-var image_default = `<div class="topbar">
-  <input type="text" class="name">
-  <button class="open-settings" title="Open settings">✏️</button>
-  <button class="export" title="Export image">📤</button>
-  <button class="lock" title="Lock/unlock image movement">🔓</button>
-  <button class="delete" title="Remove image from bot">❌</button>
-</div>
-<div class="wrapper">
-  <canvas></canvas>
-  <div class="resize n"></div>
-  <div class="resize e"></div>
-  <div class="resize s"></div>
-  <div class="resize w"></div>
-</div>
-<dialog class="form">
-    <div class="progress">
-      <div></div>
-      <span></span>
-    </div>
-    <label class="unowned-color-strategy" title="What to do with unonwned colors">
-      Unowned Colors:&nbsp;<select>
-        <option value="BUY" selected>Buy</option>
-        <option value="SKIP">Skip</option>
-        <option value="SUBSTITUTE">Substitute</option>
-      </select>
-    </label>
-    <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>
-    <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
-    <label color="How to draw">
-      Strategy:&nbsp;<select class="strategy">
-        <option value="RANDOM">Random</option>
-        <option value="DOWN">Top to Bottom</option>
-        <option value="UP">Bottom to Top</option>
-        <option value="LEFT">Right to Left</option>
-        <option value="RIGHT">Left to Right</option>
-        <option value="SPIRAL_FROM_CENTER">Spiral out</option>
-        <option value="SPIRAL_TO_CENTER" selected>Spiral in</option>
-      </select>
-    </label>
-    <button class="reset-size">Reset size [<span></span>px]</button>
-    <label>
-      <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels
-    </label>
-    <label>
-      <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order
-    </label>
-    <div class="colors"></div>
-  </dialog>
+var image_default = `<div class="topbar">\r
+  <input type="text" class="name">\r
+  <button class="open-settings" title="Open settings">✏️</button>\r
+  <button class="export" title="Export image">📤</button>\r
+  <button class="lock" title="Lock/unlock image movement">🔓</button>\r
+  <button class="delete" title="Remove image from bot">❌</button>\r
+</div>\r
+<div class="wrapper">\r
+  <canvas></canvas>\r
+  <div class="resize n"></div>\r
+  <div class="resize e"></div>\r
+  <div class="resize s"></div>\r
+  <div class="resize w"></div>\r
+</div>\r
+<dialog class="form">\r
+    <div class="progress">\r
+      <div></div>\r
+      <span></span>\r
+    </div>\r
+    <label class="unowned-color-strategy" title="What to do with unonwned colors">\r
+      Unowned Colors:&nbsp;<select>\r
+        <option value="BUY" selected>Buy</option>\r
+        <option value="SKIP">Skip</option>\r
+        <option value="SUBSTITUTE">Substitute</option>\r
+      </select>\r
+    </label>\r
+    <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>\r
+    <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>\r
+    <label color="How to draw">\r
+      Strategy:&nbsp;<select class="strategy">\r
+        <option value="RANDOM">Random</option>\r
+        <option value="DOWN">Top to Bottom</option>\r
+        <option value="UP">Bottom to Top</option>\r
+        <option value="LEFT">Right to Left</option>\r
+        <option value="RIGHT">Left to Right</option>\r
+        <option value="SPIRAL_FROM_CENTER">Spiral out</option>\r
+        <option value="SPIRAL_TO_CENTER" selected>Spiral in</option>\r
+      </select>\r
+    </label>\r
+    <button class="reset-size">Reset size [<span></span>px]</button>\r
+    <label>\r
+      <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels\r
+    </label>\r
+    <label>\r
+      <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order\r
+    </label>\r
+    <div class="colors"></div>\r
+  </dialog>\r
 `;
 
 // src/save.ts
@@ -1755,10 +1755,18 @@ var style_default = `/* stylelint-disable declaration-no-important */
   --main-hover: #48a19a;
 }
 
-.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center:nth-child(
-    -n + FAKE_FAVORITE_LOCATIONS
-  ) {
-  display: none;
+/**
+ * Hide our injected favorite location markers.
+ * \`of S\` is required: plain :nth-child() counts among ALL siblings of the
+ * canvas container, where the markers are never the first children.
+ */
+:nth-child(
+  -n
+    + FAKE_FAVORITE_LOCATIONS
+    of
+    .text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center
+) {
+  display: none !important;
 }
 
 /** LOCAL STYLES */
@@ -2128,22 +2136,22 @@ class NoImageError extends WPlaceBotError {
 }
 
 // src/widget.html
-var widget_default = `<button class="open-button"><div>></div></button>
-<input class="title" type="text">
-<div class="form">
-  <div class="progress"><div></div><span></span></div>
-  <div class="p status"></div>
-  <button class="draw" disabled>Draw</button>
-  <button class="auto-draw" disabled>Auto-Draw</button>
-  <label>Strategy:&nbsp;<select class="strategy">
-    <option value="SEQUENTIAL" selected>Sequential</option>
-    <option value="ALL">All</option>
-    <option value="PERCENTAGE">Percentage</option>
-  </select></label>
-  <button class="add-image" disabled>Add image</button>
-  <!-- <button class="pumpkin-hunt" disabled>Pumpkin Hunt!</button> -->
-  <div class="images"></div>
-</div>
+var widget_default = `<button class="open-button"><div>></div></button>\r
+<input class="title" type="text">\r
+<div class="form">\r
+  <div class="progress"><div></div><span></span></div>\r
+  <div class="p status"></div>\r
+  <button class="draw" disabled>Draw</button>\r
+  <button class="auto-draw" disabled>Auto-Draw</button>\r
+  <label>Strategy:&nbsp;<select class="strategy">\r
+    <option value="SEQUENTIAL" selected>Sequential</option>\r
+    <option value="ALL">All</option>\r
+    <option value="PERCENTAGE">Percentage</option>\r
+  </select></label>\r
+  <button class="add-image" disabled>Add image</button>\r
+  <!-- <button class="pumpkin-hunt" disabled>Pumpkin Hunt!</button> -->\r
+  <div class="images"></div>\r
+</div>\r
 `;
 
 // src/widget.ts
@@ -2736,6 +2744,8 @@ Developer will try to fix your save. Be vary that github issues are public, and 
     this.$stars = [
       ...document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")
     ].slice(0, FAVORITE_LOCATIONS.length);
+    for (let index = 0;index < this.$stars.length; index++)
+      this.$stars[index].style.setProperty("display", "none", "important");
   }
   async zoomIn(zoom, canvas = document.querySelector(".maplibregl-canvas")) {
     const position = new WorldPosition(this, WORLD_PIXEL_SIZE / 2, WORLD_PIXEL_SIZE / 2);

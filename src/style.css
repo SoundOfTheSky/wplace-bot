@@ -14,10 +14,18 @@
   --main-hover: #48a19a;
 }
 
-.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center:nth-child(
-    -n + FAKE_FAVORITE_LOCATIONS
-  ) {
-  display: none;
+/**
+ * Hide our injected favorite location markers.
+ * `of S` is required: plain :nth-child() counts among ALL siblings of the
+ * canvas container, where the markers are never the first children.
+ */
+:nth-child(
+  -n
+    + FAKE_FAVORITE_LOCATIONS
+    of
+    .text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center
+) {
+  display: none !important;
 }
 
 /** LOCAL STYLES */

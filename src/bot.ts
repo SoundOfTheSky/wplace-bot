@@ -613,6 +613,11 @@ export class WPlaceBot {
         '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
       ),
     ].slice(0, FAVORITE_LOCATIONS.length)
+    // Belt and braces: the CSS rule hides them from first paint, but it relies
+    // on wplace's marker classes. These are the elements we actually treat as
+    // fake, so hiding them here survives a class rename.
+    for (let index = 0; index < this.$stars.length; index++)
+      this.$stars[index]!.style.setProperty('display', 'none', 'important')
   }
 
   /** Zoom in canvas */
