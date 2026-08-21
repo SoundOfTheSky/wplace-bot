@@ -13,6 +13,7 @@ import {
   addClass,
   containsClass,
   obfucsateHTML,
+  querySelector,
   querySelectorAll,
   removeClass,
   toggleClass,
@@ -20,6 +21,7 @@ import {
 import { save, SAVE_VERSION } from './save'
 import { workerPixels } from './worker-client'
 import { WorldPosition } from './world-position'
+import { toWplaceFile } from './wplace-file'
 
 export type DrawTask = {
   position: WorldPosition
@@ -135,6 +137,7 @@ export class BotImage extends Base {
   protected readonly $resetSizeSpan!: HTMLSpanElement
   protected readonly $settings!: HTMLDivElement
   protected readonly $strategy!: HTMLSelectElement
+  protected readonly $exportDialog!: HTMLDialogElement
   protected readonly $topbar!: HTMLDivElement
   protected readonly $wrapper!: HTMLDivElement
   protected readonly $name!: HTMLInputElement
@@ -202,6 +205,7 @@ export class BotImage extends Base {
       $resetSize: '.reset-size',
       $settings: '.form',
       $strategy: '.strategy',
+      $exportDialog: '.export-dialog',
       $topbar: '.topbar',
       $wrapper: '.wrapper',
       $name: '.name',
@@ -289,7 +293,22 @@ export class BotImage extends Base {
     this.$delete.addEventListener('click', this.destroy.bind(this))
 
     // Export
-    this.$export.addEventListener('click', this.export.bind(this))
+    // Export button opens a small format picker
+    this.$export.addEventListener('click', () => {
+      this.$exportDialog.showModal()
+    })
+    this.$exportDialog.addEventListener('click', (event) => {
+      if (event.target === this.$exportDialog) this.$exportDialog.close()
+    })
+    for (const [selector, format] of [
+      ['.export-wbot', 'wbot'],
+      ['.export-wplace', 'wplace'],
+      ['.export-image', 'image'],
+    ] as const)
+      querySelector<HTMLButtonElement>(
+        this.$exportDialog,
+        selector,
+      )!.addEventListener('click', () => this.exportAs(format))
 
     // Name
     this.$name.addEventListener('change', () => {
@@ -655,22 +674,37 @@ export class BotImage extends Base {
     }
   }
 
-  /** export image */
-  protected async export() {
+  /** Export the image in the chosen format */
+  protected async exportAs(format: 'wbot' | 'wplace' | 'image') {
+    this.$exportDialog.close()
     const a = document.createElement('a')
     document.body.append(a)
-    a.href = URL.createObjectURL(
-      new Blob([JSON.stringify(await this.toJSON())], {
-        type: 'application/json',
-      }),
-    )
-    a.download = `${this.name}.wbot`
-    a.click()
-    URL.revokeObjectURL(a.href)
-    a.href = this.$canvas.toDataURL('image/webp', 1)
-    a.download = `${this.name}.webp`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    const download = (href: string, name: string) => {
+      a.href = href
+      a.download = name
+      a.click()
+      URL.revokeObjectURL(href)
+    }
+    const json = (data: unknown) =>
+      URL.createObjectURL(
+        new Blob([JSON.stringify(data)], { type: 'application/json' }),
+      )
+    switch (format) {
+      case 'wplace': {
+        download(
+          json(toWplaceFile(this, this.bot.images.indexOf(this))),
+          `${this.name}.wplace`,
+        )
+        break
+      }
+      case 'image': {
+        download(this.$canvas.toDataURL('image/webp', 1), `${this.name}.webp`)
+        break
+      }
+      default: {
+        download(json(await this.toJSON()), `${this.name}.wbot`)
+      }
+    }
     a.remove()
   }
 }

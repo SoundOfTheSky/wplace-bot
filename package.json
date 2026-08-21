@@ -7,6 +7,7 @@
   "scripts": {
     "start": "bun src/build.ts",
     "copy": "bun start && wl-copy < dist.user.js",
+    "test": "bun test",
     "lint": "stylelint \"src/**/*.{css,scss,sass}\" --fix && eslint \"src/**/*{.js,.ts}\" --fix && tsc"
   },
   "devDependencies": {
