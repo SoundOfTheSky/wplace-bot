@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.1.6
+// @version      5.1.7
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -2744,8 +2744,6 @@ Developer will try to fix your save. Be vary that github issues are public, and 
     this.$stars = [
       ...document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")
     ].slice(0, FAVORITE_LOCATIONS.length);
-    for (let index = 0;index < this.$stars.length; index++)
-      this.$stars[index].style.setProperty("display", "none", "important");
   }
   async zoomIn(zoom, canvas = document.querySelector(".maplibregl-canvas")) {
     const position = new WorldPosition(this, WORLD_PIXEL_SIZE / 2, WORLD_PIXEL_SIZE / 2);
