@@ -53,6 +53,14 @@ export enum UnownedColorStrategy {
   SUBSTITUTE = 'SUBSTITUTE',
 }
 
+/** Time left to paint `remaining` pixels, counting the charges already stored */
+export function etaText(bot: WPlaceBot, remaining: number): string {
+  const charges = Math.floor(bot.me?.charges.count ?? 0)
+  const cooldownMs = bot.me?.charges.cooldownMs ?? 30000 // default 30 seconds
+  const minutes = (Math.max(0, remaining - charges) * cooldownMs) / 60000
+  return `${(minutes / 60) | 0}h ${(minutes % 60) | 0}m`
+}
+
 export class BotImage extends Base {
   public static async fromJSON(
     bot: WPlaceBot,
@@ -434,7 +442,7 @@ export class BotImage extends Base {
     const maxTasks = this.width * this.height
     const doneTasks = maxTasks - this.tasks.length / 2
     const percent = ((doneTasks / maxTasks) * 100) | 0
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${(this.tasks.length / 2 / 120) | 0}h`
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${etaText(this.bot, this.tasks.length / 2)}`
     this.$progressLine.style.transform = `scaleX(${percent}%)`
     if (this.lock) addClass(this.$wrapper, 'no-pointer-events')
     else removeClass(this.$wrapper, 'no-pointer-events')

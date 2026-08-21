@@ -3,7 +3,7 @@ import { promisifyEventSource, swap } from '@softsky/utils'
 import { Base } from './base'
 import { WPlaceBot } from './bot'
 import { NoImageError, WPlaceBotError } from './errors'
-import { BotImage } from './image'
+import { BotImage, etaText } from './image'
 import {
   addClass,
   containsClass,
@@ -156,7 +156,7 @@ export class Widget extends Base {
     }
     const doneTasks = maxTasks - totalTasks
     const percent = maxTasks === 0 ? 0 : ((doneTasks / maxTasks) * 100) | 0
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${(totalTasks / 120) | 0}h`
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${etaText(this.bot, totalTasks)}`
     this.$progressLine.style.transform = `scaleX(${percent}%)`
 
     // Images

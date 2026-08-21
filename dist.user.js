@@ -1251,6 +1251,13 @@ class WorldPosition {
 }
 
 // src/image.ts
+function etaText(bot, remaining) {
+  const charges = Math.floor(bot.me?.charges.count ?? 0);
+  const cooldownMs = bot.me?.charges.cooldownMs ?? 30000;
+  const minutes = Math.max(0, remaining - charges) * cooldownMs / 60000;
+  return `${minutes / 60 | 0}h ${minutes % 60 | 0}m`;
+}
+
 class BotImage extends Base2 {
   bot;
   position;
@@ -1536,7 +1543,7 @@ class BotImage extends Base2 {
     const maxTasks = this.width * this.height;
     const doneTasks = maxTasks - this.tasks.length / 2;
     const percent = doneTasks / maxTasks * 100 | 0;
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${this.tasks.length / 2 / 120 | 0}h`;
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${etaText(this.bot, this.tasks.length / 2)}`;
     this.$progressLine.style.transform = `scaleX(${percent}%)`;
     if (this.lock)
       addClass(this.$wrapper, "no-pointer-events");
@@ -2264,7 +2271,7 @@ class Widget extends Base2 {
     }
     const doneTasks = maxTasks - totalTasks;
     const percent = maxTasks === 0 ? 0 : doneTasks / maxTasks * 100 | 0;
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${totalTasks / 120 | 0}h`;
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${etaText(this.bot, totalTasks)}`;
     this.$progressLine.style.transform = `scaleX(${percent}%)`;
     this.$images.innerHTML = "";
     for (let index = 0;index < this.bot.images.length; index++) {
