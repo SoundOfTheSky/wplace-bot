@@ -402,6 +402,11 @@ var image_default = `<div class="topbar">\r
     </label>\r
     <div class="colors"></div>\r
   </dialog>\r
+  <dialog class="export-dialog">\r
+    <button class="export-wbot">Save .wbot (restorable)</button>\r
+    <button class="export-wplace">Export .wplace (wplace template)</button>\r
+    <button class="export-image">Export image (.webp)</button>\r
+  </dialog>\r
 `;
 
 // src/save.ts
@@ -763,12 +768,18 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
   var FAVORITE_LOCATIONS_POSITIONS = [];
   var FAVORITE_LOCATIONS = [];
   var lastId = Date.now();
+  function worldToLatitude(y) {
+    return (2 * Math.atan(Math.exp(-(y / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI))) - Math.PI / 2) * 180 / Math.PI;
+  }
+  function worldToLongitude(x) {
+    return (x / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI) * 180 / Math.PI;
+  }
   function addFavoriteLocation(position) {
     FAVORITE_LOCATIONS_POSITIONS.push(position);
     FAVORITE_LOCATIONS.push({
       id: lastId++,
-      latitude: (2 * Math.atan(Math.exp(-(position.y / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI))) - Math.PI / 2) * 180 / Math.PI,
-      longitude: (position.x / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI) * 180 / Math.PI,
+      latitude: worldToLatitude(position.y),
+      longitude: worldToLongitude(position.x),
       name: "WBOT_FAVORITE"
     });
   }
@@ -1132,12 +1143,24 @@ var WORLD_PIXEL_SIZE = WORLD_TILE_SIZE * WORLD_TILES;
 var FAVORITE_LOCATIONS_POSITIONS = [];
 var FAVORITE_LOCATIONS = [];
 var lastId = Date.now();
+function worldToLatitude(y) {
+  return (2 * Math.atan(Math.exp(-(y / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI))) - Math.PI / 2) * 180 / Math.PI;
+}
+function worldToLongitude(x) {
+  return (x / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI) * 180 / Math.PI;
+}
+function latitudeToWorld(latitude) {
+  return (-Math.log(Math.tan(Math.PI / 4 + latitude * Math.PI / 180 / 2)) + Math.PI) / (2 * Math.PI) * WORLD_PIXEL_SIZE;
+}
+function longitudeToWorld(longitude) {
+  return (longitude * Math.PI / 180 + Math.PI) / (2 * Math.PI) * WORLD_PIXEL_SIZE;
+}
 function addFavoriteLocation(position) {
   FAVORITE_LOCATIONS_POSITIONS.push(position);
   FAVORITE_LOCATIONS.push({
     id: lastId++,
-    latitude: (2 * Math.atan(Math.exp(-(position.y / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI))) - Math.PI / 2) * 180 / Math.PI,
-    longitude: (position.x / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI) * 180 / Math.PI,
+    latitude: worldToLatitude(position.y),
+    longitude: worldToLongitude(position.x),
     name: "WBOT_FAVORITE"
   });
 }
@@ -1250,6 +1273,53 @@ class WorldPosition {
   }
 }
 
+// src/wplace-file.ts
+function fromWplaceFile(raw) {
+  const file = raw;
+  const bounds = file.bounds;
+  if (typeof file.image?.dataUrl !== "string" || !bounds || [bounds.north, bounds.south, bounds.west, bounds.east].some((x) => typeof x !== "number" || !Number.isFinite(x)))
+    throw new Error("Not a valid .wplace template");
+  const globalX = Math.round(longitudeToWorld(bounds.west));
+  const globalY = Math.round(latitudeToWorld(bounds.north));
+  return {
+    url: file.image.dataUrl,
+    position: [globalX, globalY],
+    width: Math.max(1, Math.round(longitudeToWorld(bounds.east)) - globalX),
+    opacity: typeof file.opacity === "number" ? Math.round(file.opacity * 100) : undefined,
+    lock: file.locked,
+    disabled: file.visible === false,
+    name: file.name
+  };
+}
+function toWplaceFile(image, order = 0) {
+  const { globalX, globalY } = image.position;
+  return {
+    id: crypto.randomUUID(),
+    schemaVersion: "1",
+    name: image.name,
+    opacity: image.opacity / 100,
+    image: {
+      dataUrl: image.$canvas.toDataURL("image/png"),
+      width: image.width,
+      height: image.height
+    },
+    bounds: {
+      north: worldToLatitude(globalY),
+      south: worldToLatitude(globalY + image.height),
+      west: worldToLongitude(globalX),
+      east: worldToLongitude(globalX + image.width)
+    },
+    colorMetric: "ciede2000",
+    dithering: false,
+    useLegacyColors: false,
+    colorPaletteMode: "all",
+    order,
+    locked: image.lock,
+    hasPlaced: false,
+    visible: !image.disabled
+  };
+}
+
 // src/image.ts
 class BotImage extends Base2 {
   bot;
@@ -1308,6 +1378,7 @@ class BotImage extends Base2 {
   $resetSizeSpan;
   $settings;
   $strategy;
+  $exportDialog;
   $topbar;
   $wrapper;
   $name;
@@ -1355,6 +1426,7 @@ class BotImage extends Base2 {
       $resetSize: ".reset-size",
       $settings: ".form",
       $strategy: ".strategy",
+      $exportDialog: ".export-dialog",
       $topbar: ".topbar",
       $wrapper: ".wrapper",
       $name: ".name",
@@ -1418,7 +1490,19 @@ class BotImage extends Base2 {
       save(this.bot);
     });
     this.$delete.addEventListener("click", this.destroy.bind(this));
-    this.$export.addEventListener("click", this.export.bind(this));
+    this.$export.addEventListener("click", () => {
+      this.$exportDialog.showModal();
+    });
+    this.$exportDialog.addEventListener("click", (event) => {
+      if (event.target === this.$exportDialog)
+        this.$exportDialog.close();
+    });
+    for (const [selector, format] of [
+      [".export-wbot", "wbot"],
+      [".export-wplace", "wplace"],
+      [".export-image", "image"]
+    ])
+      querySelector(this.$exportDialog, selector).addEventListener("click", () => this.exportAs(format));
     this.$name.addEventListener("change", () => {
       this.name = this.$name.value;
       this.updateUI();
@@ -1721,19 +1805,30 @@ class BotImage extends Base2 {
       this.moveInfo.globalX = this.position.globalX;
     }
   }
-  async export() {
+  async exportAs(format) {
+    this.$exportDialog.close();
     const a = document.createElement("a");
     document.body.append(a);
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(await this.toJSON())], {
-      type: "application/json"
-    }));
-    a.download = `${this.name}.wbot`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    a.href = this.$canvas.toDataURL("image/webp", 1);
-    a.download = `${this.name}.webp`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    const download = (href, name) => {
+      a.href = href;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(href);
+    };
+    const json = (data) => URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
+    switch (format) {
+      case "wplace": {
+        download(json(toWplaceFile(this, this.bot.images.indexOf(this))), `${this.name}.wplace`);
+        break;
+      }
+      case "image": {
+        download(this.$canvas.toDataURL("image/webp", 1), `${this.name}.webp`);
+        break;
+      }
+      default: {
+        download(json(await this.toJSON()), `${this.name}.wbot`);
+      }
+    }
     a.remove();
   }
 }
@@ -1909,6 +2004,37 @@ dialog.form {
 
 dialog.form::backdrop {
   background: rgb(0 0 0 / 70%);
+}
+
+dialog.export-dialog {
+  margin: auto;
+  border: var(--text) 2px solid;
+  background-color: var(--background);
+  color: var(--text);
+}
+
+dialog.export-dialog::backdrop {
+  background: rgb(0 0 0 / 70%);
+}
+
+.export-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.export-dialog button {
+  padding: 8px 12px;
+  border: var(--text) 2px solid;
+  background-color: var(--background);
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.export-dialog button:hover {
+  background-color: var(--background-hover);
 }
 
 /* Settings */
@@ -2228,13 +2354,21 @@ class Widget extends Base2 {
       await this.bot.updateColorsData();
       const input = document.createElement("input");
       input.type = "file";
-      input.accept = "image/*,.wbot";
+      input.accept = "image/*,.wbot,.wplace";
       input.click();
       await promisifyEventSource(input, ["change"], ["cancel", "error"]);
       const file = input.files?.[0];
       if (!file)
         throw new NoImageError(this.bot);
-      if (file.name.endsWith(".wbot")) {
+      if (file.name.endsWith(".wplace")) {
+        let data;
+        try {
+          data = fromWplaceFile(JSON.parse(await file.text()));
+        } catch {
+          throw new WPlaceBotError("❌ Broken .wplace template", this.bot);
+        }
+        await BotImage.fromJSON(this.bot, data);
+      } else if (file.name.endsWith(".wbot")) {
         await BotImage.fromJSON(this.bot, migrateImage(JSON.parse(await file.text())));
       } else {
         const reader = new FileReader;
