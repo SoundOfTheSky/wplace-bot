@@ -839,6 +839,7 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
     const SIZE = width * height;
     const pixels2 = new Uint8Array(SIZE);
     const isSubstitute = unownedColorStrategy === "SUBSTITUTE" /* SUBSTITUTE */;
+    const realPixels = isSubstitute ? new Uint8Array(SIZE) : pixels2;
     const colorStat = new Map;
     const colorCache = new Map;
     for (let index = 1;index < 64; index++)
@@ -882,11 +883,18 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
           colorCache.set(key, [min, minReal]);
         }
         pixels2[pi] = isSubstitute ? min : minReal;
+        if (isSubstitute)
+          realPixels[pi] = minReal;
         const stat = colorStat.get(minReal);
         if (stat)
           stat.amount++;
         else
-          colorStat.set(minReal, { color: min, amount: 1, realColor: minReal });
+          colorStat.set(minReal, {
+            color: min,
+            amount: 1,
+            left: 0,
+            realColor: minReal
+          });
         i += 4;
         pi++;
       }
@@ -899,6 +907,7 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
         skipColors.add(drawColor);
       colorsOrderMap.set(drawColor, index);
     }
+    const skippedColors = new Set;
     const positions = strategyPosition(strategy, height, width);
     const tasks = [];
     lastProgress = 0;
@@ -911,34 +920,44 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
       const dx = positions[index];
       const dy = positions[index + 1];
       const color = pixels2[dy * width + dx];
-      if (skipColors.has(color))
-        continue;
       const gx = globalX + dx;
       const gy = globalY + dy;
       const map = mapsCache.get(packTile(toTile(gx), toTile(gy)));
       const mapColor = map[toTilePosition(gy) * 1000 + toTilePosition(gx)];
-      if (color !== mapColor && (drawTransparentPixels || color !== 0))
-        tasks.push({
-          gx,
-          gy,
-          color
-        });
+      if (color === mapColor || !drawTransparentPixels && color === 0)
+        continue;
+      const realColor = realPixels[dy * width + dx];
+      colorStat.get(realColor).left++;
+      if (skipColors.has(color)) {
+        skippedColors.add(realColor);
+        continue;
+      }
+      tasks.push({
+        gx,
+        gy,
+        color,
+        realColor
+      });
     }
     if (drawColorsInOrder)
       tasks.sort((a, b) => (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0));
     const taskPositions = new Uint32Array(tasks.length * 2);
+    const taskColors = new Uint8Array(tasks.length);
     for (let index = 0;index < tasks.length; index++) {
       const task = tasks[index];
       const dIndex = index * 2;
       taskPositions[dIndex] = task.gx;
       taskPositions[dIndex + 1] = task.gy;
+      taskColors[index] = task.realColor;
     }
     postMessage({
       id,
       taskPositions,
+      taskColors,
       colorStat,
+      skippedColors,
       pixels: pixels2
-    }, [taskPositions.buffer, pixels2.buffer]);
+    }, [taskPositions.buffer, taskColors.buffer, pixels2.buffer]);
   }
   function strategyPosition(strategy, height, width) {
     const SIZE = width * height;
@@ -1296,6 +1315,8 @@ class BotImage extends Base2 {
     this.width = value * this.resolution | 0;
   }
   tasks = new Uint32Array(0);
+  taskColors = new Uint8Array(0);
+  skippedColors = new Set;
   moveInfo;
   imageData;
   element = document.createElement("div");
@@ -1503,6 +1524,8 @@ class BotImage extends Base2 {
     }, progress2);
     this.colorsStat = result.colorStat;
     this.tasks = this.disabled ? new Uint32Array(0) : result.taskPositions;
+    this.taskColors = this.disabled ? new Uint8Array(0) : result.taskColors;
+    this.skippedColors = result.skippedColors;
     this.pixels = result.pixels;
     this.$canvas.width = width;
     this.$canvas.height = height;
@@ -1563,7 +1586,15 @@ class BotImage extends Base2 {
     if (this.bot.unavailableColors.size === 0)
       addClass(this.$unownedColorStrategyLabel, "hidden");
     this.$colors.innerHTML = "";
-    const pixelsSum = this.width * this.height;
+    let pixelsSum = 0;
+    for (const stat of this.colorsStat.values())
+      if (this.drawTransparentPixels || stat.realColor !== 0)
+        pixelsSum += stat.amount;
+    const leftByColor = new Map;
+    for (let index = 0;index < this.taskColors.length; index++) {
+      const color = this.taskColors[index];
+      leftByColor.set(color, (leftByColor.get(color) ?? 0) + 1);
+    }
     if (this.colors.length !== this.colorsStat.size || this.colors.some((x) => !this.colorsStat.has(x))) {
       this.colors = this.colorsStat.values().toArray().sort((a, b) => b.amount - a.amount).map((color) => color.realColor);
       save(this.bot);
@@ -1621,7 +1652,12 @@ class BotImage extends Base2 {
       }
       const $percent = document.createElement("span");
       addClass($percent, "percent");
-      $percent.innerText = `${colorStat.amount}px ${colorStat.amount / pixelsSum * 100 | 0}%`;
+      const leftPixels = this.skippedColors.has(drawColor) ? colorStat.left : leftByColor.get(drawColor) ?? 0;
+      const donePixels = colorStat.amount - leftPixels;
+      const donePercent = donePixels / colorStat.amount * 100 | 0;
+      const share = colorStat.amount / pixelsSum * 100;
+      $percent.innerText = `${donePixels}/${colorStat.amount}px ${donePercent}% (${share.toFixed(share < 10 ? 1 : 0)}%)`;
+      $percent.title = "Pixels drawn / total, drawn % (% of the image)";
       $button.appendChild($percent);
       this.$colors.append($button);
       let dragging = false;
@@ -2603,8 +2639,10 @@ Developer will try to fix your save. Be vary that github issues are public, and 
           }
         }
       }
-      for (const [image, value] of indexes)
+      for (const [image, value] of indexes) {
         image.tasks = image.tasks.subarray(value * 2);
+        image.taskColors = image.taskColors.subarray(value);
+      }
       this.widget.update();
     }, () => {
       globalThis.removeEventListener("mousemove", prevent, true);

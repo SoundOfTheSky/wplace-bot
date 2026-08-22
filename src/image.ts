@@ -34,6 +34,7 @@ export type ImageColorSetting = {
 export type PixelColorStat = {
   color: number
   amount: number
+  left: number
   realColor: number
 }
 
@@ -113,6 +114,12 @@ export class BotImage extends Base {
 
   /** Pixels to draw */
   public tasks = new Uint32Array(0)
+
+  /** Real color of every task in `tasks`, same order */
+  public taskColors = new Uint8Array(0)
+
+  /** Colors that get no tasks, their `left` comes from `colorsStat` */
+  public skippedColors = new Set<number>()
 
   /** Moving/resizing image */
   protected moveInfo?: {
@@ -401,6 +408,8 @@ export class BotImage extends Base {
     )
     this.colorsStat = result.colorStat
     this.tasks = this.disabled ? new Uint32Array(0) : result.taskPositions
+    this.taskColors = this.disabled ? new Uint8Array(0) : result.taskColors
+    this.skippedColors = result.skippedColors
     this.pixels = result.pixels
     this.$canvas.width = width
     this.$canvas.height = height
@@ -464,7 +473,16 @@ export class BotImage extends Base {
     if (this.bot.unavailableColors.size === 0)
       addClass(this.$unownedColorStrategyLabel, 'hidden')
     this.$colors.innerHTML = ''
-    const pixelsSum = this.width * this.height
+    // Only the colors we show, so the percents add up to 100%
+    let pixelsSum = 0
+    for (const stat of this.colorsStat.values())
+      if (this.drawTransparentPixels || stat.realColor !== 0)
+        pixelsSum += stat.amount
+    const leftByColor = new Map<number, number>()
+    for (let index = 0; index < this.taskColors.length; index++) {
+      const color = this.taskColors[index]!
+      leftByColor.set(color, (leftByColor.get(color) ?? 0) + 1)
+    }
 
     // If not the synced with colors then rebuild order
     if (
@@ -535,7 +553,14 @@ export class BotImage extends Base {
       }
       const $percent = document.createElement('span')
       addClass($percent, 'percent')
-      $percent.innerText = `${colorStat.amount}px ${((colorStat.amount / pixelsSum) * 100) | 0}%`
+      const leftPixels = this.skippedColors.has(drawColor)
+        ? colorStat.left
+        : (leftByColor.get(drawColor) ?? 0)
+      const donePixels = colorStat.amount - leftPixels
+      const donePercent = ((donePixels / colorStat.amount) * 100) | 0
+      const share = (colorStat.amount / pixelsSum) * 100
+      $percent.innerText = `${donePixels}/${colorStat.amount}px ${donePercent}% (${share.toFixed(share < 10 ? 1 : 0)}%)`
+      $percent.title = 'Pixels drawn / total, drawn % (% of the image)'
       $button.appendChild($percent)
       this.$colors.append($button)
 

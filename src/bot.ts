@@ -409,8 +409,10 @@ export class WPlaceBot {
         }
 
         // Trim tasks from already done
-        for (const [image, value] of indexes)
+        for (const [image, value] of indexes) {
           image.tasks = image.tasks.subarray(value * 2)
+          image.taskColors = image.taskColors.subarray(value)
+        }
 
         this.widget.update()
       },
