@@ -14,6 +14,7 @@ import {
   toggleClass,
 } from './obfuscator'
 import { migrateImage, save } from './save'
+import { formatPercent } from './utils'
 // @ts-ignore
 import html from './widget.html' with { type: 'text' }
 
@@ -155,9 +156,9 @@ export class Widget extends Base {
       totalTasks += image.tasks.length / 2
     }
     const doneTasks = maxTasks - totalTasks
-    const percent = maxTasks === 0 ? 0 : ((doneTasks / maxTasks) * 100) | 0
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${etaText(this.bot, totalTasks)}`
-    this.$progressLine.style.transform = `scaleX(${percent}%)`
+    const percent = formatPercent(doneTasks / maxTasks)
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, totalTasks)}h`
+    this.$progressLine.style.transform = `scaleX(${percent})`
 
     // Images
     this.$images.innerHTML = ''
@@ -235,7 +236,7 @@ export class Widget extends Base {
     const originalStatus = this.status
     try {
       const result = await run((p) => {
-        this.status = `${emoji} ${status} ${(p * 100) | 0}%`
+        this.status = `${emoji} ${status} ${formatPercent(p)}`
       })
       this.status = originalStatus
       return result

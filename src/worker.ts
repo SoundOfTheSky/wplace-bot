@@ -34,10 +34,7 @@ export type WorkerPixelsRequest = {
 export type WorkerPixelsResponse = {
   id: number
   taskPositions: Uint32Array<ArrayBuffer>
-  taskColors: Uint8Array<ArrayBuffer>
   colorStat: Map<number, PixelColorStat>
-  /** Colors that got no tasks because they are disabled or unowned */
-  skippedColors: Set<number>
   pixels: Uint8Array<ArrayBuffer>
 }
 
@@ -192,7 +189,6 @@ function pixels(request: WorkerPixelsRequest) {
       skipColors.add(drawColor)
     colorsOrderMap.set(drawColor, index)
   }
-  const skippedColors = new Set<number>()
   const positions = strategyPosition(strategy, height, width)
   const tasks: { gx: number; gy: number; color: number; realColor: number }[] =
     []
@@ -209,19 +205,16 @@ function pixels(request: WorkerPixelsRequest) {
 
     const gx = globalX + dx
     const gy = globalY + dy
-
     const map = mapsCache.get(packTile(toTile(gx), toTile(gy)))!
     const mapColor = map[toTilePosition(gy) * 1000 + toTilePosition(gx)]
 
-    if (color === mapColor || (!drawTransparentPixels && color === 0)) continue
+    if (color === mapColor) continue
 
     // Counted even for skipped colors, they are not painted, not done
     const realColor = realPixels[dy * width + dx]!
     colorStat.get(realColor)!.left++
-    if (skipColors.has(color)) {
-      skippedColors.add(realColor)
+    if (skipColors.has(color) || (!drawTransparentPixels && color === 0))
       continue
-    }
 
     tasks.push({
       gx,
@@ -238,24 +231,20 @@ function pixels(request: WorkerPixelsRequest) {
 
   // Sending
   const taskPositions = new Uint32Array(tasks.length * 2)
-  const taskColors = new Uint8Array(tasks.length)
   for (let index = 0; index < tasks.length; index++) {
     const task = tasks[index]!
     const dIndex = index * 2
     taskPositions[dIndex] = task.gx
     taskPositions[dIndex + 1] = task.gy
-    taskColors[index] = task.realColor
   }
   postMessage(
     {
       id,
       taskPositions,
-      taskColors,
       colorStat,
-      skippedColors,
       pixels,
     } satisfies WorkerPixelsResponse,
-    [taskPositions.buffer, taskColors.buffer, pixels.buffer],
+    [taskPositions.buffer, pixels.buffer],
   )
 }
 
