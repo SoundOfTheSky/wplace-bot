@@ -18,6 +18,7 @@ import {
   toggleClass,
 } from './obfuscator'
 import { save, SAVE_VERSION } from './save'
+import { formatPercent } from './utils'
 import { workerPixels } from './worker-client'
 import { WorldPosition } from './world-position'
 
@@ -34,6 +35,7 @@ export type ImageColorSetting = {
 export type PixelColorStat = {
   color: number
   amount: number
+  left: number
   realColor: number
 }
 
@@ -375,7 +377,7 @@ export class BotImage extends Base {
     const progress2 =
       progress ??
       ((p: number) => {
-        this.bot.widget.status = `⌛ Loading ${(p * 100) | 0}%`
+        this.bot.widget.status = `⌛ Loading ${formatPercent(p)}`
       })
     const height = this.height
     const width = this.width
@@ -441,9 +443,9 @@ export class BotImage extends Base {
     this.$name.value = this.name
     const maxTasks = this.width * this.height
     const doneTasks = maxTasks - this.tasks.length / 2
-    const percent = ((doneTasks / maxTasks) * 100) | 0
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${etaText(this.bot, this.tasks.length / 2)}`
-    this.$progressLine.style.transform = `scaleX(${percent}%)`
+    const percent = formatPercent(doneTasks / maxTasks)
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasks.length / 2)}`
+    this.$progressLine.style.transform = `scaleX(${percent})`
     if (this.lock) addClass(this.$wrapper, 'no-pointer-events')
     else removeClass(this.$wrapper, 'no-pointer-events')
     this.$lock.textContent = this.lock ? '🔒' : '🔓'
@@ -464,7 +466,11 @@ export class BotImage extends Base {
     if (this.bot.unavailableColors.size === 0)
       addClass(this.$unownedColorStrategyLabel, 'hidden')
     this.$colors.innerHTML = ''
-    const pixelsSum = this.width * this.height
+    // Only the colors we show, so the percents add up to 100%
+    let pixelsSum = 0
+    for (const stat of this.colorsStat.values())
+      if (this.drawTransparentPixels || stat.realColor !== 0)
+        pixelsSum += stat.amount
 
     // If not the synced with colors then rebuild order
     if (
@@ -535,7 +541,11 @@ export class BotImage extends Base {
       }
       const $percent = document.createElement('span')
       addClass($percent, 'percent')
-      $percent.innerText = `${colorStat.amount}px ${((colorStat.amount / pixelsSum) * 100) | 0}%`
+      const donePixels = colorStat.amount - colorStat.left
+      const donePercent = donePixels / colorStat.amount
+      const share = colorStat.amount / pixelsSum
+      $percent.innerText = `${donePixels}/${colorStat.amount}px ${formatPercent(donePercent)} (${formatPercent(share)})`
+      $percent.title = 'Pixels drawn / total, drawn % (% of the image)'
       $button.appendChild($percent)
       this.$colors.append($button)
 

@@ -354,54 +354,54 @@ function colorToCSS(colorId) {
 }
 
 // src/image.html
-var image_default = `<div class="topbar">\r
-  <input type="text" class="name">\r
-  <button class="open-settings" title="Open settings">✏️</button>\r
-  <button class="export" title="Export image">📤</button>\r
-  <button class="lock" title="Lock/unlock image movement">🔓</button>\r
-  <button class="delete" title="Remove image from bot">❌</button>\r
-</div>\r
-<div class="wrapper">\r
-  <canvas></canvas>\r
-  <div class="resize n"></div>\r
-  <div class="resize e"></div>\r
-  <div class="resize s"></div>\r
-  <div class="resize w"></div>\r
-</div>\r
-<dialog class="form">\r
-    <div class="progress">\r
-      <div></div>\r
-      <span></span>\r
-    </div>\r
-    <label class="unowned-color-strategy" title="What to do with unonwned colors">\r
-      Unowned Colors:&nbsp;<select>\r
-        <option value="BUY" selected>Buy</option>\r
-        <option value="SKIP">Skip</option>\r
-        <option value="SUBSTITUTE">Substitute</option>\r
-      </select>\r
-    </label>\r
-    <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>\r
-    <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>\r
-    <label color="How to draw">\r
-      Strategy:&nbsp;<select class="strategy">\r
-        <option value="RANDOM">Random</option>\r
-        <option value="DOWN">Top to Bottom</option>\r
-        <option value="UP">Bottom to Top</option>\r
-        <option value="LEFT">Right to Left</option>\r
-        <option value="RIGHT">Left to Right</option>\r
-        <option value="SPIRAL_FROM_CENTER">Spiral out</option>\r
-        <option value="SPIRAL_TO_CENTER" selected>Spiral in</option>\r
-      </select>\r
-    </label>\r
-    <button class="reset-size">Reset size [<span></span>px]</button>\r
-    <label>\r
-      <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels\r
-    </label>\r
-    <label>\r
-      <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order\r
-    </label>\r
-    <div class="colors"></div>\r
-  </dialog>\r
+var image_default = `<div class="topbar">
+  <input type="text" class="name">
+  <button class="open-settings" title="Open settings">✏️</button>
+  <button class="export" title="Export image">📤</button>
+  <button class="lock" title="Lock/unlock image movement">🔓</button>
+  <button class="delete" title="Remove image from bot">❌</button>
+</div>
+<div class="wrapper">
+  <canvas></canvas>
+  <div class="resize n"></div>
+  <div class="resize e"></div>
+  <div class="resize s"></div>
+  <div class="resize w"></div>
+</div>
+<dialog class="form">
+    <div class="progress">
+      <div></div>
+      <span></span>
+    </div>
+    <label class="unowned-color-strategy" title="What to do with unonwned colors">
+      Unowned Colors:&nbsp;<select>
+        <option value="BUY" selected>Buy</option>
+        <option value="SKIP">Skip</option>
+        <option value="SUBSTITUTE">Substitute</option>
+      </select>
+    </label>
+    <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>
+    <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
+    <label color="How to draw">
+      Strategy:&nbsp;<select class="strategy">
+        <option value="RANDOM">Random</option>
+        <option value="DOWN">Top to Bottom</option>
+        <option value="UP">Bottom to Top</option>
+        <option value="LEFT">Right to Left</option>
+        <option value="RIGHT">Left to Right</option>
+        <option value="SPIRAL_FROM_CENTER">Spiral out</option>
+        <option value="SPIRAL_TO_CENTER" selected>Spiral in</option>
+      </select>
+    </label>
+    <button class="reset-size">Reset size [<span></span>px]</button>
+    <label>
+      <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels
+    </label>
+    <label>
+      <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order
+    </label>
+    <div class="colors"></div>
+  </dialog>
 `;
 
 // src/save.ts
@@ -529,6 +529,17 @@ function migrate(old) {
     };
   }
   return old;
+}
+
+// src/utils.ts
+function formatPercent(n) {
+  if (Number.isNaN(n))
+    return "0%";
+  if (n < 0.1)
+    n = (n * 1000 | 0) / 10;
+  else
+    n = n * 100 | 0;
+  return n + "%";
 }
 
 // src/worker-client.ts
@@ -839,6 +850,7 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
     const SIZE = width * height;
     const pixels2 = new Uint8Array(SIZE);
     const isSubstitute = unownedColorStrategy === "SUBSTITUTE" /* SUBSTITUTE */;
+    const realPixels = isSubstitute ? new Uint8Array(SIZE) : pixels2;
     const colorStat = new Map;
     const colorCache = new Map;
     for (let index = 1;index < 64; index++)
@@ -882,11 +894,18 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
           colorCache.set(key, [min, minReal]);
         }
         pixels2[pi] = isSubstitute ? min : minReal;
+        if (isSubstitute)
+          realPixels[pi] = minReal;
         const stat = colorStat.get(minReal);
         if (stat)
           stat.amount++;
         else
-          colorStat.set(minReal, { color: min, amount: 1, realColor: minReal });
+          colorStat.set(minReal, {
+            color: min,
+            amount: 1,
+            left: 0,
+            realColor: minReal
+          });
         i += 4;
         pi++;
       }
@@ -911,18 +930,22 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
       const dx = positions[index];
       const dy = positions[index + 1];
       const color = pixels2[dy * width + dx];
-      if (skipColors.has(color))
-        continue;
       const gx = globalX + dx;
       const gy = globalY + dy;
       const map = mapsCache.get(packTile(toTile(gx), toTile(gy)));
       const mapColor = map[toTilePosition(gy) * 1000 + toTilePosition(gx)];
-      if (color !== mapColor && (drawTransparentPixels || color !== 0))
-        tasks.push({
-          gx,
-          gy,
-          color
-        });
+      if (color === mapColor)
+        continue;
+      const realColor = realPixels[dy * width + dx];
+      colorStat.get(realColor).left++;
+      if (skipColors.has(color) || !drawTransparentPixels && color === 0)
+        continue;
+      tasks.push({
+        gx,
+        gy,
+        color,
+        realColor
+      });
     }
     if (drawColorsInOrder)
       tasks.sort((a, b) => (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0));
@@ -1480,7 +1503,7 @@ class BotImage extends Base2 {
   }
   async updatePixels(progress) {
     const progress2 = progress ?? ((p) => {
-      this.bot.widget.status = `⌛ Loading ${p * 100 | 0}%`;
+      this.bot.widget.status = `⌛ Loading ${formatPercent(p)}`;
     });
     const height = this.height;
     const width = this.width;
@@ -1542,9 +1565,9 @@ class BotImage extends Base2 {
     this.$name.value = this.name;
     const maxTasks = this.width * this.height;
     const doneTasks = maxTasks - this.tasks.length / 2;
-    const percent = doneTasks / maxTasks * 100 | 0;
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${etaText(this.bot, this.tasks.length / 2)}`;
-    this.$progressLine.style.transform = `scaleX(${percent}%)`;
+    const percent = formatPercent(doneTasks / maxTasks);
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasks.length / 2)}`;
+    this.$progressLine.style.transform = `scaleX(${percent})`;
     if (this.lock)
       addClass(this.$wrapper, "no-pointer-events");
     else
@@ -1563,7 +1586,10 @@ class BotImage extends Base2 {
     if (this.bot.unavailableColors.size === 0)
       addClass(this.$unownedColorStrategyLabel, "hidden");
     this.$colors.innerHTML = "";
-    const pixelsSum = this.width * this.height;
+    let pixelsSum = 0;
+    for (const stat of this.colorsStat.values())
+      if (this.drawTransparentPixels || stat.realColor !== 0)
+        pixelsSum += stat.amount;
     if (this.colors.length !== this.colorsStat.size || this.colors.some((x) => !this.colorsStat.has(x))) {
       this.colors = this.colorsStat.values().toArray().sort((a, b) => b.amount - a.amount).map((color) => color.realColor);
       save(this.bot);
@@ -1621,7 +1647,11 @@ class BotImage extends Base2 {
       }
       const $percent = document.createElement("span");
       addClass($percent, "percent");
-      $percent.innerText = `${colorStat.amount}px ${colorStat.amount / pixelsSum * 100 | 0}%`;
+      const donePixels = colorStat.amount - colorStat.left;
+      const donePercent = donePixels / colorStat.amount;
+      const share = colorStat.amount / pixelsSum;
+      $percent.innerText = `${donePixels}/${colorStat.amount}px ${formatPercent(donePercent)} (${formatPercent(share)})`;
+      $percent.title = "Pixels drawn / total, drawn % (% of the image)";
       $button.appendChild($percent);
       this.$colors.append($button);
       let dragging = false;
@@ -2143,22 +2173,22 @@ class NoImageError extends WPlaceBotError {
 }
 
 // src/widget.html
-var widget_default = `<button class="open-button"><div>></div></button>\r
-<input class="title" type="text">\r
-<div class="form">\r
-  <div class="progress"><div></div><span></span></div>\r
-  <div class="p status"></div>\r
-  <button class="draw" disabled>Draw</button>\r
-  <button class="auto-draw" disabled>Auto-Draw</button>\r
-  <label>Strategy:&nbsp;<select class="strategy">\r
-    <option value="SEQUENTIAL" selected>Sequential</option>\r
-    <option value="ALL">All</option>\r
-    <option value="PERCENTAGE">Percentage</option>\r
-  </select></label>\r
-  <button class="add-image" disabled>Add image</button>\r
-  <!-- <button class="pumpkin-hunt" disabled>Pumpkin Hunt!</button> -->\r
-  <div class="images"></div>\r
-</div>\r
+var widget_default = `<button class="open-button"><div>></div></button>
+<input class="title" type="text">
+<div class="form">
+  <div class="progress"><div></div><span></span></div>
+  <div class="p status"></div>
+  <button class="draw" disabled>Draw</button>
+  <button class="auto-draw" disabled>Auto-Draw</button>
+  <label>Strategy:&nbsp;<select class="strategy">
+    <option value="SEQUENTIAL" selected>Sequential</option>
+    <option value="ALL">All</option>
+    <option value="PERCENTAGE">Percentage</option>
+  </select></label>
+  <button class="add-image" disabled>Add image</button>
+  <!-- <button class="pumpkin-hunt" disabled>Pumpkin Hunt!</button> -->
+  <div class="images"></div>
+</div>
 `;
 
 // src/widget.ts
@@ -2270,9 +2300,9 @@ class Widget extends Base2 {
       totalTasks += image.tasks.length / 2;
     }
     const doneTasks = maxTasks - totalTasks;
-    const percent = maxTasks === 0 ? 0 : doneTasks / maxTasks * 100 | 0;
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent}% ETA: ${etaText(this.bot, totalTasks)}`;
-    this.$progressLine.style.transform = `scaleX(${percent}%)`;
+    const percent = formatPercent(doneTasks / maxTasks);
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, totalTasks)}h`;
+    this.$progressLine.style.transform = `scaleX(${percent})`;
     this.$images.innerHTML = "";
     for (let index = 0;index < this.bot.images.length; index++) {
       const image = this.bot.images[index];
@@ -2332,7 +2362,7 @@ class Widget extends Base2 {
     const originalStatus = this.status;
     try {
       const result = await run((p) => {
-        this.status = `${emoji} ${status} ${p * 100 | 0}%`;
+        this.status = `${emoji} ${status} ${formatPercent(p)}`;
       });
       this.status = originalStatus;
       return result;

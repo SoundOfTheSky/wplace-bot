@@ -113,6 +113,8 @@ function pixels(request: WorkerPixelsRequest) {
   const SIZE = width * height
   const pixels = new Uint8Array(SIZE)
   const isSubstitute = unownedColorStrategy === UnownedColorStrategy.SUBSTITUTE
+  /** Colors before substitution, they key `colorStat` */
+  const realPixels = isSubstitute ? new Uint8Array(SIZE) : pixels
   const colorStat = new Map<number, PixelColorStat>()
   const colorCache = new Map<number, [number, number]>()
   for (let index = 1; index < 64; index++)
@@ -161,9 +163,16 @@ function pixels(request: WorkerPixelsRequest) {
         colorCache.set(key, [min, minReal])
       }
       pixels[pi] = isSubstitute ? min : minReal
+      if (isSubstitute) realPixels[pi] = minReal
       const stat = colorStat.get(minReal)
       if (stat) stat.amount++
-      else colorStat.set(minReal, { color: min, amount: 1, realColor: minReal })
+      else
+        colorStat.set(minReal, {
+          color: min,
+          amount: 1,
+          left: 0,
+          realColor: minReal,
+        })
       i += 4
       pi++
     }
@@ -181,7 +190,8 @@ function pixels(request: WorkerPixelsRequest) {
     colorsOrderMap.set(drawColor, index)
   }
   const positions = strategyPosition(strategy, height, width)
-  const tasks: { gx: number; gy: number; color: number }[] = []
+  const tasks: { gx: number; gy: number; color: number; realColor: number }[] =
+    []
   lastProgress = 0
   for (let index = 0; index < positions.length; index += 2) {
     const progress = ((index / positions.length) * 10) | 0
@@ -192,20 +202,26 @@ function pixels(request: WorkerPixelsRequest) {
     const dx = positions[index]!
     const dy = positions[index + 1]!
     const color = pixels[dy * width + dx]!
-    if (skipColors.has(color)) continue
 
     const gx = globalX + dx
     const gy = globalY + dy
-
     const map = mapsCache.get(packTile(toTile(gx), toTile(gy)))!
     const mapColor = map[toTilePosition(gy) * 1000 + toTilePosition(gx)]
 
-    if (color !== mapColor && (drawTransparentPixels || color !== 0))
-      tasks.push({
-        gx,
-        gy,
-        color,
-      })
+    if (color === mapColor) continue
+
+    // Counted even for skipped colors, they are not painted, not done
+    const realColor = realPixels[dy * width + dx]!
+    colorStat.get(realColor)!.left++
+    if (skipColors.has(color) || (!drawTransparentPixels && color === 0))
+      continue
+
+    tasks.push({
+      gx,
+      gy,
+      color,
+      realColor,
+    })
   }
   if (drawColorsInOrder)
     tasks.sort(
