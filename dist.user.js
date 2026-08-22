@@ -2753,7 +2753,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
     ].slice(0, FAVORITE_LOCATIONS.length);
   }
   async zoomIn(zoom, canvas = document.querySelector(".maplibregl-canvas")) {
-    const position = new WorldPosition(this, WORLD_PIXEL_SIZE / 2, WORLD_PIXEL_SIZE / 2);
+    const position = this.images[0].position;
     if (position.pixelSize >= zoom)
       return;
     const event = new WheelEvent("wheel", {

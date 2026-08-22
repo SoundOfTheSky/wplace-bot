@@ -13,7 +13,6 @@ import {
   FAVORITE_LOCATIONS,
   FAVORITE_LOCATIONS_POSITIONS,
   type Position,
-  WORLD_PIXEL_SIZE,
   WorldPosition,
 } from './world-position'
 
@@ -620,11 +619,7 @@ export class WPlaceBot {
     zoom: number,
     canvas = document.querySelector<HTMLDivElement>('.maplibregl-canvas')!,
   ) {
-    const position = new WorldPosition(
-      this,
-      WORLD_PIXEL_SIZE / 2,
-      WORLD_PIXEL_SIZE / 2,
-    )
+    const position = this.images[0]!.position
     if (position.pixelSize >= zoom) return
     const event = new WheelEvent('wheel', {
       deltaY: -10,
