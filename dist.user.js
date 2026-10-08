@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.2.0
+// @version      5.2.1
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -2189,7 +2189,9 @@ class Widget extends Base2 {
       input.accept = "image/*,.wbot";
       input.hidden = true;
       document.body.append(input);
-      await promisifyEventSource(input, ["change"], ["cancel", "error"]);
+      const load = promisifyEventSource(input, ["change"], ["cancel", "error"]);
+      input.click();
+      await load;
       const file = input.files?.[0];
       if (!file)
         throw new NoImageError;

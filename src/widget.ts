@@ -114,7 +114,13 @@ export class Widget extends Base {
         input.accept = 'image/*,.wbot'
         input.hidden = true
         document.body.append(input)
-        await promisifyEventSource(input, ['change'], ['cancel', 'error'])
+        const load = promisifyEventSource(
+          input,
+          ['change'],
+          ['cancel', 'error'],
+        )
+        input.click()
+        await load
         const file = input.files?.[0]
         if (!file) throw new NoImageError()
         await this.bot.updateColorsData()
