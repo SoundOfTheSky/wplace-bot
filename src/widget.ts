@@ -108,13 +108,21 @@ export class Widget extends Base {
     return this.run(
       'Adding image',
       async () => {
-        // The file picker must be opened synchronously
+        // The file picker must be opened synchronously from the click:
+        // register the listeners first, then call click() before any await
+        // so the transient user activation is not lost.
         const input = document.createElement('input')
         input.type = 'file'
         input.accept = 'image/*,.wbot'
         input.hidden = true
         document.body.append(input)
-        await promisifyEventSource(input, ['change'], ['cancel', 'error'])
+        const selected = promisifyEventSource(
+          input,
+          ['change'],
+          ['cancel', 'error'],
+        )
+        input.click()
+        await selected
         const file = input.files?.[0]
         if (!file) throw new NoImageError()
         await this.bot.updateColorsData()

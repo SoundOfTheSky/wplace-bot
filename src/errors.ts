@@ -1,5 +1,3 @@
-import { WPlaceBot } from './bot'
-
 export class WPlaceBotError extends Error {
   public override name = 'WPlaceBotError'
 }
