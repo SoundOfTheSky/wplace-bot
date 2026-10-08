@@ -1,4 +1,5 @@
 import { type Me, WPlaceBot } from './bot'
+import { NoAnchorError } from './errors'
 
 export type Position = {
   x: number
@@ -43,18 +44,10 @@ addFavoriteLocation({
   y: ((WORLD_PIXEL_SIZE / 3) * 2) | 0,
 })
 
-// function latLonToWplace(lat: number, lon: number) {
-//   return {
-//     x: (((lon * Math.PI) / 180 + Math.PI) / (2 * Math.PI)) * WORLD_PIXEL_SIZE,
-//     y:
-//       ((-Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 180 / 2)) +
-//         Math.PI) /
-//         (2 * Math.PI)) *
-//       WORLD_PIXEL_SIZE,
-//   }
-// }
-
-export function extractScreenPositionFromStar($star: HTMLDivElement) {
+export function extractScreenPositionFromStar(
+  $star: HTMLDivElement | undefined,
+) {
+  if (!$star) throw new NoAnchorError()
   const [x, y] = $star.style.transform
     .slice(32, -31)
     .split(', ')
@@ -125,8 +118,8 @@ export class WorldPosition {
   /** Pixel size around with world position. Calculated on every read */
   public get pixelSize() {
     return (
-      (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]!).x -
-        extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]!).x) /
+      (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]).x -
+        extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]).x) /
       (FAVORITE_LOCATIONS_POSITIONS[this.anchor2Index]!.x -
         FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]!.x)
     )
@@ -177,7 +170,7 @@ export class WorldPosition {
   public toScreenPosition(): Position {
     const worldPosition = FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]!
     const screenPosition = extractScreenPositionFromStar(
-      this.bot.$stars[this.anchor1Index]!,
+      this.bot.$stars[this.anchor1Index],
     )
     return {
       x: (this.globalX - worldPosition.x) * this.pixelSize + screenPosition.x,

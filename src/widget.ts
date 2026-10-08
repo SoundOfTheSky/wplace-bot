@@ -108,14 +108,17 @@ export class Widget extends Base {
     return this.run(
       'Adding image',
       async () => {
-        await this.bot.updateColorsData()
+        // The file picker must be opened synchronously
         const input = document.createElement('input')
         input.type = 'file'
         input.accept = 'image/*,.wbot'
-        input.click()
+        input.hidden = true
+        document.body.append(input)
         await promisifyEventSource(input, ['change'], ['cancel', 'error'])
         const file = input.files?.[0]
-        if (!file) throw new NoImageError(this.bot)
+        if (!file) throw new NoImageError()
+        await this.bot.updateColorsData()
+        this.bot.updateStars()
         if (file.name.endsWith('.wbot')) {
           await BotImage.fromJSON(
             this.bot,
@@ -127,8 +130,9 @@ export class Widget extends Base {
           )
         } else {
           const reader = new FileReader()
+          const loaded = promisifyEventSource(reader, ['load'], ['error'])
           reader.readAsDataURL(file)
-          await promisifyEventSource(reader, ['load'], ['error'])
+          await loaded
           await BotImage.fromJSON(this.bot, {
             url: reader.result as string,
           })
@@ -241,10 +245,9 @@ export class Widget extends Base {
       this.status = originalStatus
       return result
     } catch (error) {
-      if (!(error instanceof WPlaceBotError)) {
-        console.error(error)
-        this.status = `❌ ${status}`
-      }
+      if (error instanceof WPlaceBotError)
+        this.status = `${error instanceof WPlaceBotError ? '⚠️' : '❌'} ${status}`
+      console.error(error)
       throw error
     } finally {
       await fin?.()
