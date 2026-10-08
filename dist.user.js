@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.1.7
+// @version      5.2.0
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -775,9 +775,9 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
       }
     }
     const SIZE = width * height;
-    const pixels2 = new Uint8Array(SIZE);
+    const pixels = new Uint8Array(SIZE);
     const isSubstitute = unownedColorStrategy === "SUBSTITUTE" /* SUBSTITUTE */;
-    const realPixels = isSubstitute ? new Uint8Array(SIZE) : pixels2;
+    const realPixels = isSubstitute ? new Uint8Array(SIZE) : pixels;
     const colorStat = new Map;
     const colorCache = new Map;
     for (let index = 1;index < 64; index++)
@@ -820,7 +820,7 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
           }
           colorCache.set(key, [min, minReal]);
         }
-        pixels2[pi] = isSubstitute ? min : minReal;
+        pixels[pi] = isSubstitute ? min : minReal;
         if (isSubstitute)
           realPixels[pi] = minReal;
         const stat = colorStat.get(minReal);
@@ -856,7 +856,7 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
       }
       const dx = positions[index];
       const dy = positions[index + 1];
-      const color = pixels2[dy * width + dx];
+      const color = pixels[dy * width + dx];
       const gx = globalX + dx;
       const gy = globalY + dy;
       const map = mapsCache.get(packTile(toTile(gx), toTile(gy)));
@@ -887,8 +887,8 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
       id,
       taskPositions,
       colorStat,
-      pixels: pixels2
-    }, [taskPositions.buffer, pixels2.buffer]);
+      pixels
+    }, [taskPositions.buffer, pixels.buffer]);
   }
   function strategyPosition(strategy, height, width) {
     const SIZE = width * height;
@@ -938,9 +938,9 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
             result[index + 1] = y;
             index += 2;
           }
-        for (let index2 = SIZE - 1;index2 >= 0; index2--) {
-          const randIndex = Math.floor(Math.random() * (index2 + 1)) * 2;
-          const realIndex = index2 * 2;
+        for (let index = SIZE - 1;index >= 0; index--) {
+          const randIndex = Math.floor(Math.random() * (index + 1)) * 2;
+          const realIndex = index * 2;
           const temporaryX = result[realIndex];
           const temporaryY = result[realIndex + 1];
           result[realIndex] = result[randIndex];
@@ -1017,17 +1017,17 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
     ctx.drawImage(bitmap, 0, 0);
     const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
     const SIZE = bitmap.height * bitmap.width;
-    const pixels2 = new Uint8Array(SIZE);
+    const pixels = new Uint8Array(SIZE);
     for (let i = 0, pi = 0;i < data.length; i += 4, pi++) {
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
       const a = data[i + 3];
       const key = r << 16 | g << 8 | b;
-      pixels2[pi] = a < 100 ? 0 : COLORS_RGB_MAP.get(key) ?? 0;
+      pixels[pi] = a < 100 ? 0 : COLORS_RGB_MAP.get(key) ?? 0;
     }
-    mapsCache.set(packTile(tileX, tileY), pixels2);
-    return pixels2;
+    mapsCache.set(packTile(tileX, tileY), pixels);
+    return pixels;
   }
   var packTile = (tileX, tileY) => tileX << 11 | tileY;
   var toTile = (n) => n / WORLD_TILE_SIZE | 0;
@@ -1075,6 +1075,25 @@ function workerClearMapCache() {
   worker.postMessage("CLEAR_MAP_CACHE");
 }
 
+// src/errors.ts
+class WPlaceBotError extends Error {
+  name = "WPlaceBotError";
+}
+
+class NoImageError extends WPlaceBotError {
+  name = "NoImageError";
+  constructor() {
+    super("No image is selected");
+  }
+}
+
+class NoAnchorError extends WPlaceBotError {
+  name = "NoAnchorError";
+  constructor() {
+    super("Anchors are missing. Reload the page.");
+  }
+}
+
 // src/world-position.ts
 var WORLD_TILE_SIZE = 1000;
 var WORLD_TILES = 2048;
@@ -1100,7 +1119,9 @@ addFavoriteLocation({
   y: WORLD_PIXEL_SIZE / 3 * 2 | 0
 });
 function extractScreenPositionFromStar($star) {
-  const [x, y] = $star.style.transform.slice(32, -31).split(", ").map((x2) => Number.parseFloat(x2));
+  if (!$star)
+    throw new NoAnchorError;
+  const [x, y] = $star.style.transform.slice(32, -31).split(", ").map((x) => Number.parseFloat(x));
   return { x, y };
 }
 
@@ -1719,17 +1740,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
   --main-hover: #48a19a;
 }
 
-/**
- * Hide our injected favorite location markers.
- * \`of S\` is required: plain :nth-child() counts among ALL siblings of the
- * canvas container, where the markers are never the first children.
- */
-:nth-child(
-  -n
-    + FAKE_FAVORITE_LOCATIONS
-    of
-    .text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center
-) {
+.maplibregl-marker[aria-label='WBOT_FAVORITE'] {
   display: none !important;
 }
 
@@ -1753,7 +1764,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
 }
 
 .widget * {
-  font-family: 'Tiny5', sans-serif;
+  font-family: 'Tiny5', sans-serif !important;
 }
 
 .widget .title {
@@ -1852,7 +1863,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
 }
 
 .image * {
-  font-family: 'Tiny5', sans-serif;
+  font-family: 'Tiny5', sans-serif !important;
 }
 
 .image canvas {
@@ -2083,22 +2094,6 @@ dialog.form::backdrop {
 }
 `;
 
-// src/errors.ts
-class WPlaceBotError extends Error {
-  name = "WPlaceBotError";
-  constructor(message, bot) {
-    super(message);
-    bot.widget.status = message;
-  }
-}
-
-class NoImageError extends WPlaceBotError {
-  name = "NoImageError";
-  constructor(bot) {
-    super("❌ No image is selected", bot);
-  }
-}
-
 // src/widget.html
 var widget_default = `<button class="open-button"><div>></div></button>
 <input class="title" type="text">
@@ -2189,21 +2184,24 @@ class Widget extends Base2 {
   addImage() {
     this.setDisabled("add-image", true);
     return this.run("Adding image", async () => {
-      await this.bot.updateColorsData();
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "image/*,.wbot";
-      input.click();
+      input.hidden = true;
+      document.body.append(input);
       await promisifyEventSource(input, ["change"], ["cancel", "error"]);
       const file = input.files?.[0];
       if (!file)
-        throw new NoImageError(this.bot);
+        throw new NoImageError;
+      await this.bot.updateColorsData();
+      this.bot.updateStars();
       if (file.name.endsWith(".wbot")) {
         await BotImage.fromJSON(this.bot, migrateImage(JSON.parse(await file.text())));
       } else {
         const reader = new FileReader;
+        const loaded = promisifyEventSource(reader, ["load"], ["error"]);
         reader.readAsDataURL(file);
-        await promisifyEventSource(reader, ["load"], ["error"]);
+        await loaded;
         await BotImage.fromJSON(this.bot, {
           url: reader.result
         });
@@ -2294,10 +2292,9 @@ class Widget extends Base2 {
       this.status = originalStatus;
       return result;
     } catch (error) {
-      if (!(error instanceof WPlaceBotError)) {
-        console.error(error);
-        this.status = `❌ ${status}`;
-      }
+      if (error instanceof WPlaceBotError)
+        this.status = `${error instanceof WPlaceBotError ? "⚠️" : "❌"} ${status}`;
+      console.error(error);
       throw error;
     } finally {
       await fin?.();
@@ -2322,10 +2319,10 @@ class WPlaceBot {
   widget = new Widget(this);
   markerPixelPositionResolvers = [];
   lastColor;
-  constructor(save2) {
-    if (save2) {
-      for (let index = 0;index < save2.images.length; index++) {
-        const image = save2.images[index];
+  constructor(save) {
+    if (save) {
+      for (let index = 0;index < save.images.length; index++) {
+        const image = save.images[index];
         addFavoriteLocation({
           x: image.position[0] - 1000,
           y: image.position[1] - 1000
@@ -2335,8 +2332,8 @@ class WPlaceBot {
           y: image.position[1] + 1000
         });
       }
-      this.strategy = save2.strategy;
-      this.title = save2.title;
+      this.strategy = save.strategy;
+      this.title = save.title;
     } else {
       this.title = "WPlace-bot";
     }
@@ -2347,7 +2344,7 @@ class WPlaceBot {
     this.widget.run("Initializing", async (progress) => {
       await this.waitForElement(".avatar.center-absolute.absolute");
       progress(0.01);
-      await this.waitForElement(".btn.btn-primary.btn-lg.relative.z-30 canvas");
+      await this.waitForElement(".btn.btn-primary.btn-lg.relative.z-30");
       progress(0.02);
       const $canvasContainer = await this.waitForElement(".maplibregl-canvas-container");
       progress(0.03);
@@ -2369,10 +2366,10 @@ class WPlaceBot {
       progress(0.04);
       await this.updateColorsData();
       progress(0.05);
-      if (save2) {
-        const batchSize = 1 / save2.images.length;
-        for (let index = 0;index < save2.images.length; index++) {
-          await BotImage.fromJSON(this, save2.images[index], (p) => {
+      if (save) {
+        const batchSize = 1 / save.images.length;
+        for (let index = 0;index < save.images.length; index++) {
+          await BotImage.fromJSON(this, save.images[index], (p) => {
             progress(0.05 + (index * batchSize + p * batchSize) * 0.95);
           });
         }
@@ -2419,14 +2416,14 @@ Developer will try to fix your save. Be vary that github issues are public, and 
         return;
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
-      await this.widget.run("Loading", (progress2) => Promise.all([
+      await this.widget.run("Loading", (progress) => Promise.all([
         this.updateColorsData().then(async () => {
           workerClearMapCache();
           await wait(100);
           const batchSize = 1 / this.images.length;
           for (let index = 0;index < this.images.length; index++)
             await this.images[index].updatePixels((p) => {
-              progress2(index * batchSize + p * batchSize);
+              progress(index * batchSize + p * batchSize);
             });
         }),
         this.zoomIn(4, $canvas),
@@ -2446,8 +2443,8 @@ Developer will try to fix your save. Be vary that github issues are public, and 
           continue;
         tasksLength += image.tasks.length / 2;
         if (image.unownedColorStrategy === "BUY" /* BUY */) {
-          for (let index2 = 0;index2 < image.colors.length; index2++) {
-            const color = image.colors[index2];
+          for (let index = 0;index < image.colors.length; index++) {
+            const color = image.colors[index];
             if (image.disabledColors.has(color) || !this.unavailableColors.has(color))
               continue;
             const amount = image.colorsStat.get(color).amount;
@@ -2587,7 +2584,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
         drawTime = Date.now() + (this.me?.charges.max ?? 100) * 0.9 * 30000;
         try {
           await this.draw();
-          document.querySelector(".absolute.bottom-0  .btn.btn-lg.relative.btn-primary")?.click();
+          document.querySelector(".paint-actions > *:nth-child(2) button")?.click();
           errorCount = 0;
         } catch {
           errorCount++;
@@ -2706,7 +2703,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
   }
   updateStars() {
     this.$stars = [
-      ...document.querySelectorAll(".text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center")
+      ...document.querySelectorAll(".maplibregl-marker[aria-label='WBOT_FAVORITE']")
     ].slice(0, FAVORITE_LOCATIONS.length);
   }
   async zoomIn(zoom, canvas = document.querySelector(".maplibregl-canvas")) {

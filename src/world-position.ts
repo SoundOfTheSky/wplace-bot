@@ -1,4 +1,5 @@
 import { type Me, WPlaceBot } from './bot'
+import { NoAnchorError } from './errors'
 
 export type Position = {
   x: number
@@ -43,34 +44,15 @@ addFavoriteLocation({
   y: ((WORLD_PIXEL_SIZE / 3) * 2) | 0,
 })
 
-// function latLonToWplace(lat: number, lon: number) {
-//   return {
-//     x: (((lon * Math.PI) / 180 + Math.PI) / (2 * Math.PI)) * WORLD_PIXEL_SIZE,
-//     y:
-//       ((-Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 180 / 2)) +
-//         Math.PI) /
-//         (2 * Math.PI)) *
-//       WORLD_PIXEL_SIZE,
-//   }
-// }
-
 export function extractScreenPositionFromStar(
   $star: HTMLDivElement | undefined,
 ) {
-  if (!$star)
-    throw new Error(
-      'WPlace-bot: image positioning anchors are missing. Reload the page.',
-    )
-  const match = /translate\(\s*([-+\d.eE]+)px\s*,\s*([-+\d.eE]+)px\s*\)/.exec(
-    $star.style.transform,
-  )
-  if (
-    !match ||
-    !Number.isFinite(Number(match[1])) ||
-    !Number.isFinite(Number(match[2]))
-  )
-    throw new Error('WPlace-bot: unsupported map marker position.')
-  return { x: Number(match[1]), y: Number(match[2]) }
+  if (!$star) throw new NoAnchorError()
+  const [x, y] = $star.style.transform
+    .slice(32, -31)
+    .split(', ')
+    .map((x) => Number.parseFloat(x)) as [number, number]
+  return { x, y }
 }
 
 export class WorldPosition {

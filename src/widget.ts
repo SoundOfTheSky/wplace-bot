@@ -2,7 +2,7 @@ import { promisifyEventSource, swap } from '@softsky/utils'
 
 import { Base } from './base'
 import { WPlaceBot } from './bot'
-import { WPlaceBotError } from './errors'
+import { NoImageError, WPlaceBotError } from './errors'
 import { BotImage, etaText } from './image'
 import {
   addClass,
@@ -108,44 +108,15 @@ export class Widget extends Base {
     return this.run(
       'Adding image',
       async () => {
-        // The file picker must be opened synchronously from the click: awaiting
-        // anything first (e.g. updateColorsData) drops the transient user
-        // activation and browsers then refuse to show the dialog.
+        // The file picker must be opened synchronously
         const input = document.createElement('input')
         input.type = 'file'
         input.accept = 'image/*,.wbot'
         input.hidden = true
         document.body.append(input)
-        let file: File | undefined
-        try {
-          const selected = new Promise<File | undefined>((resolve, reject) => {
-            input.addEventListener(
-              'change',
-              () => {
-                resolve(input.files?.[0])
-              },
-              {
-                once: true,
-              },
-            )
-            input.addEventListener(
-              'cancel',
-              () => {
-                resolve(undefined)
-              },
-              {
-                once: true,
-              },
-            )
-            input.addEventListener('error', reject, { once: true })
-          })
-          input.click()
-          file = await selected
-        } finally {
-          input.remove()
-        }
-        if (!file) return
-        // Colors and anchors may be stale, refresh them before positioning.
+        await promisifyEventSource(input, ['change'], ['cancel', 'error'])
+        const file = input.files?.[0]
+        if (!file) throw new NoImageError()
         await this.bot.updateColorsData()
         this.bot.updateStars()
         if (file.name.endsWith('.wbot')) {
@@ -159,8 +130,6 @@ export class Widget extends Base {
           )
         } else {
           const reader = new FileReader()
-          // Register the listener before starting the read, otherwise a fast
-          // read can fire `load` before we start listening.
           const loaded = promisifyEventSource(reader, ['load'], ['error'])
           reader.readAsDataURL(file)
           await loaded
@@ -276,10 +245,9 @@ export class Widget extends Base {
       this.status = originalStatus
       return result
     } catch (error) {
-      if (!(error instanceof WPlaceBotError)) {
-        console.error(error)
-        this.status = `❌ ${status}`
-      }
+      if (error instanceof WPlaceBotError)
+        this.status = `${error instanceof WPlaceBotError ? '⚠️' : '❌'} ${status}`
+      console.error(error)
       throw error
     } finally {
       await fin?.()

@@ -440,7 +440,7 @@ export class WPlaceBot {
           // Click draw
           document
             .querySelector<HTMLButtonElement>(
-              '.absolute.bottom-0  .btn.btn-lg.relative.btn-primary',
+              '.paint-actions > *:nth-child(2) button',
             )
             ?.click()
           errorCount = 0
@@ -607,7 +607,7 @@ export class WPlaceBot {
   public updateStars() {
     this.$stars = [
       ...document.querySelectorAll<HTMLDivElement>(
-        '.maplibregl-marker[aria-label="WBOT_FAVORITE"]',
+        ".maplibregl-marker[aria-label='WBOT_FAVORITE']",
       ),
     ].slice(0, FAVORITE_LOCATIONS.length)
   }
