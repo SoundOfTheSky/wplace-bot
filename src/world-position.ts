@@ -54,12 +54,23 @@ addFavoriteLocation({
 //   }
 // }
 
-export function extractScreenPositionFromStar($star: HTMLDivElement) {
-  const [x, y] = $star.style.transform
-    .slice(32, -31)
-    .split(', ')
-    .map((x) => Number.parseFloat(x)) as [number, number]
-  return { x, y }
+export function extractScreenPositionFromStar(
+  $star: HTMLDivElement | undefined,
+) {
+  if (!$star)
+    throw new Error(
+      'WPlace-bot: image positioning anchors are missing. Reload the page.',
+    )
+  const match = /translate\(\s*([-+\d.eE]+)px\s*,\s*([-+\d.eE]+)px\s*\)/.exec(
+    $star.style.transform,
+  )
+  if (
+    !match ||
+    !Number.isFinite(Number(match[1])) ||
+    !Number.isFinite(Number(match[2]))
+  )
+    throw new Error('WPlace-bot: unsupported map marker position.')
+  return { x: Number(match[1]), y: Number(match[2]) }
 }
 
 export class WorldPosition {
@@ -125,8 +136,8 @@ export class WorldPosition {
   /** Pixel size around with world position. Calculated on every read */
   public get pixelSize() {
     return (
-      (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]!).x -
-        extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]!).x) /
+      (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]).x -
+        extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]).x) /
       (FAVORITE_LOCATIONS_POSITIONS[this.anchor2Index]!.x -
         FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]!.x)
     )
@@ -177,7 +188,7 @@ export class WorldPosition {
   public toScreenPosition(): Position {
     const worldPosition = FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]!
     const screenPosition = extractScreenPositionFromStar(
-      this.bot.$stars[this.anchor1Index]!,
+      this.bot.$stars[this.anchor1Index],
     )
     return {
       x: (this.globalX - worldPosition.x) * this.pixelSize + screenPosition.x,

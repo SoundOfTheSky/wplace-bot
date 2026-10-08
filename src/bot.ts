@@ -128,9 +128,7 @@ export class WPlaceBot {
         // Waiting for all of website to load
         await this.waitForElement('.avatar.center-absolute.absolute')
         progress(0.01)
-        await this.waitForElement(
-          '.btn.btn-primary.btn-lg.relative.z-30 canvas',
-        )
+        await this.waitForElement('.btn.btn-primary.btn-lg.relative.z-30')
         progress(0.02)
         const $canvasContainer = await this.waitForElement(
           '.maplibregl-canvas-container',
@@ -508,7 +506,7 @@ export class WPlaceBot {
     let min1 = Infinity
     let min2 = Infinity
     for (let index = 0; index < this.$stars.length; index++) {
-      const { x, y } = extractScreenPositionFromStar(this.$stars[index]!)
+      const { x, y } = extractScreenPositionFromStar(this.$stars[index])
       if (x < position.x && y < position.y) {
         const delta = position.x - x + (position.y - y)
         if (delta < min1) {
@@ -524,14 +522,14 @@ export class WPlaceBot {
       }
     }
     const anchorScreenPosition = extractScreenPositionFromStar(
-      this.$stars[anchorIndex]!,
+      this.$stars[anchorIndex],
     )
     const anchorWorldPosition = FAVORITE_LOCATIONS_POSITIONS[anchorIndex]!
     return {
       anchorScreenPosition,
       anchorWorldPosition,
       pixelSize:
-        (extractScreenPositionFromStar(this.$stars[minI2]!).x -
+        (extractScreenPositionFromStar(this.$stars[minI2]).x -
           anchorScreenPosition.x) /
         (FAVORITE_LOCATIONS_POSITIONS[minI2]!.x - anchorWorldPosition.x),
     }
@@ -606,10 +604,10 @@ export class WPlaceBot {
   }
 
   /** Simply update $stars property */
-  protected updateStars() {
+  public updateStars() {
     this.$stars = [
       ...document.querySelectorAll<HTMLDivElement>(
-        '.text-yellow-400.cursor-pointer.z-10.maplibregl-marker.maplibregl-marker-anchor-center',
+        '.maplibregl-marker[aria-label="WBOT_FAVORITE"]',
       ),
     ].slice(0, FAVORITE_LOCATIONS.length)
   }
