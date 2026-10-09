@@ -1,15 +1,5 @@
-import {
-  COLORS,
-  COLORS_RGB,
-  COLORS_RGB_MAP,
-  deltaE2000,
-  rgbToOklab,
-} from './colors'
-import {
-  ImageStrategy,
-  type PixelColorStat,
-  UnownedColorStrategy,
-} from './image'
+import { COLORS, COLORS_RGB, COLORS_RGB_MAP, deltaE2000, rgbToOklab } from './colors'
+import { ImageStrategy, type PixelColorStat, UnownedColorStrategy } from './image'
 import { WORLD_TILE_SIZE } from './world-position'
 
 export type WorkerPixelsRequest = {
@@ -28,7 +18,6 @@ export type WorkerPixelsRequest = {
   strategy: ImageStrategy
   globalX: number
   globalY: number
-  drawTransparentPixels: boolean
 }
 
 export type WorkerPixelsResponse = {
@@ -48,12 +37,9 @@ export type WokerErrorResponse = {
   error: string
 }
 
-export type WorkerResponse =
-  WorkerProgressResponse | WorkerPixelsResponse | WokerErrorResponse
+export type WorkerResponse = WorkerProgressResponse | WorkerPixelsResponse | WokerErrorResponse
 
-self.onmessage = async (
-  e: MessageEvent<WorkerPixelsRequest | 'CLEAR_MAP_CACHE'>,
-) => {
+self.onmessage = async (e: MessageEvent<WorkerPixelsRequest | 'CLEAR_MAP_CACHE'>) => {
   if (e.data === 'CLEAR_MAP_CACHE') mapsCache.clear()
   else {
     const data = e.data
@@ -81,7 +67,6 @@ function pixels(request: WorkerPixelsRequest) {
     unownedColorStrategy,
     globalX,
     globalY,
-    drawTransparentPixels,
   } = request
   let lastProgress = 0
 
@@ -118,8 +103,7 @@ function pixels(request: WorkerPixelsRequest) {
   const colorStat = new Map<number, PixelColorStat>()
   const colorCache = new Map<number, [number, number]>()
   for (let index = 1; index < 64; index++)
-    if (!unavailableColors.has(index))
-      colorCache.set(COLORS_RGB[index]!, [index, index])
+    if (!unavailableColors.has(index)) colorCache.set(COLORS_RGB[index]!, [index, index])
 
   let i = 0
   let pi = 0
@@ -146,11 +130,7 @@ function pixels(request: WorkerPixelsRequest) {
         let minDelta = Infinity
         let minDeltaReal = Infinity
         for (let colorIndex = 1; colorIndex < 64; colorIndex++) {
-          const delta = deltaE2000(
-            rgbToOklab(r, g, b),
-            COLORS[colorIndex]!,
-            brightness,
-          )
+          const delta = deltaE2000(rgbToOklab(r, g, b), COLORS[colorIndex]!, brightness)
           if (!unavailableColors.has(colorIndex) && delta < minDelta) {
             minDelta = delta
             min = colorIndex
@@ -185,13 +165,11 @@ function pixels(request: WorkerPixelsRequest) {
   const colorsOrderMap = new Map<number, number>()
   for (let index = 0; index < colors.length; index++) {
     const drawColor = colors[index]!
-    if (disabledColors.has(drawColor) || unavailableColors.has(drawColor))
-      skipColors.add(drawColor)
+    if (disabledColors.has(drawColor) || unavailableColors.has(drawColor)) skipColors.add(drawColor)
     colorsOrderMap.set(drawColor, index)
   }
   const positions = strategyPosition(strategy, height, width)
-  const tasks: { gx: number; gy: number; color: number; realColor: number }[] =
-    []
+  const tasks: { gx: number; gy: number; color: number; realColor: number }[] = []
   lastProgress = 0
   for (let index = 0; index < positions.length; index += 2) {
     const progress = ((index / positions.length) * 10) | 0
@@ -213,8 +191,7 @@ function pixels(request: WorkerPixelsRequest) {
     // Counted even for skipped colors, they are not painted, not done
     const realColor = realPixels[dy * width + dx]!
     colorStat.get(realColor)!.left++
-    if (skipColors.has(color) || (!drawTransparentPixels && color === 0))
-      continue
+    if (skipColors.has(color)) continue
 
     tasks.push({
       gx,
@@ -224,10 +201,7 @@ function pixels(request: WorkerPixelsRequest) {
     })
   }
   if (drawColorsInOrder)
-    tasks.sort(
-      (a, b) =>
-        (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0),
-    )
+    tasks.sort((a, b) => (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0))
 
   // Sending
   const taskPositions = new Uint32Array(tasks.length * 2)
@@ -249,11 +223,7 @@ function pixels(request: WorkerPixelsRequest) {
 }
 
 /** Returns array array there index*2=x, index*2+1=y */
-function strategyPosition(
-  strategy: ImageStrategy,
-  height: number,
-  width: number,
-) {
+function strategyPosition(strategy: ImageStrategy, height: number, width: number) {
   const SIZE = width * height
   const result = new Uint16Array(SIZE * 2) // Max 65535
   let index = 0
@@ -362,21 +332,14 @@ function strategyPosition(
 }
 
 const mapsCache = new Map<number, Uint8Array>()
-function readMap(
-  id: number,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-) {
+function readMap(id: number, x: number, y: number, width: number, height: number) {
   const imagesToDownload = []
   const tileXEnd = toTile(x + width)
   const tileYEnd = toTile(y + height)
   const tileYStart = toTile(y)
   for (let tileX = toTile(x); tileX <= tileXEnd; tileX++)
     for (let tileY = tileYStart; tileY <= tileYEnd; tileY++)
-      if (!mapsCache.has(packTile(tileX, tileY)))
-        imagesToDownload.push({ tileX, tileY })
+      if (!mapsCache.has(packTile(tileX, tileY))) imagesToDownload.push({ tileX, tileY })
 
   let done = 0
   return Promise.all(
@@ -391,9 +354,7 @@ function readMap(
 
 /** Fast fetch pixels for map */
 async function updateMapPixels(tileX: number, tileY: number) {
-  const res = await fetch(
-    `https://backend.wplace.live/files/s0/tiles/${tileX}/${tileY}.png`,
-  )
+  const res = await fetch(`https://backend.wplace.live/files/s0/tiles/${tileX}/${tileY}.png`)
   const blob = await res.blob()
   const bitmap = await createImageBitmap(blob)
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)

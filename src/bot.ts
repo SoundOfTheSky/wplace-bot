@@ -1,7 +1,5 @@
-import { wait } from '@softsky/utils'
-
+import { formatNumber, wait } from '@softsky/utils'
 import { BotImage, UnownedColorStrategy } from './image'
-import { obfuscateCSS } from './obfuscator'
 import { DELETE_ALL_DATA, loadSave, SAVE_VERSION } from './save'
 // @ts-ignore
 import css from './style.css' with { type: 'text' }
@@ -115,12 +113,7 @@ export class WPlaceBot {
 
     // Embed styles
     const style = document.createElement('style')
-    style.textContent = obfuscateCSS(
-      (css as string).replace(
-        'FAKE_FAVORITE_LOCATIONS',
-        FAVORITE_LOCATIONS.length.toString(),
-      ),
-    )
+    style.textContent = css as string
     document.head.append(style)
 
     void this.widget
@@ -171,7 +164,7 @@ export class WPlaceBot {
       .catch(async () => {
         if (
           window.confirm(
-            "WPlace-bot couldn't load!\nDo you want to CLEAR ALL DATA to fix it?\n\nHint for next time: Create backup's with 📤 button.",
+            "WPlace-bot couldn't load!\nDo you want to CLEAR ALL DATA to fix it?\n\nHint for next time: Create backup with 📤 button.",
           )
         ) {
           try {
@@ -187,10 +180,8 @@ export class WPlaceBot {
             window.alert(
               'Wplace-Bot-Broken-Save.txt is your broken save. If you ACTUALLY need data from this save, create issue on https://github.com/SoundOfTheSky/wplace-bot/issues\n\nDeveloper will try to fix your save. Be vary that github issues are public, and save file contains your images and their positions in world.',
             )
-            DELETE_ALL_DATA()
-          } catch {
-            DELETE_ALL_DATA()
           } finally {
+            DELETE_ALL_DATA()
             document.location.reload()
           }
         }
@@ -432,7 +423,7 @@ export class WPlaceBot {
     this.autoDrawInterval = setInterval(async () => {
       const deltaTime = drawTime - Date.now()
       if (deltaTime > 0)
-        this.widget.$autoDraw.innerText = `Auto-Draw in (${(deltaTime / 60000) | 0}:${(((deltaTime % 60000) / 1000) | 0).toString().padStart(2, '0')})!`
+        this.widget.$autoDraw.innerText = `Auto-Draw in (${formatNumber(deltaTime, 60000)})!`
       else {
         drawTime = Date.now() + (this.me?.charges.max ?? 100) * 0.9 * 30000
         try {
@@ -467,13 +458,18 @@ export class WPlaceBot {
   public async updateColorsData() {
     await this.openColors()
     this.unavailableColors.clear()
-    for (const $button of document.querySelectorAll<HTMLButtonElement>(
-      'button.btn.relative.w-full',
-    ))
+    const buttons = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        'button.btn.relative.w-full',
+      ),
+    ]
+    if (buttons.length !== 64)
+      throw new Error(`Expected 64 colors, but got ${buttons.length}`)
+    for (let index = 0; index < buttons.length; index++) {
+      const $button = buttons[index]!
       if ($button.children.length !== 0)
-        this.unavailableColors.add(
-          Math.abs(Number.parseInt($button.id.slice(6))),
-        )
+        this.unavailableColors.add(Number.parseInt($button.id.slice(6)))
+    }
   }
 
   /** Move map */
@@ -563,6 +559,7 @@ export class WPlaceBot {
       unfoldColors.click()
       await wait(1)
     }
+    await this.waitForElement<HTMLButtonElement>('button.btn.relative.w-full')
   }
 
   /** Closes all popups */

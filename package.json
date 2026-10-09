@@ -7,13 +7,13 @@
   "scripts": {
     "start": "bun src/build.ts",
     "copy": "bun start && wl-copy < dist.user.js",
-    "lint": "stylelint \"src/**/*.{css,scss,sass}\" --fix && eslint \"src/**/*{.js,.ts}\" --fix && tsc"
-  },
-  "devDependencies": {
-    "@softsky/configs": "^1.5.2",
-    "@types/bun": "^1.3.14"
+    "lint": "stylelint \"src/**/*.{css,scss,sass}\" --fix && oxfmt src && oxlint --fix src && tsc"
   },
   "dependencies": {
     "@softsky/utils": "^2.8.4"
+  },
+  "devDependencies": {
+    "@softsky/configs": "^1.6.2",
+    "@types/bun": "^1.4.2"
   }
 }

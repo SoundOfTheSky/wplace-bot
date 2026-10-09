@@ -1,20 +1,14 @@
 import { promisifyEventSource, swap } from '@softsky/utils'
-
 import { Base } from './base'
 import { WPlaceBot } from './bot'
 import { NoImageError, WPlaceBotError } from './errors'
 import { BotImage, etaText } from './image'
-import {
-  addClass,
-  containsClass,
-  obfucsateHTML,
-  querySelector,
-  removeClass,
-  SID,
-  toggleClass,
-} from './obfuscator'
 import { migrateImage, save } from './save'
+// @ts-ignore
+import sharedCss from './shared.css' with { type: 'text' }
 import { formatPercent } from './utils'
+// @ts-ignore
+import widgetCss from './widget.css' with { type: 'text' }
 // @ts-ignore
 import html from './widget.html' with { type: 'text' }
 
@@ -26,8 +20,6 @@ export enum BotStrategy {
 
 /** Widget UI with buttons */
 export class Widget extends Base {
-  public readonly element = document.createElement('div')
-
   public get status(): string {
     return this.$status.innerHTML
   }
@@ -37,11 +29,10 @@ export class Widget extends Base {
   }
 
   public get open() {
-    return containsClass(this.element, 'open')
+    return this.element.classList.contains('open')
   }
   public set open(value) {
-    if (value) addClass(this.element, 'open')
-    else removeClass(this.element, 'open')
+    this.element.classList.toggle('open', value)
   }
 
   protected readonly $settings!: HTMLDivElement
@@ -61,12 +52,8 @@ export class Widget extends Base {
   // protected readonly $pumpkinHunt!: HTMLButtonElement
 
   public constructor(protected bot: WPlaceBot) {
-    super()
-    addClass(this.element, 'widget')
-    this.element.innerHTML = obfucsateHTML(html)
-    document.body.append(this.element)
-
-    this.populateElementsWithSelector(this.element, {
+    super(html as unknown as string, `${sharedCss as string}\n${widgetCss as string}`)
+    this.populateElementsWithSelector({
       $openButton: '.open-button',
       $settings: '.form',
       $status: '.status',
@@ -95,6 +82,7 @@ export class Widget extends Base {
     this.$addImage.addEventListener('click', () => this.addImage())
     this.$strategy.addEventListener('change', () => {
       this.bot.strategy = this.$strategy.value as BotStrategy
+      void save(this.bot)
     })
     this.$autoDraw.addEventListener('click', () => this.bot.autoDraw())
 
@@ -113,12 +101,7 @@ export class Widget extends Base {
         input.type = 'file'
         input.accept = 'image/*,.wbot'
         input.hidden = true
-        document.body.append(input)
-        const load = promisifyEventSource(
-          input,
-          ['change'],
-          ['cancel', 'error'],
-        )
+        const load = promisifyEventSource(input, ['change'], ['cancel', 'error'])
         input.click()
         await load
         const file = input.files?.[0]
@@ -128,11 +111,7 @@ export class Widget extends Base {
         if (file.name.endsWith('.wbot')) {
           await BotImage.fromJSON(
             this.bot,
-            migrateImage(
-              JSON.parse(await file.text()) as Awaited<
-                ReturnType<BotImage['toJSON']>
-              >,
-            ),
+            migrateImage(JSON.parse(await file.text()) as Awaited<ReturnType<BotImage['toJSON']>>),
           )
         } else {
           const reader = new FileReader()
@@ -176,8 +155,8 @@ export class Widget extends Base {
       const image = this.bot.images[index]!
       const $image = document.createElement('div')
       this.$images.append($image)
-      $image.className = SID + 'item'
-      $image.innerHTML = obfucsateHTML(`
+      $image.className = 'item'
+      $image.innerHTML = `
 <canvas></canvas>
 <input type="text" class="name">
 <label class="toggle">
@@ -185,7 +164,7 @@ export class Widget extends Base {
   <span>${image.disabled ? 'Disabled' : 'Enabled'}</span>
 </label>
 <button class="up" title="Move up" ${index === 0 ? 'disabled' : ''}>▴</button>
-<button class="down" title="Move down" ${index === this.bot.images.length - 1 ? 'disabled' : ''}>▾</button>`)
+<button class="down" title="Move down" ${index === this.bot.images.length - 1 ? 'disabled' : ''}>▾</button>`
 
       // Draw copy in center
       const $canvas = $image.querySelector<HTMLCanvasElement>('canvas')!
@@ -194,14 +173,12 @@ export class Widget extends Base {
       const scale = Math.min(48 / image.width, 64 / image.height)
       const w = image.width * scale
       const h = image.height * scale
-      $canvas
-        .getContext('2d')!
-        .drawImage(image.$canvas, (48 - w) / 2, (64 - h) / 2, w, h)
+      $canvas.getContext('2d')!.drawImage(image.$canvas, (48 - w) / 2, (64 - h) / 2, w, h)
       $canvas.addEventListener('click', () => {
         image.position.moveScreenTo()
       })
 
-      const $name = querySelector<HTMLInputElement>($image, '.name')!
+      const $name = $image.querySelector<HTMLInputElement>('.name')!
       $name.value = image.name
       $name.addEventListener('change', () => {
         image.name = $name.value
@@ -209,7 +186,7 @@ export class Widget extends Base {
         this.update()
         void save(this.bot)
       })
-      const $enabled = querySelector<HTMLInputElement>($image, '.enabled')!
+      const $enabled = $image.querySelector<HTMLInputElement>('.enabled')!
       $enabled.addEventListener('change', async () => {
         image.disabled = !$enabled.checked
         await image.updatePixels()
@@ -217,12 +194,12 @@ export class Widget extends Base {
       })
       // Close on input to not consume space
       this.bot.fixSpaceInInput($name)
-      querySelector($image, '.up')!.addEventListener('click', () => {
+      $image.querySelector<HTMLButtonElement>('.up')!.addEventListener('click', () => {
         swap(this.bot.images, index, index - 1)
         this.update()
         void save(this.bot)
       })
-      querySelector($image, '.down')!.addEventListener('click', () => {
+      $image.querySelector<HTMLButtonElement>('.down')!.addEventListener('click', () => {
         swap(this.bot.images, index, index + 1)
         this.update()
         void save(this.bot)
@@ -232,8 +209,7 @@ export class Widget extends Base {
 
   /** Disable/enable element by class name */
   public setDisabled(name: string, disabled: boolean) {
-    querySelector<HTMLButtonElement>(this.element, '.' + name)!.disabled =
-      disabled
+    this.shadow.querySelector<HTMLButtonElement>('.' + name)!.disabled = disabled
   }
 
   /** Show status of running task */
@@ -262,7 +238,7 @@ export class Widget extends Base {
 
   /** Hides content */
   protected minimize() {
-    toggleClass(this.$settings, 'hidden')
+    this.$settings.classList.toggle('hidden')
   }
 
   // protected async pumpkinHunt() {

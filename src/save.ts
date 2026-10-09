@@ -12,7 +12,7 @@ const DB_NAME = 'wbot'
 const STORE_NAME = 'saves'
 const KEY_NAME = 'wbot'
 const DB_VERSION = 1
-export const SAVE_VERSION = 3
+export const SAVE_VERSION = 4
 
 const dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
   const request = indexedDB.open(DB_NAME, DB_VERSION)
@@ -112,34 +112,65 @@ async function migrateSaveFromLS() {
 export function migrateImage(
   old: any,
 ): Awaited<ReturnType<BotImage['toJSON']>> {
-  if (!old.version || old.version < SAVE_VERSION) {
-    const { url, width, brightness } = old.pixels
+  const img = structuredClone(old)
+  if (!img.version) {
     return {
+      url: img.url || '',
+      width: img.width || 0,
+      brightness: img.brightness || 1,
+      position: img.position || { globalX: 0, globalY: 0 },
+      strategy: img.strategy || ImageStrategy.SPIRAL_TO_CENTER,
+      opacity: img.opacity || 0.5,
+      drawColorsInOrder: img.drawColorsInOrder || true,
+      colors: img.colors || [],
+      disabledColors: img.disabledColors || [0],
+      lock: img.lock || false,
+      disabled: img.disabled || false,
+      name: img.name || `Unnamed image`,
+      unownedColorStrategy:
+        img.unownedColorStrategy || UnownedColorStrategy.BUY,
+      version: SAVE_VERSION,
+    }
+  }
+
+  if (img.version === 2) {
+    const { url, width, brightness } = old.pixels
+    return migrateImage({
       url,
       width,
       brightness,
-      position: old.position,
-      strategy: ImageStrategy.SPIRAL_TO_CENTER,
-      opacity: old.opacity,
-      drawTransparentPixels: old.drawTransparentPixels,
-      drawColorsInOrder: old.drawColorsInOrder,
-      colors: [],
-      disabledColors: [],
-      lock: old.lock,
-      disabled: false,
-      name: `Unnamed image`,
-      unownedColorStrategy: UnownedColorStrategy.BUY,
+      position: img.position || { globalX: 0, globalY: 0 },
+      strategy: img.strategy || ImageStrategy.SPIRAL_TO_CENTER,
+      opacity: img.opacity || 0.5,
+      drawColorsInOrder: img.drawColorsInOrder || true,
+      colors: img.colors || [],
+      disabledColors: img.disabledColors || [0],
+      lock: img.lock || false,
+      disabled: img.disabled || false,
+      name: img.name || `Unnamed image`,
+      unownedColorStrategy:
+        img.unownedColorStrategy || UnownedColorStrategy.BUY,
       version: 3,
-    }
+    })
   }
-  return old
+
+  if (img.version === 3) {
+    if (!img.drawTransparentPixels && !img.disabledColors.includes(0)) {
+      img.disabledColors.push(0)
+      delete img.drawTransparentPixels
+    }
+    img.version = 4
+    return migrateImage(img)
+  }
+
+  return img
 }
 
 /** How to migrate save data */
 export function migrate(old: any): Awaited<ReturnType<WPlaceBot['toJSON']>> {
   if (!old.version || old.version < SAVE_VERSION) {
     return {
-      version: 3,
+      version: SAVE_VERSION,
       images: old.images.map(migrateImage),
       strategy: old.strategy,
       title: 'WPlace-bot',

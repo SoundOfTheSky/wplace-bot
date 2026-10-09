@@ -1,0 +1,105 @@
+:host {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  width: 256px;
+  height: 100dvh;
+  border-right: var(--text) 2px solid;
+  background-color: var(--background);
+  transition: transform 0.5s;
+  transform: translateX(-100%);
+}
+
+:host(.open) {
+  box-shadow: 8px 0 16px -8px var(--main);
+  transform: translateX(0);
+}
+
+.title {
+  display: block;
+  width: 100%;
+  border: none;
+  border-bottom: var(--text) 2px solid;
+  background-color: var(--main);
+  color: var(--text);
+  font-size: 32px;
+  text-align: center;
+}
+
+.open-button {
+  position: absolute;
+  top: calc(50% - 24px);
+  right: -24px;
+  width: 24px;
+  height: 48px;
+  border: var(--text) 2px solid;
+  border-left: none;
+  background-color: var(--background);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.open-button div {
+  transition: transform 0.5s;
+}
+
+:host(.open) .open-button div {
+  transform: rotate(180deg);
+}
+
+.form > .images {
+  display: block;
+  overflow: auto;
+  height: auto;
+  white-space: normal;
+}
+
+.images .item {
+  display: grid;
+  grid-template-areas:
+    'canvas name name name'
+    'canvas toggle up down';
+  grid-template-columns: 48px 1fr auto auto;
+  gap: 4px;
+  width: 100%;
+  height: 64px;
+  margin-bottom: 4px;
+}
+
+.images .item canvas {
+  grid-area: canvas;
+  margin-right: 4px;
+  cursor: pointer;
+}
+
+.images .item .name {
+  display: block;
+  grid-area: name;
+}
+
+.images .item .toggle {
+  display: flex;
+  grid-area: toggle;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+  font-size: 18px;
+}
+
+.images .item .up {
+  grid-area: up;
+  font-weight: bolder;
+  font-size: 24px;
+  line-height: 100%;
+}
+
+.images .item .down {
+  grid-area: down;
+  font-weight: bolder;
+  font-size: 24px;
+  line-height: 100%;
+}

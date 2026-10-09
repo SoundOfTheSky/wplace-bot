@@ -1,16 +1,6 @@
 {
   "extends": "@softsky/configs/tsconfig.json",
   "compilerOptions": {
-    "types": ["bun"],
-    "skipLibCheck": true,
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitReturns": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "verbatimModuleSyntax": true
+    "types": ["bun"]
   }
 }

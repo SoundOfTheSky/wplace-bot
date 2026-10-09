@@ -1,23 +1,19 @@
 import {
+  formatNumber,
   promisifyEventSource,
   removeFromArray,
   type RequiredKey,
 } from '@softsky/utils'
-
 import { Base } from './base'
 import { WPlaceBot } from './bot'
 import { COLORS, COLORS_RGB, colorToCSS } from './colors'
 // @ts-ignore
+import imageCss from './image.css' with { type: 'text' }
+// @ts-ignore
 import html from './image.html' with { type: 'text' }
-import {
-  addClass,
-  containsClass,
-  obfucsateHTML,
-  querySelectorAll,
-  removeClass,
-  toggleClass,
-} from './obfuscator'
 import { save, SAVE_VERSION } from './save'
+// @ts-ignore
+import sharedCss from './shared.css' with { type: 'text' }
 import { formatPercent } from './utils'
 import { workerPixels } from './worker-client'
 import { WorldPosition } from './world-position'
@@ -58,9 +54,8 @@ export enum UnownedColorStrategy {
 /** Time left to paint `remaining` pixels, counting the charges already stored */
 export function etaText(bot: WPlaceBot, remaining: number): string {
   const charges = Math.floor(bot.me?.charges.count ?? 0)
-  const cooldownMs = bot.me?.charges.cooldownMs ?? 30000 // default 30 seconds
-  const minutes = (Math.max(0, remaining - charges) * cooldownMs) / 60000
-  return `${(minutes / 60) | 0}h ${(minutes % 60) | 0}m`
+  const cooldownMs = bot.me?.charges.cooldownMs ?? 30000
+  return formatNumber(Math.max(0, remaining - charges) * cooldownMs, 60000)
 }
 
 export class BotImage extends Base {
@@ -89,7 +84,6 @@ export class BotImage extends Base {
       data.brightness,
       data.strategy,
       data.opacity,
-      data.drawTransparentPixels,
       data.drawColorsInOrder,
       data.colors,
       new Set(data.disabledColors),
@@ -128,7 +122,6 @@ export class BotImage extends Base {
 
   protected imageData: Uint8ClampedArray
 
-  public readonly element = document.createElement('div')
   public readonly $canvas!: HTMLCanvasElement
   protected readonly context
   protected readonly $brightness!: HTMLInputElement
@@ -170,14 +163,12 @@ export class BotImage extends Base {
     public strategy = ImageStrategy.SPIRAL_TO_CENTER,
     /** Opacity of overlay */
     public opacity = 50,
-    /** Should we erase pixels there transparency should be */
-    public drawTransparentPixels = false,
     /** Should bot draw colors in order */
     public drawColorsInOrder = true,
     /** Colors order */
     public colors: number[] = [],
     /** Colors not to draw */
-    public disabledColors = new Set<number>(),
+    public disabledColors = new Set<number>([0]),
     /** Stop accidental image edit */
     public lock = false,
     /** Disable this image from drawing and from counting toward totals */
@@ -187,18 +178,11 @@ export class BotImage extends Base {
     /** What to do with colors that user does not own */
     public unownedColorStrategy = UnownedColorStrategy.BUY,
   ) {
-    super()
-    this.bot.images.push(this)
-    this.resolution = image.width / image.height
-    this.imageData = this.image
-      .getContext('2d')!
-      .getImageData(0, 0, image.width, image.height).data
-
-    this.element.innerHTML = obfucsateHTML(html)
-    addClass(this.element, 'image')
-    document.body.append(this.element)
-
-    this.populateElementsWithSelector(this.element, {
+    super(
+      html as unknown as string,
+      `${sharedCss as string}\n${imageCss as string}`,
+    )
+    this.populateElementsWithSelector({
       $brightness: '.brightness',
       $colors: '.colors',
       $delete: '.delete',
@@ -220,6 +204,13 @@ export class BotImage extends Base {
       $dialog: 'dialog',
       $canvas: 'canvas',
     })
+
+    this.bot.images.push(this)
+    this.resolution = image.width / image.height
+    this.imageData = this.image
+      .getContext('2d')!
+      .getImageData(0, 0, image.width, image.height).data
+
     this.context = this.$canvas.getContext('2d')!
     this.$unownedColorStrategy =
       this.$unownedColorStrategyLabel.querySelector<HTMLSelectElement>(
@@ -276,12 +267,6 @@ export class BotImage extends Base {
       await save(this.bot)
     })
 
-    // drawTransparent
-    this.$drawTransparent.addEventListener('click', () => {
-      this.drawTransparentPixels = this.$drawTransparent.checked
-      void save(this.bot)
-    })
-
     // drawColorsInOrder
     this.$drawColorsInOrder.addEventListener('click', () => {
       this.drawColorsInOrder = this.$drawColorsInOrder.checked
@@ -333,8 +318,7 @@ export class BotImage extends Base {
     this.registerEvent(document, 'mousemove', this.move.bind(this))
 
     // Resize
-    for (const $resize of querySelectorAll<HTMLDivElement>(
-      this.element,
+    for (const $resize of this.shadow.querySelectorAll<HTMLDivElement>(
       '.resize',
     ))
       $resize.addEventListener('mousedown', this.resizeStart.bind(this))
@@ -360,7 +344,6 @@ export class BotImage extends Base {
       position: this.position.toJSON(),
       strategy: this.strategy,
       opacity: this.opacity,
-      drawTransparentPixels: this.drawTransparentPixels,
       drawColorsInOrder: this.drawColorsInOrder,
       colors: this.colors,
       disabledColors: Array.from(this.disabledColors),
@@ -388,7 +371,6 @@ export class BotImage extends Base {
         colors: this.colors,
         disabledColors: this.disabledColors,
         drawColorsInOrder: this.drawColorsInOrder,
-        drawTransparentPixels: this.drawTransparentPixels,
         globalX: this.position.globalX,
         globalY: this.position.globalY,
         height,
@@ -432,13 +414,12 @@ export class BotImage extends Base {
     this.element.style.width = `${this.position.pixelSize * this.width}px`
     this.$wrapper.style.opacity = this.disabled ? '0.4' : '1'
     this.$canvas.style.opacity = `${this.opacity}%`
-    removeClass(this.element, 'hidden')
+    this.element.classList.remove('hidden')
 
     this.$resetSizeSpan.textContent = this.width.toString()
     this.$brightness.valueAsNumber = this.brightness
     this.$strategy.value = this.strategy
     this.$opacity.valueAsNumber = this.opacity
-    this.$drawTransparent.checked = this.drawTransparentPixels
     this.$drawColorsInOrder.checked = this.drawColorsInOrder
     this.$name.value = this.name
     const maxTasks = this.width * this.height
@@ -446,8 +427,7 @@ export class BotImage extends Base {
     const percent = formatPercent(doneTasks / maxTasks)
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasks.length / 2)}`
     this.$progressLine.style.transform = `scaleX(${percent})`
-    if (this.lock) addClass(this.$wrapper, 'no-pointer-events')
-    else removeClass(this.$wrapper, 'no-pointer-events')
+    this.$wrapper.classList.toggle('no-pointer-events', this.lock)
     this.$lock.textContent = this.lock ? '🔒' : '🔓'
   }
 
@@ -463,14 +443,14 @@ export class BotImage extends Base {
   /** Update colors array */
   public updateColors() {
     const LINE_HEIGHT = 20
-    if (this.bot.unavailableColors.size === 0)
-      addClass(this.$unownedColorStrategyLabel, 'hidden')
+    this.$unownedColorStrategyLabel.classList.toggle(
+      'hidden',
+      this.bot.unavailableColors.size === 0,
+    )
     this.$colors.innerHTML = ''
     // Only the colors we show, so the percents add up to 100%
     let pixelsSum = 0
-    for (const stat of this.colorsStat.values())
-      if (this.drawTransparentPixels || stat.realColor !== 0)
-        pixelsSum += stat.amount
+    for (const stat of this.colorsStat.values()) pixelsSum += stat.amount
 
     // If not the synced with colors then rebuild order
     if (
@@ -489,7 +469,6 @@ export class BotImage extends Base {
 
     for (let index = 0; index < this.colors.length; index++) {
       const drawColor = this.colors[index]!
-      if (!this.drawTransparentPixels && drawColor === 0) continue
       const css = (color: number) =>
         color === 0
           ? `repeating-linear-gradient(32deg, #ccc 0 8px, transparent 8px 16px)`
@@ -497,7 +476,7 @@ export class BotImage extends Base {
       const colorStat = this.colorsStat.get(drawColor)!
       const $button = document.createElement('button')
       // If dark make text white
-      if (COLORS[drawColor]![0] < 0.6) addClass($button, 'dark')
+      if (COLORS[drawColor]![0] < 0.6) $button.classList.add('dark')
       $button.title = 'Drag to reorder. Click to disable.'
       $button.style.top = `${index * LINE_HEIGHT}px`
       if (this.disabledColors.has(drawColor)) {
@@ -540,12 +519,11 @@ export class BotImage extends Base {
           break
       }
       const $percent = document.createElement('span')
-      addClass($percent, 'percent')
+      $percent.classList.add('percent')
       const donePixels = colorStat.amount - colorStat.left
       const donePercent = donePixels / colorStat.amount
       const share = colorStat.amount / pixelsSum
       $percent.innerText = `${donePixels}/${colorStat.amount}px ${formatPercent(donePercent)} (${formatPercent(share)})`
-      $percent.title = 'Pixels drawn / total, drawn % (% of the image)'
       $button.appendChild($percent)
       this.$colors.append($button)
 
@@ -553,7 +531,7 @@ export class BotImage extends Base {
 
       // Dragging
       const startDrag = (startEvent: MouseEvent) => {
-        addClass($button, 'dragging')
+        $button.classList.add('dragging')
         let newIndex = index
         const mouseMoveHandler = (event: MouseEvent) => {
           newIndex = Math.min(
@@ -580,7 +558,7 @@ export class BotImage extends Base {
           document,
           'mouseup',
           () => {
-            removeClass($button, 'dragging')
+            $button.classList.remove('dragging')
             document.removeEventListener('mousemove', mouseMoveHandler)
             if (newIndex !== index)
               this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1))
@@ -602,7 +580,7 @@ export class BotImage extends Base {
         if (this.disabledColors.has(drawColor))
           this.disabledColors.delete(drawColor)
         else this.disabledColors.add(drawColor)
-        toggleClass($button, 'color-disabled')
+        $button.classList.toggle('color-disabled')
         await this.updatePixels()
         await save(this.bot)
       })
@@ -661,13 +639,13 @@ export class BotImage extends Base {
       clientY: event.clientY,
     }
     const $resize = event.target! as HTMLDivElement
-    if (containsClass($resize, 'n')) {
+    if ($resize.classList.contains('n')) {
       this.moveInfo.height = this.height
       this.moveInfo.globalY = this.position.globalY
     }
-    if (containsClass($resize, 'e')) this.moveInfo.width = this.width
-    if (containsClass($resize, 's')) this.moveInfo.height = this.height
-    if (containsClass($resize, 'w')) {
+    if ($resize.classList.contains('e')) this.moveInfo.width = this.width
+    if ($resize.classList.contains('s')) this.moveInfo.height = this.height
+    if ($resize.classList.contains('w')) {
       this.moveInfo.width = this.width
       this.moveInfo.globalX = this.position.globalX
     }

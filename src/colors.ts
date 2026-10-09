@@ -7,15 +7,9 @@ export function rgbToOklab(r: number, g: number, b: number) {
   const lg = srgbNonlinearTransformInv(g / 255)
   const lb = srgbNonlinearTransformInv(b / 255)
 
-  const lp = Math.cbrt(
-    0.412_221_470_8 * lr + 0.536_332_536_3 * lg + 0.051_445_992_9 * lb,
-  )
-  const mp = Math.cbrt(
-    0.211_903_498_2 * lr + 0.680_699_545_1 * lg + 0.107_396_956_6 * lb,
-  )
-  const sp = Math.cbrt(
-    0.088_302_461_9 * lr + 0.281_718_837_6 * lg + 0.629_978_700_5 * lb,
-  )
+  const lp = Math.cbrt(0.412_221_470_8 * lr + 0.536_332_536_3 * lg + 0.051_445_992_9 * lb)
+  const mp = Math.cbrt(0.211_903_498_2 * lr + 0.680_699_545_1 * lg + 0.107_396_956_6 * lb)
+  const sp = Math.cbrt(0.088_302_461_9 * lr + 0.281_718_837_6 * lg + 0.629_978_700_5 * lb)
 
   const l = 0.210_454_255_3 * lp + 0.793_617_785 * mp - 0.004_072_046_8 * sp
   const aa = 1.977_998_495_1 * lp - 2.428_592_205 * mp + 0.450_593_709_9 * sp

@@ -1,6 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs'
-
 import Bun from 'bun'
+import { readFileSync, writeFileSync } from 'node:fs'
 
 const build = await Bun.build({
   entrypoints: ['./src/bot.ts'],
@@ -17,9 +16,6 @@ for (const log of buildWorker.logs) console.log(log)
 const workerBody = await buildWorker.outputs[0]!.text()
 content = content
   .replaceAll('export {', '{')
-  .replace(
-    '<WORKER_SOURCE_CODE>',
-    workerBody.replace(/`/g, '\\`').replace(/\$\{/g, '\\${'),
-  )
+  .replace('<WORKER_SOURCE_CODE>', workerBody.replace(/`/g, '\\`').replace(/\$\{/g, '\\${'))
 content = readFileSync('./script.txt').toString() + content
 writeFileSync('dist.user.js', content)

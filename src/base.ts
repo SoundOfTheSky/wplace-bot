@@ -1,24 +1,31 @@
 import { type AnyFunction } from '@softsky/utils'
 
-import { querySelector } from './obfuscator'
-
 export class Base {
+  public readonly element = document.createElement('div')
+  public readonly shadow = this.element.attachShadow({ mode: 'open' })
+
+  public constructor(html: string, css: string) {
+    const style = document.createElement('style')
+    style.textContent = css
+    this.shadow.append(style)
+    const template = document.createElement('template')
+    template.innerHTML = html as string
+    this.shadow.append(template.content)
+    document.body.append(this.element)
+  }
+
   protected runOnDestroy: AnyFunction[] = []
 
   /** Will run all runOnDestroy functions and unregister from all events */
   public destroy() {
-    for (let index = 0; index < this.runOnDestroy.length; index++)
-      this.runOnDestroy[index]!()
+    this.element.remove()
+    for (let index = 0; index < this.runOnDestroy.length; index++) this.runOnDestroy[index]!()
   }
 
   /** Build object with all found objects via querySelector */
-  protected populateElementsWithSelector(
-    element: HTMLElement,
-    selectors: Record<string, string>,
-  ) {
+  protected populateElementsWithSelector(selectors: Record<string, string>) {
     for (const key in selectors) {
-      ;(this as unknown as Record<string, HTMLElement>)[key] = querySelector(
-        element,
+      ;(this as unknown as Record<string, HTMLElement>)[key] = this.shadow.querySelector(
         selectors[key]!,
       )!
     }

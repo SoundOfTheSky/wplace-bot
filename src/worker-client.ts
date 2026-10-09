@@ -1,13 +1,7 @@
-import {
-  type WorkerPixelsRequest,
-  type WorkerPixelsResponse,
-  type WorkerResponse,
-} from './worker'
+import { type WorkerPixelsRequest, type WorkerPixelsResponse, type WorkerResponse } from './worker'
 
 export const worker = new Worker(
-  URL.createObjectURL(
-    new Blob([`<WORKER_SOURCE_CODE>`], { type: 'application/javascript' }),
-  ),
+  URL.createObjectURL(new Blob([`<WORKER_SOURCE_CODE>`], { type: 'application/javascript' })),
   {
     type: 'module',
   },

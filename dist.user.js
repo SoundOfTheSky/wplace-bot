@@ -79,53 +79,76 @@ function promisifyEventSource(target, resolveEvents, rejectEvents = ["error"], s
       target[subName]?.(rejectEvents[index], reject);
   });
 }
+// node_modules/@softsky/utils/dist/formatting.js
+var FORMAT_NUMBER_RANGES = [
+  {
+    start: 31536000000,
+    title: "y"
+  },
+  {
+    start: 86400000,
+    title: "d"
+  },
+  {
+    start: 3600000,
+    title: "h"
+  },
+  {
+    start: 60000,
+    title: "m"
+  },
+  {
+    start: 1000,
+    title: "s"
+  },
+  {
+    start: 1,
+    title: "ms"
+  }
+];
+function formatNumber(time, min = 0, ranges = FORMAT_NUMBER_RANGES) {
+  let output = "";
+  for (const { start, delimiter, pad, title } of ranges) {
+    if (start < min)
+      break;
+    if (time < start && !pad)
+      continue;
+    let value = Math.floor(time / start).toString();
+    time %= start;
+    if (pad)
+      value = value.padStart(pad, "0");
+    if (output)
+      output += delimiter ?? " ";
+    output += value;
+    if (title)
+      output += title;
+  }
+  return output;
+}
 // node_modules/@softsky/utils/dist/signals.js
 var effectsMap = new WeakMap;
-// src/obfuscator.ts
-var SID = Array.from({ length: 16 }, () => (10 + Math.random() * 26 | 0).toString(36)).join("");
-function obfucsateHTML(html) {
-  return html.replace(/class="([^"]*)"/g, (_, classes) => {
-    const prefixed = classes.split(/\s+/).filter(Boolean).map((c) => `${SID}${c}`).join(" ");
-    return `class="${prefixed}"`;
-  });
-}
-function obfuscateLocalCSS(css) {
-  return css.replaceAll(/\.([a-z])/g, `.${SID}$1`);
-}
-function obfuscateCSS(css) {
-  const [global, local] = css.split("/** LOCAL STYLES */");
-  return global + `
-` + obfuscateLocalCSS(local);
-}
-function toggleClass(el, className) {
-  return el.classList.toggle(SID + className);
-}
-function addClass(el, className) {
-  el.classList.add(SID + className);
-}
-function removeClass(el, className) {
-  el.classList.remove(SID + className);
-}
-function containsClass(el, className) {
-  return el.classList.contains(SID + className);
-}
-function querySelector(el, selector) {
-  return el.querySelector(obfuscateLocalCSS(selector));
-}
-function querySelectorAll(el, selector) {
-  return el.querySelectorAll(obfuscateLocalCSS(selector));
-}
-
 // src/base.ts
 class Base2 {
+  element = document.createElement("div");
+  shadow = this.element.attachShadow({ mode: "open" });
+  constructor(html, css) {
+    const style = document.createElement("style");
+    style.textContent = css;
+    this.shadow.append(style);
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    this.shadow.append(template.content);
+    document.body.append(this.element);
+  }
   runOnDestroy = [];
   destroy() {
+    this.element.remove();
     for (let index = 0;index < this.runOnDestroy.length; index++)
       this.runOnDestroy[index]();
   }
-  populateElementsWithSelector(element, selectors) {
+  populateElementsWithSelector(selectors) {
     for (const key in selectors) {
-      this[key] = querySelector(element, selectors[key]);
+      this[key] = this.shadow.querySelector(selectors[key]);
     }
   }
   registerEvent(target, type, listener, options = {}) {
@@ -280,9 +303,164 @@ function colorToCSS(colorId) {
   return `oklab(${color[0] * 100}% ${color[1]} ${color[2]})`;
 }
 
+// src/image.css
+var image_default = `/* stylelint-disable plugin/no-low-performance-animation-properties */
+/* stylelint-disable no-descending-specificity */
+
+:host {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9;
+  overflow: visible;
+}
+
+canvas {
+  image-rendering: pixelated;
+  width: 100%;
+  box-shadow: inset var(--text) 0 0 0 2px;
+  cursor: all-scroll;
+}
+
+dialog.form {
+  width: clamp(256px, 60vh, 512px);
+  height: 60vh;
+  margin: auto;
+  padding: 0;
+  border: var(--text) 2px solid;
+  background-color: var(--background);
+  color: var(--text);
+}
+
+dialog.form::backdrop {
+  background: rgb(0 0 0 / 70%);
+}
+
+input {
+  border: none;
+  background: transparent;
+  outline: none;
+}
+
+.form .colors {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0;
+}
+
+.form .colors > button {
+  position: absolute;
+  left: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 20px;
+  border: none;
+  font-size: 16px;
+  cursor: ns-resize;
+  transition: 0.5s top ease;
+}
+
+.form .colors > button.dark {
+  color: var(--text-invert);
+}
+
+.form .colors > button:hover {
+  filter: brightness(0.6);
+}
+
+.form .colors > button * {
+  float: left;
+}
+
+.form .colors > button .percent {
+  float: right;
+}
+
+.form .colors > button.dragging {
+  z-index: 100;
+}
+
+.form .colors > button > button {
+  height: 100%;
+}
+
+.topbar {
+  position: absolute;
+  top: -24px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 256px;
+  border: var(--text) 2px solid;
+  background-color: var(--main);
+  color: var(--text-invert);
+  cursor: all-scroll;
+}
+
+.topbar .name {
+  width: 100%;
+  height: 100%;
+  padding: 0 4px;
+}
+
+.topbar button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 24px;
+  height: 24px;
+}
+
+.topbar button:hover {
+  background-color: var(--main-hover);
+}
+
+.resize {
+  position: absolute;
+  width: calc(100% - var(--resize) - var(--resize));
+  height: calc(100% - var(--resize) - var(--resize));
+}
+
+.resize.n {
+  top: 0;
+  left: var(--resize);
+  height: var(--resize);
+  cursor: n-resize;
+}
+
+.resize.e {
+  top: var(--resize);
+  right: 0;
+  width: var(--resize);
+  cursor: e-resize;
+}
+
+.resize.s {
+  bottom: 0;
+  left: var(--resize);
+  height: var(--resize);
+  cursor: s-resize;
+}
+
+.resize.w {
+  top: var(--resize);
+  left: 0;
+  width: var(--resize);
+  cursor: w-resize;
+}
+
+.no-pointer-events {
+  height: 1px;
+  pointer-events: none;
+}
+`;
+
 // src/image.html
-var image_default = `<div class="topbar">
-  <input type="text" class="name">
+var image_default2 = `<div class="topbar">
+  <input type="text" class="name" />
   <button class="open-settings" title="Open settings">✏️</button>
   <button class="export" title="Export image">📤</button>
   <button class="lock" title="Lock/unlock image movement">🔓</button>
@@ -296,39 +474,34 @@ var image_default = `<div class="topbar">
   <div class="resize w"></div>
 </div>
 <dialog class="form">
-    <div class="progress">
-      <div></div>
-      <span></span>
-    </div>
-    <label class="unowned-color-strategy" title="What to do with unonwned colors">
-      Unowned Colors:&nbsp;<select>
-        <option value="BUY" selected>Buy</option>
-        <option value="SKIP">Skip</option>
-        <option value="SUBSTITUTE">Substitute</option>
-      </select>
-    </label>
-    <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100"/></label>
-    <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1"/></label>
-    <label color="How to draw">
-      Strategy:&nbsp;<select class="strategy">
-        <option value="RANDOM">Random</option>
-        <option value="DOWN">Top to Bottom</option>
-        <option value="UP">Bottom to Top</option>
-        <option value="LEFT">Right to Left</option>
-        <option value="RIGHT">Left to Right</option>
-        <option value="SPIRAL_FROM_CENTER">Spiral out</option>
-        <option value="SPIRAL_TO_CENTER" selected>Spiral in</option>
-      </select>
-    </label>
-    <button class="reset-size">Reset size [<span></span>px]</button>
-    <label>
-      <input type="checkbox" class="draw-transparent" />&nbsp;Erase transparent pixels
-    </label>
-    <label>
-      <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order
-    </label>
-    <div class="colors"></div>
-  </dialog>
+  <div class="progress">
+    <div></div>
+    <span></span>
+  </div>
+  <label class="unowned-color-strategy" title="What to do with unonwned colors">
+    Unowned Colors:&nbsp;<select>
+      <option value="BUY" selected>Buy</option>
+      <option value="SKIP">Skip</option>
+      <option value="SUBSTITUTE">Substitute</option>
+    </select>
+  </label>
+  <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100" /></label>
+  <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1" /></label>
+  <label color="How to draw">
+    Strategy:&nbsp;<select class="strategy">
+      <option value="RANDOM">Random</option>
+      <option value="DOWN">Top to Bottom</option>
+      <option value="UP">Bottom to Top</option>
+      <option value="LEFT">Right to Left</option>
+      <option value="RIGHT">Left to Right</option>
+      <option value="SPIRAL_FROM_CENTER">Spiral out</option>
+      <option value="SPIRAL_TO_CENTER" selected>Spiral in</option>
+    </select>
+  </label>
+  <button class="reset-size">Reset size [<span></span>px]</button>
+  <label> <input type="checkbox" class="draw-colors-in-order" />&nbsp;Draw colors in order </label>
+  <div class="colors" title="Pixels drawn / total, drawn % (% of the image)"></div>
+</dialog>
 `;
 
 // src/save.ts
@@ -336,7 +509,7 @@ var DB_NAME = "wbot";
 var STORE_NAME = "saves";
 var KEY_NAME = "wbot";
 var DB_VERSION = 1;
-var SAVE_VERSION = 3;
+var SAVE_VERSION = 4;
 var dbPromise = new Promise((resolve, reject) => {
   const request = indexedDB.open(DB_NAME, DB_VERSION);
   request.onupgradeneeded = () => {
@@ -424,32 +597,58 @@ async function migrateSaveFromLS() {
   }
 }
 function migrateImage(old) {
-  if (!old.version || old.version < SAVE_VERSION) {
-    const { url, width, brightness } = old.pixels;
+  const img = structuredClone(old);
+  if (!img.version) {
     return {
+      url: img.url || "",
+      width: img.width || 0,
+      brightness: img.brightness || 1,
+      position: img.position || { globalX: 0, globalY: 0 },
+      strategy: img.strategy || "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */,
+      opacity: img.opacity || 0.5,
+      drawColorsInOrder: img.drawColorsInOrder || true,
+      colors: img.colors || [],
+      disabledColors: img.disabledColors || [0],
+      lock: img.lock || false,
+      disabled: img.disabled || false,
+      name: img.name || `Unnamed image`,
+      unownedColorStrategy: img.unownedColorStrategy || "BUY" /* BUY */,
+      version: SAVE_VERSION
+    };
+  }
+  if (img.version === 2) {
+    const { url, width, brightness } = old.pixels;
+    return migrateImage({
       url,
       width,
       brightness,
-      position: old.position,
-      strategy: "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */,
-      opacity: old.opacity,
-      drawTransparentPixels: old.drawTransparentPixels,
-      drawColorsInOrder: old.drawColorsInOrder,
-      colors: [],
-      disabledColors: [],
-      lock: old.lock,
-      disabled: false,
-      name: `Unnamed image`,
-      unownedColorStrategy: "BUY" /* BUY */,
+      position: img.position || { globalX: 0, globalY: 0 },
+      strategy: img.strategy || "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */,
+      opacity: img.opacity || 0.5,
+      drawColorsInOrder: img.drawColorsInOrder || true,
+      colors: img.colors || [],
+      disabledColors: img.disabledColors || [0],
+      lock: img.lock || false,
+      disabled: img.disabled || false,
+      name: img.name || `Unnamed image`,
+      unownedColorStrategy: img.unownedColorStrategy || "BUY" /* BUY */,
       version: 3
-    };
+    });
   }
-  return old;
+  if (img.version === 3) {
+    if (!img.drawTransparentPixels && !img.disabledColors.includes(0)) {
+      img.disabledColors.push(0);
+      delete img.drawTransparentPixels;
+    }
+    img.version = 4;
+    return migrateImage(img);
+  }
+  return img;
 }
 function migrate(old) {
   if (!old.version || old.version < SAVE_VERSION) {
     return {
-      version: 3,
+      version: SAVE_VERSION,
       images: old.images.map(migrateImage),
       strategy: old.strategy,
       title: "WPlace-bot"
@@ -458,15 +657,151 @@ function migrate(old) {
   return old;
 }
 
+// src/shared.css
+var shared_default = `/* stylelint-disable declaration-no-important */
+/* stylelint-disable plugin/no-low-performance-animation-properties */
+/* stylelint-disable no-descending-specificity */
+
+:host {
+  --text-invert: #fff;
+  --resize: 8px;
+  --text: #422e2c;
+  --background: #fbe3cb;
+  --background-hover: #f0d1b3;
+  --background-disabled: #a37648;
+  --main: #66bbb4;
+  --main-hover: #48a19a;
+
+  box-sizing: border-box;
+  color: var(--text);
+  font-family: 'Tiny5', sans-serif;
+}
+
+:host *,
+:host *::before,
+:host *::after {
+  box-sizing: border-box;
+  font-family: 'Tiny5', sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  margin: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+:host(.hidden),
+.hidden {
+  display: none;
+}
+
+.p {
+  padding: 0 8px;
+}
+
+.form {
+  flex-grow: 1;
+  overflow-y: auto;
+}
+
+.form > * {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  width: calc(100% - 8px);
+  margin: 4px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form button,
+.form input,
+.form select,
+.form textarea,
+.form label:has(input[type='checkbox']) {
+  padding: 0 8px;
+  border: var(--text) 2px solid;
+  background-color: var(--background);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.form input[type='range'] {
+  appearance: none;
+  width: 100%;
+  height: 32px;
+  background: linear-gradient(
+    to right,
+    var(--main) var(--val),
+    var(--background-disabled) var(--val)
+  );
+  cursor: ew-resize;
+}
+
+.form input[type='range']::-moz-range-thumb {
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.form input[type='checkbox'] {
+  appearance: auto;
+  width: 1em;
+  height: 1em;
+  padding: 0;
+}
+
+.form button:hover,
+.form input:hover {
+  background-color: var(--background-hover);
+}
+
+.form button:disabled,
+.form input:disabled {
+  background-color: var(--background-disabled);
+  cursor: no-drop;
+}
+
+.form label input:not([type='checkbox']) {
+  width: inherit;
+}
+
+.form .progress {
+  position: relative;
+  width: 100%;
+  margin: 0;
+}
+
+.form .progress div {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-color: var(--main);
+  transform-origin: left;
+}
+
+.form .progress span {
+  z-index: 0;
+}
+`;
+
 // src/utils.ts
 function formatPercent(n) {
   if (Number.isNaN(n))
     return "0%";
-  if (n < 0.1)
-    n = (n * 1000 | 0) / 10;
-  else
-    n = n * 100 | 0;
-  return n + "%";
+  return (n * 100 | 0) + "%";
 }
 
 // src/worker-client.ts
@@ -745,8 +1080,7 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
       strategy,
       unownedColorStrategy,
       globalX,
-      globalY,
-      drawTransparentPixels
+      globalY
     } = request;
     let lastProgress = 0;
     let scaled;
@@ -865,7 +1199,7 @@ var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
         continue;
       const realColor = realPixels[dy * width + dx];
       colorStat.get(realColor).left++;
-      if (skipColors.has(color) || !drawTransparentPixels && color === 0)
+      if (skipColors.has(color))
         continue;
       tasks.push({
         gx,
@@ -1225,8 +1559,7 @@ class WorldPosition {
 function etaText(bot, remaining) {
   const charges = Math.floor(bot.me?.charges.count ?? 0);
   const cooldownMs = bot.me?.charges.cooldownMs ?? 30000;
-  const minutes = Math.max(0, remaining - charges) * cooldownMs / 60000;
-  return `${minutes / 60 | 0}h ${minutes % 60 | 0}m`;
+  return formatNumber(Math.max(0, remaining - charges) * cooldownMs, 60000);
 }
 
 class BotImage extends Base2 {
@@ -1237,7 +1570,6 @@ class BotImage extends Base2 {
   brightness;
   strategy;
   opacity;
-  drawTransparentPixels;
   drawColorsInOrder;
   colors;
   disabledColors;
@@ -1253,7 +1585,7 @@ class BotImage extends Base2 {
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(image, 0, 0);
-    const botImage = new BotImage(bot, data.position ? WorldPosition.fromJSON(bot, data.position) : undefined, canvas, data.width, data.brightness, data.strategy, data.opacity, data.drawTransparentPixels, data.drawColorsInOrder, data.colors, new Set(data.disabledColors), data.lock, data.disabled, data.name, data.unownedColorStrategy);
+    const botImage = new BotImage(bot, data.position ? WorldPosition.fromJSON(bot, data.position) : undefined, canvas, data.width, data.brightness, data.strategy, data.opacity, data.drawColorsInOrder, data.colors, new Set(data.disabledColors), data.lock, data.disabled, data.name, data.unownedColorStrategy);
     await botImage.updatePixels(progress);
     return botImage;
   }
@@ -1269,7 +1601,6 @@ class BotImage extends Base2 {
   tasks = new Uint32Array(0);
   moveInfo;
   imageData;
-  element = document.createElement("div");
   $canvas;
   context;
   $brightness;
@@ -1296,8 +1627,9 @@ class BotImage extends Base2 {
   constructor(bot, position = WorldPosition.fromScreenPosition(bot, {
     x: 256,
     y: 32
-  }), image, width = image.width, brightness = 0, strategy = "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */, opacity = 50, drawTransparentPixels = false, drawColorsInOrder = true, colors = [], disabledColors = new Set, lock = false, disabled = false, name = `${image.width}x${image.height}`, unownedColorStrategy = "BUY" /* BUY */) {
-    super();
+  }), image, width = image.width, brightness = 0, strategy = "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */, opacity = 50, drawColorsInOrder = true, colors = [], disabledColors = new Set([0]), lock = false, disabled = false, name = `${image.width}x${image.height}`, unownedColorStrategy = "BUY" /* BUY */) {
+    super(image_default2, `${shared_default}
+${image_default}`);
     this.bot = bot;
     this.position = position;
     this.image = image;
@@ -1305,7 +1637,6 @@ class BotImage extends Base2 {
     this.brightness = brightness;
     this.strategy = strategy;
     this.opacity = opacity;
-    this.drawTransparentPixels = drawTransparentPixels;
     this.drawColorsInOrder = drawColorsInOrder;
     this.colors = colors;
     this.disabledColors = disabledColors;
@@ -1313,13 +1644,7 @@ class BotImage extends Base2 {
     this.disabled = disabled;
     this.name = name;
     this.unownedColorStrategy = unownedColorStrategy;
-    this.bot.images.push(this);
-    this.resolution = image.width / image.height;
-    this.imageData = this.image.getContext("2d").getImageData(0, 0, image.width, image.height).data;
-    this.element.innerHTML = obfucsateHTML(image_default);
-    addClass(this.element, "image");
-    document.body.append(this.element);
-    this.populateElementsWithSelector(this.element, {
+    this.populateElementsWithSelector({
       $brightness: ".brightness",
       $colors: ".colors",
       $delete: ".delete",
@@ -1341,6 +1666,9 @@ class BotImage extends Base2 {
       $dialog: "dialog",
       $canvas: "canvas"
     });
+    this.bot.images.push(this);
+    this.resolution = image.width / image.height;
+    this.imageData = this.image.getContext("2d").getImageData(0, 0, image.width, image.height).data;
     this.context = this.$canvas.getContext("2d");
     this.$unownedColorStrategy = this.$unownedColorStrategyLabel.querySelector("select");
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
@@ -1381,10 +1709,6 @@ class BotImage extends Base2 {
       await this.updatePixels();
       await save(this.bot);
     });
-    this.$drawTransparent.addEventListener("click", () => {
-      this.drawTransparentPixels = this.$drawTransparent.checked;
-      save(this.bot);
-    });
     this.$drawColorsInOrder.addEventListener("click", () => {
       this.drawColorsInOrder = this.$drawColorsInOrder.checked;
       this.updateColors();
@@ -1415,7 +1739,7 @@ class BotImage extends Base2 {
     })));
     this.registerEvent(document, "mouseup", this.moveStop.bind(this));
     this.registerEvent(document, "mousemove", this.move.bind(this));
-    for (const $resize of querySelectorAll(this.element, ".resize"))
+    for (const $resize of this.shadow.querySelectorAll(".resize"))
       $resize.addEventListener("mousedown", this.resizeStart.bind(this));
   }
   async toJSON() {
@@ -1438,7 +1762,6 @@ class BotImage extends Base2 {
       position: this.position.toJSON(),
       strategy: this.strategy,
       opacity: this.opacity,
-      drawTransparentPixels: this.drawTransparentPixels,
       drawColorsInOrder: this.drawColorsInOrder,
       colors: this.colors,
       disabledColors: Array.from(this.disabledColors),
@@ -1461,7 +1784,6 @@ class BotImage extends Base2 {
       colors: this.colors,
       disabledColors: this.disabledColors,
       drawColorsInOrder: this.drawColorsInOrder,
-      drawTransparentPixels: this.drawTransparentPixels,
       globalX: this.position.globalX,
       globalY: this.position.globalY,
       height,
@@ -1503,12 +1825,11 @@ class BotImage extends Base2 {
     this.element.style.width = `${this.position.pixelSize * this.width}px`;
     this.$wrapper.style.opacity = this.disabled ? "0.4" : "1";
     this.$canvas.style.opacity = `${this.opacity}%`;
-    removeClass(this.element, "hidden");
+    this.element.classList.remove("hidden");
     this.$resetSizeSpan.textContent = this.width.toString();
     this.$brightness.valueAsNumber = this.brightness;
     this.$strategy.value = this.strategy;
     this.$opacity.valueAsNumber = this.opacity;
-    this.$drawTransparent.checked = this.drawTransparentPixels;
     this.$drawColorsInOrder.checked = this.drawColorsInOrder;
     this.$name.value = this.name;
     const maxTasks = this.width * this.height;
@@ -1516,10 +1837,7 @@ class BotImage extends Base2 {
     const percent = formatPercent(doneTasks / maxTasks);
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasks.length / 2)}`;
     this.$progressLine.style.transform = `scaleX(${percent})`;
-    if (this.lock)
-      addClass(this.$wrapper, "no-pointer-events");
-    else
-      removeClass(this.$wrapper, "no-pointer-events");
+    this.$wrapper.classList.toggle("no-pointer-events", this.lock);
     this.$lock.textContent = this.lock ? "\uD83D\uDD12" : "\uD83D\uDD13";
   }
   destroy() {
@@ -1531,13 +1849,11 @@ class BotImage extends Base2 {
   }
   updateColors() {
     const LINE_HEIGHT = 20;
-    if (this.bot.unavailableColors.size === 0)
-      addClass(this.$unownedColorStrategyLabel, "hidden");
+    this.$unownedColorStrategyLabel.classList.toggle("hidden", this.bot.unavailableColors.size === 0);
     this.$colors.innerHTML = "";
     let pixelsSum = 0;
     for (const stat of this.colorsStat.values())
-      if (this.drawTransparentPixels || stat.realColor !== 0)
-        pixelsSum += stat.amount;
+      pixelsSum += stat.amount;
     if (this.colors.length !== this.colorsStat.size || this.colors.some((x) => !this.colorsStat.has(x))) {
       this.colors = this.colorsStat.values().toArray().sort((a, b) => b.amount - a.amount).map((color) => color.realColor);
       save(this.bot);
@@ -1545,13 +1861,11 @@ class BotImage extends Base2 {
     this.$colors.style.height = `${LINE_HEIGHT * this.colors.length}px`;
     for (let index = 0;index < this.colors.length; index++) {
       const drawColor = this.colors[index];
-      if (!this.drawTransparentPixels && drawColor === 0)
-        continue;
       const css = (color) => color === 0 ? `repeating-linear-gradient(32deg, #ccc 0 8px, transparent 8px 16px)` : colorToCSS(color);
       const colorStat = this.colorsStat.get(drawColor);
       const $button = document.createElement("button");
       if (COLORS[drawColor][0] < 0.6)
-        addClass($button, "dark");
+        $button.classList.add("dark");
       $button.title = "Drag to reorder. Click to disable.";
       $button.style.top = `${index * LINE_HEIGHT}px`;
       if (this.disabledColors.has(drawColor)) {
@@ -1594,17 +1908,16 @@ class BotImage extends Base2 {
           break;
       }
       const $percent = document.createElement("span");
-      addClass($percent, "percent");
+      $percent.classList.add("percent");
       const donePixels = colorStat.amount - colorStat.left;
       const donePercent = donePixels / colorStat.amount;
       const share = colorStat.amount / pixelsSum;
       $percent.innerText = `${donePixels}/${colorStat.amount}px ${formatPercent(donePercent)} (${formatPercent(share)})`;
-      $percent.title = "Pixels drawn / total, drawn % (% of the image)";
       $button.appendChild($percent);
       this.$colors.append($button);
       let dragging = false;
       const startDrag = (startEvent) => {
-        addClass($button, "dragging");
+        $button.classList.add("dragging");
         let newIndex = index;
         const mouseMoveHandler = (event) => {
           newIndex = Math.min(this.colors.length - 1, Math.max(0, Math.round(index + (event.clientY - startEvent.clientY) / LINE_HEIGHT)));
@@ -1623,7 +1936,7 @@ class BotImage extends Base2 {
         };
         this.registerEvent(document, "mousemove", mouseMoveHandler);
         this.registerEvent(document, "mouseup", () => {
-          removeClass($button, "dragging");
+          $button.classList.remove("dragging");
           document.removeEventListener("mousemove", mouseMoveHandler);
           if (newIndex !== index)
             this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1));
@@ -1645,7 +1958,7 @@ class BotImage extends Base2 {
           this.disabledColors.delete(drawColor);
         else
           this.disabledColors.add(drawColor);
-        toggleClass($button, "color-disabled");
+        $button.classList.toggle("color-disabled");
         await this.updatePixels();
         await save(this.bot);
       });
@@ -1693,15 +2006,15 @@ class BotImage extends Base2 {
       clientY: event.clientY
     };
     const $resize = event.target;
-    if (containsClass($resize, "n")) {
+    if ($resize.classList.contains("n")) {
       this.moveInfo.height = this.height;
       this.moveInfo.globalY = this.position.globalY;
     }
-    if (containsClass($resize, "e"))
+    if ($resize.classList.contains("e"))
       this.moveInfo.width = this.width;
-    if (containsClass($resize, "s"))
+    if ($resize.classList.contains("s"))
       this.moveInfo.height = this.height;
-    if (containsClass($resize, "w")) {
+    if ($resize.classList.contains("w")) {
       this.moveInfo.width = this.width;
       this.moveInfo.globalX = this.position.globalX;
     }
@@ -1725,8 +2038,6 @@ class BotImage extends Base2 {
 
 // src/style.css
 var style_default = `/* stylelint-disable declaration-no-important */
-/* stylelint-disable plugin/no-low-performance-animation-properties */
-/* stylelint-disable no-descending-specificity */
 @import 'https://fonts.googleapis.com/css2?family=Tiny5&display=swap';
 
 :root {
@@ -1743,31 +2054,31 @@ var style_default = `/* stylelint-disable declaration-no-important */
 .maplibregl-marker[aria-label='WBOT_FAVORITE'] {
   display: none !important;
 }
+`;
 
-/** LOCAL STYLES */
-
-/** Widget */
-.widget {
+// src/widget.css
+var widget_default = `:host {
   position: fixed;
   top: 0;
   left: 0;
   z-index: 1000;
   display: flex;
   flex-direction: column;
+  overflow: visible;
   width: 256px;
   height: 100dvh;
   border-right: var(--text) 2px solid;
   background-color: var(--background);
-  color: var(--text);
   transition: transform 0.5s;
   transform: translateX(-100%);
 }
 
-.widget * {
-  font-family: 'Tiny5', sans-serif !important;
+:host(.open) {
+  box-shadow: 8px 0 16px -8px var(--main);
+  transform: translateX(0);
 }
 
-.widget .title {
+.title {
   display: block;
   width: 100%;
   border: none;
@@ -1778,20 +2089,7 @@ var style_default = `/* stylelint-disable declaration-no-important */
   text-align: center;
 }
 
-.widget.open .open-button div {
-  transform: rotate(180deg);
-}
-
-.widget.open {
-  box-shadow: 8px 0 16px -8px var(--main);
-  transform: translateX(0);
-}
-
-.widget .open-button div {
-  transition: transform 0.5s;
-}
-
-.widget .open-button {
+.open-button {
   position: absolute;
   top: calc(50% - 24px);
   right: -24px;
@@ -1804,34 +2102,45 @@ var style_default = `/* stylelint-disable declaration-no-important */
   cursor: pointer;
 }
 
-.widget .images {
-  display: block;
+.open-button div {
+  transition: transform 0.5s;
 }
 
-.widget .images .item {
+:host(.open) .open-button div {
+  transform: rotate(180deg);
+}
+
+.form > .images {
+  display: block;
+  overflow: auto;
+  height: auto;
+  white-space: normal;
+}
+
+.images .item {
   display: grid;
   grid-template-areas:
     'canvas name name name'
     'canvas toggle up down';
-  grid-template-columns: 48px 1fr auto auto; /* canvas fixed, name flexible, up/down auto */
+  grid-template-columns: 48px 1fr auto auto;
   gap: 4px;
   width: 100%;
   height: 64px;
   margin-bottom: 4px;
 }
 
-.widget .images .item canvas {
+.images .item canvas {
   grid-area: canvas;
   margin-right: 4px;
   cursor: pointer;
 }
 
-.widget .images .item .name {
+.images .item .name {
   display: block;
   grid-area: name;
 }
 
-.widget .images .item .toggle {
+.images .item .toggle {
   display: flex;
   grid-area: toggle;
   gap: 4px;
@@ -1840,273 +2149,39 @@ var style_default = `/* stylelint-disable declaration-no-important */
   font-size: 18px;
 }
 
-.widget .images .item .up {
+.images .item .up {
   grid-area: up;
   font-weight: bolder;
   font-size: 24px;
   line-height: 100%;
 }
 
-.widget .images .item .down {
+.images .item .down {
   grid-area: down;
   font-weight: bolder;
   font-size: 24px;
   line-height: 100%;
 }
-
-/** Image */
-.image {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 9;
-}
-
-.image * {
-  font-family: 'Tiny5', sans-serif !important;
-}
-
-.image canvas {
-  image-rendering: pixelated;
-  width: 100%;
-  box-shadow: inset var(--text) 0 0 0 2px;
-  cursor: all-scroll;
-}
-
-dialog.form {
-  width: clamp(256px, 60vh, 512px);
-  height: 60vh;
-  margin: auto;
-  border: var(--text) 2px solid;
-  background-color: var(--background);
-  color: var(--text);
-}
-
-dialog.form::backdrop {
-  background: rgb(0 0 0 / 70%);
-}
-
-/* Settings */
-.form {
-  flex-grow: 1;
-  overflow-y: auto;
-}
-
-.form > * {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  overflow: hidden;
-  width: calc(100% - 8px);
-  margin: 4px;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.form button,
-.form input,
-.form select,
-.form textarea,
-.form label:has(input[type='checkbox']) {
-  padding: 0 8px;
-  border: var(--text) 2px solid;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.form input[type='range'] {
-  appearance: none;
-  width: 100%;
-  height: 32px;
-  background: linear-gradient(
-    to right,
-    var(--main) var(--val),
-    var(--background-disabled) var(--val)
-  );
-  cursor: ew-resize;
-}
-
-.form input[type='range']::-moz-range-thumb {
-  width: 0;
-  height: 0;
-  opacity: 0;
-}
-
-.form button:hover,
-.form input:hover {
-  background-color: var(--background-hover);
-}
-
-.form button:disabled,
-.form input:disabled {
-  background-color: var(--background-disabled);
-  cursor: no-drop;
-}
-
-.form label input:not([type='checkbox']) {
-  width: inherit;
-}
-
-.form .progress {
-  position: relative;
-  width: 100%;
-  margin: 0;
-}
-
-.form .progress div {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  background-color: var(--main);
-  transform-origin: left;
-}
-
-.form .progress span {
-  z-index: 0;
-}
-
-.form .colors {
-  position: relative;
-  display: block;
-  width: 100%;
-  margin: 0;
-}
-
-.form .colors > button {
-  position: absolute;
-  left: 0;
-  z-index: 1;
-  display: block;
-  width: 100%;
-  height: 20px;
-  border: none;
-  font-size: 16px;
-  cursor: ns-resize;
-  transition: 0.5s top ease;
-}
-
-.form .colors > button.dark {
-  color: var(--text-invert);
-}
-
-.form .colors > button:hover {
-  filter: brightness(0.6);
-}
-
-.form .colors > button * {
-  float: left;
-}
-
-.form .colors > button .percent {
-  float: right;
-}
-
-.form .colors > button.dragging {
-  z-index: 100;
-}
-
-.form .colors > button > button {
-  height: 100%;
-}
-
-/* Topbar */
-.topbar {
-  position: absolute;
-  top: -24px;
-  left: 0;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-width: min-content;
-  min-width: 256px;
-  border: var(--text) 2px solid;
-  background-color: var(--main);
-  color: var(--text-invert);
-  cursor: all-scroll;
-}
-
-.topbar .name {
-  width: 100%;
-  height: 100%;
-  padding: 0 4px;
-}
-
-.topbar button {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 24px;
-  height: 24px;
-}
-
-.topbar button:hover {
-  background-color: var(--main-hover);
-}
-
-/* Resize */
-.resize {
-  position: absolute;
-  width: calc(100% - var(--resize) - var(--resize));
-  height: calc(100% - var(--resize) - var(--resize));
-}
-
-.resize.n {
-  top: 0;
-  left: var(--resize);
-  height: var(--resize);
-  cursor: n-resize;
-}
-
-.resize.e {
-  top: var(--resize);
-  right: 0;
-  width: var(--resize);
-  cursor: e-resize;
-}
-
-.resize.s {
-  bottom: 0;
-  left: var(--resize);
-  height: var(--resize);
-  cursor: s-resize;
-}
-
-.resize.w {
-  top: var(--resize);
-  left: 0;
-  width: var(--resize);
-  cursor: w-resize;
-}
-
-/* Utility */
-.p {
-  padding: 0 8px;
-}
-
-.hidden {
-  display: none;
-}
-
-.no-pointer-events {
-  height: 1px;
-  pointer-events: none;
-}
 `;
 
 // src/widget.html
-var widget_default = `<button class="open-button"><div>></div></button>
-<input class="title" type="text">
+var widget_default2 = `<button class="open-button"><div>></div></button>
+<input class="title" type="text" />
 <div class="form">
-  <div class="progress"><div></div><span></span></div>
+  <div class="progress">
+    <div></div>
+    <span></span>
+  </div>
   <div class="p status"></div>
   <button class="draw" disabled>Draw</button>
   <button class="auto-draw" disabled>Auto-Draw</button>
-  <label>Strategy:&nbsp;<select class="strategy">
-    <option value="SEQUENTIAL" selected>Sequential</option>
-    <option value="ALL">All</option>
-    <option value="PERCENTAGE">Percentage</option>
-  </select></label>
+  <label
+    >Strategy:&nbsp;<select class="strategy">
+      <option value="SEQUENTIAL" selected>Sequential</option>
+      <option value="ALL">All</option>
+      <option value="PERCENTAGE">Percentage</option>
+    </select></label
+  >
   <button class="add-image" disabled>Add image</button>
   <!-- <button class="pumpkin-hunt" disabled>Pumpkin Hunt!</button> -->
   <div class="images"></div>
@@ -2116,7 +2191,6 @@ var widget_default = `<button class="open-button"><div>></div></button>
 // src/widget.ts
 class Widget extends Base2 {
   bot;
-  element = document.createElement("div");
   get status() {
     return this.$status.innerHTML;
   }
@@ -2124,13 +2198,10 @@ class Widget extends Base2 {
     this.$status.innerHTML = value;
   }
   get open() {
-    return containsClass(this.element, "open");
+    return this.element.classList.contains("open");
   }
   set open(value) {
-    if (value)
-      addClass(this.element, "open");
-    else
-      removeClass(this.element, "open");
+    this.element.classList.toggle("open", value);
   }
   $settings;
   $status;
@@ -2146,12 +2217,10 @@ class Widget extends Base2 {
   $openButton;
   $autoDraw;
   constructor(bot) {
-    super();
+    super(widget_default2, `${shared_default}
+${widget_default}`);
     this.bot = bot;
-    addClass(this.element, "widget");
-    this.element.innerHTML = obfucsateHTML(widget_default);
-    document.body.append(this.element);
-    this.populateElementsWithSelector(this.element, {
+    this.populateElementsWithSelector({
       $openButton: ".open-button",
       $settings: ".form",
       $status: ".status",
@@ -2176,6 +2245,7 @@ class Widget extends Base2 {
     this.$addImage.addEventListener("click", () => this.addImage());
     this.$strategy.addEventListener("change", () => {
       this.bot.strategy = this.$strategy.value;
+      save(this.bot);
     });
     this.$autoDraw.addEventListener("click", () => this.bot.autoDraw());
     this.update();
@@ -2188,7 +2258,6 @@ class Widget extends Base2 {
       input.type = "file";
       input.accept = "image/*,.wbot";
       input.hidden = true;
-      document.body.append(input);
       const load = promisifyEventSource(input, ["change"], ["cancel", "error"]);
       input.click();
       await load;
@@ -2235,8 +2304,8 @@ class Widget extends Base2 {
       const image = this.bot.images[index];
       const $image = document.createElement("div");
       this.$images.append($image);
-      $image.className = SID + "item";
-      $image.innerHTML = obfucsateHTML(`
+      $image.className = "item";
+      $image.innerHTML = `
 <canvas></canvas>
 <input type="text" class="name">
 <label class="toggle">
@@ -2244,7 +2313,7 @@ class Widget extends Base2 {
   <span>${image.disabled ? "Disabled" : "Enabled"}</span>
 </label>
 <button class="up" title="Move up" ${index === 0 ? "disabled" : ""}>▴</button>
-<button class="down" title="Move down" ${index === this.bot.images.length - 1 ? "disabled" : ""}>▾</button>`);
+<button class="down" title="Move down" ${index === this.bot.images.length - 1 ? "disabled" : ""}>▾</button>`;
       const $canvas = $image.querySelector("canvas");
       $canvas.width = 48;
       $canvas.height = 64;
@@ -2255,7 +2324,7 @@ class Widget extends Base2 {
       $canvas.addEventListener("click", () => {
         image.position.moveScreenTo();
       });
-      const $name = querySelector($image, ".name");
+      const $name = $image.querySelector(".name");
       $name.value = image.name;
       $name.addEventListener("change", () => {
         image.name = $name.value;
@@ -2263,19 +2332,19 @@ class Widget extends Base2 {
         this.update();
         save(this.bot);
       });
-      const $enabled = querySelector($image, ".enabled");
+      const $enabled = $image.querySelector(".enabled");
       $enabled.addEventListener("change", async () => {
         image.disabled = !$enabled.checked;
         await image.updatePixels();
         await save(this.bot);
       });
       this.bot.fixSpaceInInput($name);
-      querySelector($image, ".up").addEventListener("click", () => {
+      $image.querySelector(".up").addEventListener("click", () => {
         swap(this.bot.images, index, index - 1);
         this.update();
         save(this.bot);
       });
-      querySelector($image, ".down").addEventListener("click", () => {
+      $image.querySelector(".down").addEventListener("click", () => {
         swap(this.bot.images, index, index + 1);
         this.update();
         save(this.bot);
@@ -2283,7 +2352,7 @@ class Widget extends Base2 {
     }
   }
   setDisabled(name, disabled) {
-    querySelector(this.element, "." + name).disabled = disabled;
+    this.shadow.querySelector("." + name).disabled = disabled;
   }
   async run(status, run, fin, emoji = "⌛") {
     const originalStatus = this.status;
@@ -2303,7 +2372,7 @@ class Widget extends Base2 {
     }
   }
   minimize() {
-    toggleClass(this.$settings, "hidden");
+    this.$settings.classList.toggle("hidden");
   }
 }
 
@@ -2341,7 +2410,7 @@ class WPlaceBot {
     }
     this.registerFetchInterceptor();
     const style = document.createElement("style");
-    style.textContent = obfuscateCSS(style_default.replace("FAKE_FAVORITE_LOCATIONS", FAVORITE_LOCATIONS.length.toString()));
+    style.textContent = style_default;
     document.head.append(style);
     this.widget.run("Initializing", async (progress) => {
       await this.waitForElement(".avatar.center-absolute.absolute");
@@ -2383,7 +2452,7 @@ class WPlaceBot {
       if (window.confirm(`WPlace-bot couldn't load!
 Do you want to CLEAR ALL DATA to fix it?
 
-Hint for next time: Create backup's with \uD83D\uDCE4 button.`)) {
+Hint for next time: Create backup with \uD83D\uDCE4 button.`)) {
         try {
           const a = document.createElement("a");
           document.body.append(a);
@@ -2395,10 +2464,8 @@ Hint for next time: Create backup's with \uD83D\uDCE4 button.`)) {
           window.alert(`Wplace-Bot-Broken-Save.txt is your broken save. If you ACTUALLY need data from this save, create issue on https://github.com/SoundOfTheSky/wplace-bot/issues
 
 Developer will try to fix your save. Be vary that github issues are public, and save file contains your images and their positions in world.`);
-          DELETE_ALL_DATA();
-        } catch {
-          DELETE_ALL_DATA();
         } finally {
+          DELETE_ALL_DATA();
           document.location.reload();
         }
       }
@@ -2581,7 +2648,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
     this.autoDrawInterval = setInterval(async () => {
       const deltaTime = drawTime - Date.now();
       if (deltaTime > 0)
-        this.widget.$autoDraw.innerText = `Auto-Draw in (${deltaTime / 60000 | 0}:${(deltaTime % 60000 / 1000 | 0).toString().padStart(2, "0")})!`;
+        this.widget.$autoDraw.innerText = `Auto-Draw in (${formatNumber(deltaTime, 60000)})!`;
       else {
         drawTime = Date.now() + (this.me?.charges.max ?? 100) * 0.9 * 30000;
         try {
@@ -2608,9 +2675,16 @@ Developer will try to fix your save. Be vary that github issues are public, and 
   async updateColorsData() {
     await this.openColors();
     this.unavailableColors.clear();
-    for (const $button of document.querySelectorAll("button.btn.relative.w-full"))
+    const buttons = [
+      ...document.querySelectorAll("button.btn.relative.w-full")
+    ];
+    if (buttons.length !== 64)
+      throw new Error(`Expected 64 colors, but got ${buttons.length}`);
+    for (let index = 0;index < buttons.length; index++) {
+      const $button = buttons[index];
       if ($button.children.length !== 0)
-        this.unavailableColors.add(Math.abs(Number.parseInt($button.id.slice(6))));
+        this.unavailableColors.add(Number.parseInt($button.id.slice(6)));
+    }
   }
   moveMap(delta) {
     const canvas = document.querySelector(".maplibregl-canvas");
@@ -2674,6 +2748,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
       unfoldColors.click();
       await wait(1);
     }
+    await this.waitForElement("button.btn.relative.w-full");
   }
   async closeAll() {
     for (const button of document.querySelectorAll("button")) {

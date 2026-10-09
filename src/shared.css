@@ -1,0 +1,137 @@
+/* stylelint-disable declaration-no-important */
+/* stylelint-disable plugin/no-low-performance-animation-properties */
+/* stylelint-disable no-descending-specificity */
+
+:host {
+  --text-invert: #fff;
+  --resize: 8px;
+  --text: #422e2c;
+  --background: #fbe3cb;
+  --background-hover: #f0d1b3;
+  --background-disabled: #a37648;
+  --main: #66bbb4;
+  --main-hover: #48a19a;
+
+  box-sizing: border-box;
+  color: var(--text);
+  font-family: 'Tiny5', sans-serif;
+}
+
+:host *,
+:host *::before,
+:host *::after {
+  box-sizing: border-box;
+  font-family: 'Tiny5', sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  margin: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+:host(.hidden),
+.hidden {
+  display: none;
+}
+
+.p {
+  padding: 0 8px;
+}
+
+.form {
+  flex-grow: 1;
+  overflow-y: auto;
+}
+
+.form > * {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  width: calc(100% - 8px);
+  margin: 4px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form button,
+.form input,
+.form select,
+.form textarea,
+.form label:has(input[type='checkbox']) {
+  padding: 0 8px;
+  border: var(--text) 2px solid;
+  background-color: var(--background);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.form input[type='range'] {
+  appearance: none;
+  width: 100%;
+  height: 32px;
+  background: linear-gradient(
+    to right,
+    var(--main) var(--val),
+    var(--background-disabled) var(--val)
+  );
+  cursor: ew-resize;
+}
+
+.form input[type='range']::-moz-range-thumb {
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.form input[type='checkbox'] {
+  appearance: auto;
+  width: 1em;
+  height: 1em;
+  padding: 0;
+}
+
+.form button:hover,
+.form input:hover {
+  background-color: var(--background-hover);
+}
+
+.form button:disabled,
+.form input:disabled {
+  background-color: var(--background-disabled);
+  cursor: no-drop;
+}
+
+.form label input:not([type='checkbox']) {
+  width: inherit;
+}
+
+.form .progress {
+  position: relative;
+  width: 100%;
+  margin: 0;
+}
+
+.form .progress div {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-color: var(--main);
+  transform-origin: left;
+}
+
+.form .progress span {
+  z-index: 0;
+}

@@ -19,18 +19,11 @@ export function addFavoriteLocation(position: Position) {
   FAVORITE_LOCATIONS.push({
     id: lastId++,
     latitude:
-      ((2 *
-        Math.atan(
-          Math.exp(
-            -((position.y / WORLD_PIXEL_SIZE) * (2 * Math.PI) - Math.PI),
-          ),
-        ) -
+      ((2 * Math.atan(Math.exp(-((position.y / WORLD_PIXEL_SIZE) * (2 * Math.PI) - Math.PI))) -
         Math.PI / 2) *
         180) /
       Math.PI,
-    longitude:
-      (((position.x / WORLD_PIXEL_SIZE) * (2 * Math.PI) - Math.PI) * 180) /
-      Math.PI,
+    longitude: (((position.x / WORLD_PIXEL_SIZE) * (2 * Math.PI) - Math.PI) * 180) / Math.PI,
     name: 'WBOT_FAVORITE',
   })
 }
@@ -44,9 +37,7 @@ addFavoriteLocation({
   y: ((WORLD_PIXEL_SIZE / 3) * 2) | 0,
 })
 
-export function extractScreenPositionFromStar(
-  $star: HTMLDivElement | undefined,
-) {
+export function extractScreenPositionFromStar($star: HTMLDivElement | undefined) {
   if (!$star) throw new NoAnchorError()
   const [x, y] = $star.style.transform
     .slice(32, -31)
@@ -56,10 +47,7 @@ export function extractScreenPositionFromStar(
 }
 
 export class WorldPosition {
-  public static fromJSON(
-    bot: WPlaceBot,
-    data: ReturnType<WorldPosition['toJSON']>,
-  ) {
+  public static fromJSON(bot: WPlaceBot, data: ReturnType<WorldPosition['toJSON']>) {
     return new WorldPosition(bot, ...data)
   }
 
@@ -68,12 +56,8 @@ export class WorldPosition {
       bot.findAnchorsForScreen(position)
     return new WorldPosition(
       bot,
-      (anchorWorldPosition.x +
-        (position.x - anchorScreenPosition.x) / pixelSize) |
-        0,
-      (anchorWorldPosition.y +
-        (position.y - anchorScreenPosition.y) / pixelSize) |
-        0,
+      (anchorWorldPosition.x + (position.x - anchorScreenPosition.x) / pixelSize) | 0,
+      (anchorWorldPosition.y + (position.y - anchorScreenPosition.y) / pixelSize) | 0,
     )
   }
 
@@ -169,9 +153,7 @@ export class WorldPosition {
   /** Get screen position */
   public toScreenPosition(): Position {
     const worldPosition = FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index]!
-    const screenPosition = extractScreenPositionFromStar(
-      this.bot.$stars[this.anchor1Index],
-    )
+    const screenPosition = extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index])
     return {
       x: (this.globalX - worldPosition.x) * this.pixelSize + screenPosition.x,
       y: (this.globalY - worldPosition.y) * this.pixelSize + screenPosition.y,
