@@ -1585,7 +1585,7 @@ class BotImage extends Base2 {
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(image, 0, 0);
-    const botImage = new BotImage(bot, data.position ? WorldPosition.fromJSON(bot, data.position) : undefined, canvas, data.width, data.brightness, data.strategy, data.opacity, data.drawColorsInOrder, data.colors, new Set(data.disabledColors), data.lock, data.disabled, data.name, data.unownedColorStrategy);
+    const botImage = new BotImage(bot, data.position ? WorldPosition.fromJSON(bot, data.position) : undefined, canvas, data.width, data.brightness, data.strategy, data.opacity, data.drawColorsInOrder, data.colors, new Set(data.disabledColors ?? [0]), data.lock, data.disabled, data.name, data.unownedColorStrategy);
     await botImage.updatePixels(progress);
     return botImage;
   }
@@ -1832,13 +1832,20 @@ ${image_default}`);
     this.$opacity.valueAsNumber = this.opacity;
     this.$drawColorsInOrder.checked = this.drawColorsInOrder;
     this.$name.value = this.name;
-    const maxTasks = this.width * this.height;
+    const maxTasks = this.getMaxTasks();
     const doneTasks = maxTasks - this.tasks.length / 2;
     const percent = formatPercent(doneTasks / maxTasks);
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasks.length / 2)}`;
     this.$progressLine.style.transform = `scaleX(${percent})`;
     this.$wrapper.classList.toggle("no-pointer-events", this.lock);
     this.$lock.textContent = this.lock ? "\uD83D\uDD12" : "\uD83D\uDD13";
+  }
+  getMaxTasks() {
+    let max = 0;
+    for (const [color, stat] of this.colorsStat.entries())
+      if (!this.disabledColors.has(color))
+        max += stat.amount;
+    return max;
   }
   destroy() {
     super.destroy();
@@ -2292,7 +2299,7 @@ ${widget_default}`);
       const image = this.bot.images[index];
       if (image.disabled)
         continue;
-      maxTasks += image.width * image.height;
+      maxTasks += image.getMaxTasks();
       totalTasks += image.tasks.length / 2;
     }
     const doneTasks = maxTasks - totalTasks;
@@ -2378,6 +2385,87 @@ ${widget_default}`);
 
 // src/bot.ts
 class WPlaceBot {
+  static async create() {
+    const bot = new WPlaceBot;
+    return bot.widget.run("Initializing", async (progress) => {
+      const save = await loadSave();
+      if (save) {
+        for (let index = 0;index < save.images.length; index++) {
+          const image = save.images[index];
+          addFavoriteLocation({
+            x: image.position[0] - 1000,
+            y: image.position[1] - 1000
+          });
+          addFavoriteLocation({
+            x: image.position[0] + 1000,
+            y: image.position[1] + 1000
+          });
+        }
+        bot.strategy = save.strategy;
+        bot.title = save.title;
+      } else
+        bot.title = "WPlace-bot";
+      bot.registerFetchInterceptor();
+      const style = document.createElement("style");
+      style.textContent = style_default;
+      document.head.append(style);
+      progress(0.01);
+      await bot.waitForElement(".avatar.center-absolute.absolute");
+      progress(0.02);
+      await bot.waitForElement(".btn.btn-primary.btn-lg.relative.z-30");
+      progress(0.03);
+      new MutationObserver((mutations) => {
+        for (let index = 0;index < mutations.length; index++)
+          if (mutations[index].removedNodes.length !== 0) {
+            bot.updateStars();
+            break;
+          }
+        for (let index = 0;index < bot.images.length; index++)
+          bot.images[index].updateUI();
+      }).observe(await bot.waitForElement(".maplibregl-canvas-container"), {
+        attributes: true,
+        childList: true,
+        subtree: true
+      });
+      bot.updateStars();
+      await wait(500);
+      progress(0.04);
+      await bot.updateColorsData();
+      progress(0.05);
+      if (save) {
+        const batchSize = 1 / save.images.length;
+        for (let index = 0;index < save.images.length; index++) {
+          await BotImage.fromJSON(bot, save.images[index], (p) => {
+            progress(0.05 + (index * batchSize + p * batchSize) * 0.95);
+          });
+        }
+      }
+      bot.widget.setDisabled("draw", false);
+      bot.widget.setDisabled("auto-draw", false);
+      bot.widget.setDisabled("add-image", false);
+    }).catch(async (error) => {
+      if (!window.confirm(`WPlace-bot couldn't load!
+Do you want to DELETE ALL DATA to fix it?
+
+ERROR: ` + error))
+        throw error;
+      try {
+        const a = document.createElement("a");
+        document.body.append(a);
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(await loadSave())], {
+          type: "application/json"
+        }));
+        a.download = `Wplace-Bot-Broken-Save.txt`;
+        a.click();
+        window.alert(`Wplace-Bot-Broken-Save.txt is your broken save. If you ACTUALLY need data from this save, create issue on https://github.com/SoundOfTheSky/wplace-bot/issues
+
+Developer will try to fix your save. Be vary that github issues are public, and save file contains your images and their positions in world.`);
+      } finally {
+        DELETE_ALL_DATA();
+        document.location.reload();
+      }
+    });
+  }
   title = "";
   unavailableColors = new Set;
   mapsCacheKeys = new Uint32Array(0);
@@ -2390,87 +2478,6 @@ class WPlaceBot {
   widget = new Widget(this);
   markerPixelPositionResolvers = [];
   lastColor;
-  constructor(save) {
-    if (save) {
-      for (let index = 0;index < save.images.length; index++) {
-        const image = save.images[index];
-        addFavoriteLocation({
-          x: image.position[0] - 1000,
-          y: image.position[1] - 1000
-        });
-        addFavoriteLocation({
-          x: image.position[0] + 1000,
-          y: image.position[1] + 1000
-        });
-      }
-      this.strategy = save.strategy;
-      this.title = save.title;
-    } else {
-      this.title = "WPlace-bot";
-    }
-    this.registerFetchInterceptor();
-    const style = document.createElement("style");
-    style.textContent = style_default;
-    document.head.append(style);
-    this.widget.run("Initializing", async (progress) => {
-      await this.waitForElement(".avatar.center-absolute.absolute");
-      progress(0.01);
-      await this.waitForElement(".btn.btn-primary.btn-lg.relative.z-30");
-      progress(0.02);
-      const $canvasContainer = await this.waitForElement(".maplibregl-canvas-container");
-      progress(0.03);
-      new MutationObserver((mutations) => {
-        for (let index = 0;index < mutations.length; index++)
-          if (mutations[index].removedNodes.length !== 0) {
-            this.updateStars();
-            break;
-          }
-        for (let index = 0;index < this.images.length; index++)
-          this.images[index].updateUI();
-      }).observe($canvasContainer, {
-        attributes: true,
-        childList: true,
-        subtree: true
-      });
-      this.updateStars();
-      await wait(500);
-      progress(0.04);
-      await this.updateColorsData();
-      progress(0.05);
-      if (save) {
-        const batchSize = 1 / save.images.length;
-        for (let index = 0;index < save.images.length; index++) {
-          await BotImage.fromJSON(this, save.images[index], (p) => {
-            progress(0.05 + (index * batchSize + p * batchSize) * 0.95);
-          });
-        }
-      }
-      this.widget.setDisabled("draw", false);
-      this.widget.setDisabled("auto-draw", false);
-      this.widget.setDisabled("add-image", false);
-    }).catch(async () => {
-      if (window.confirm(`WPlace-bot couldn't load!
-Do you want to CLEAR ALL DATA to fix it?
-
-Hint for next time: Create backup with \uD83D\uDCE4 button.`)) {
-        try {
-          const a = document.createElement("a");
-          document.body.append(a);
-          a.href = URL.createObjectURL(new Blob([JSON.stringify(await loadSave())], {
-            type: "application/json"
-          }));
-          a.download = `Wplace-Bot-Broken-Save.txt`;
-          a.click();
-          window.alert(`Wplace-Bot-Broken-Save.txt is your broken save. If you ACTUALLY need data from this save, create issue on https://github.com/SoundOfTheSky/wplace-bot/issues
-
-Developer will try to fix your save. Be vary that github issues are public, and save file contains your images and their positions in world.`);
-        } finally {
-          DELETE_ALL_DATA();
-          document.location.reload();
-        }
-      }
-    });
-  }
   draw() {
     this.widget.setDisabled("draw", true);
     this.widget.status = "";
@@ -2675,9 +2682,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
   async updateColorsData() {
     await this.openColors();
     this.unavailableColors.clear();
-    const buttons = [
-      ...document.querySelectorAll("button.btn.relative.w-full")
-    ];
+    const buttons = [...document.querySelectorAll("button.btn.relative.w-full")];
     if (buttons.length !== 64)
       throw new Error(`Expected 64 colors, but got ${buttons.length}`);
     for (let index = 0;index < buttons.length; index++) {
@@ -2834,7 +2839,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
     };
   }
 }
-globalThis.wbot = new WPlaceBot(await loadSave());
+globalThis.wbot = WPlaceBot.create();
 {
   WPlaceBot
 };

@@ -18,8 +18,7 @@ const dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
   const request = indexedDB.open(DB_NAME, DB_VERSION)
   request.onupgradeneeded = () => {
     const db = request.result
-    if (!db.objectStoreNames.contains(STORE_NAME))
-      db.createObjectStore(STORE_NAME)
+    if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME)
   }
   request.onsuccess = () => {
     resolve(request.result)
@@ -109,9 +108,7 @@ async function migrateSaveFromLS() {
 }
 
 /** How to migrate save data for images */
-export function migrateImage(
-  old: any,
-): Awaited<ReturnType<BotImage['toJSON']>> {
+export function migrateImage(old: any): Awaited<ReturnType<BotImage['toJSON']>> {
   const img = structuredClone(old)
   if (!img.version) {
     return {
@@ -127,8 +124,7 @@ export function migrateImage(
       lock: img.lock || false,
       disabled: img.disabled || false,
       name: img.name || `Unnamed image`,
-      unownedColorStrategy:
-        img.unownedColorStrategy || UnownedColorStrategy.BUY,
+      unownedColorStrategy: img.unownedColorStrategy || UnownedColorStrategy.BUY,
       version: SAVE_VERSION,
     }
   }
@@ -148,8 +144,7 @@ export function migrateImage(
       lock: img.lock || false,
       disabled: img.disabled || false,
       name: img.name || `Unnamed image`,
-      unownedColorStrategy:
-        img.unownedColorStrategy || UnownedColorStrategy.BUY,
+      unownedColorStrategy: img.unownedColorStrategy || UnownedColorStrategy.BUY,
       version: 3,
     })
   }

@@ -51,6 +51,103 @@ export type Me = {
  * Used to interact with wplace
  * */
 export class WPlaceBot {
+  public static async create() {
+    const bot = new WPlaceBot()
+    return bot.widget
+      .run('Initializing', async (progress) => {
+        const save = await loadSave()
+        // Preinit save data before page has loaded
+        if (save) {
+          for (let index = 0; index < save.images.length; index++) {
+            const image = save.images[index]!
+            addFavoriteLocation({
+              x: image.position[0] - 1000,
+              y: image.position[1] - 1000,
+            })
+            addFavoriteLocation({
+              x: image.position[0] + 1000,
+              y: image.position[1] + 1000,
+            })
+          }
+
+          bot.strategy = save.strategy
+          bot.title = save.title
+        } else bot.title = 'WPlace-bot'
+
+        bot.registerFetchInterceptor()
+
+        // Embed styles
+        const style = document.createElement('style')
+        style.textContent = css as string
+        document.head.append(style)
+        progress(0.01)
+
+        // Waiting for all of website to load
+        await bot.waitForElement('.avatar.center-absolute.absolute')
+        progress(0.02)
+        await bot.waitForElement('.btn.btn-primary.btn-lg.relative.z-30')
+        progress(0.03)
+        new MutationObserver((mutations: MutationRecord[]) => {
+          // If elements were removed, update stars
+          for (let index = 0; index < mutations.length; index++)
+            if (mutations[index]!.removedNodes.length !== 0) {
+              bot.updateStars()
+              break
+            }
+          for (let index = 0; index < bot.images.length; index++) bot.images[index]!.updateUI()
+        }).observe(await bot.waitForElement('.maplibregl-canvas-container'), {
+          attributes: true,
+          childList: true,
+          subtree: true,
+        })
+        bot.updateStars()
+        await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
+        progress(0.04)
+        await bot.updateColorsData()
+        progress(0.05)
+        // Load images
+        if (save) {
+          const batchSize = 1 / save.images.length
+          for (let index = 0; index < save.images.length; index++) {
+            await BotImage.fromJSON(bot, save.images[index]!, (p) => {
+              progress(0.05 + (index * batchSize + p * batchSize) * 0.95)
+            })
+          }
+        }
+        // Unblock buttons
+        bot.widget.setDisabled('draw', false)
+        bot.widget.setDisabled('auto-draw', false)
+        bot.widget.setDisabled('add-image', false)
+        // this.widget.setDisabled('pumpkin-hunt', false)
+      })
+      .catch(async (error) => {
+        if (
+          !window.confirm(
+            "WPlace-bot couldn't load!\nDo you want to DELETE ALL DATA to fix it?\n\nERROR: " +
+              error,
+          )
+        )
+          throw error
+        try {
+          const a = document.createElement('a')
+          document.body.append(a)
+          a.href = URL.createObjectURL(
+            new Blob([JSON.stringify(await loadSave())], {
+              type: 'application/json',
+            }),
+          )
+          a.download = `Wplace-Bot-Broken-Save.txt`
+          a.click()
+          window.alert(
+            'Wplace-Bot-Broken-Save.txt is your broken save. If you ACTUALLY need data from this save, create issue on https://github.com/SoundOfTheSky/wplace-bot/issues\n\nDeveloper will try to fix your save. Be vary that github issues are public, and save file contains your images and their positions in world.',
+          )
+        } finally {
+          DELETE_ALL_DATA()
+          document.location.reload()
+        }
+      })
+  }
+
   /** Title in widget */
   public title = ''
 
@@ -81,120 +178,17 @@ export class WPlaceBot {
   public widget = new Widget(this)
 
   /** Used to wait for pixel data on marker set */
-  protected markerPixelPositionResolvers: ((
-    position: WorldPosition,
-  ) => unknown)[] = []
+  protected markerPixelPositionResolvers: ((position: WorldPosition) => unknown)[] = []
 
   /** Last color drawn */
   protected lastColor?: number
-
-  public constructor(save?: Awaited<ReturnType<WPlaceBot['toJSON']>>) {
-    // Preinit save data before page has loaded
-    if (save) {
-      for (let index = 0; index < save.images.length; index++) {
-        const image = save.images[index]!
-        addFavoriteLocation({
-          x: image.position[0] - 1000,
-          y: image.position[1] - 1000,
-        })
-        addFavoriteLocation({
-          x: image.position[0] + 1000,
-          y: image.position[1] + 1000,
-        })
-      }
-
-      this.strategy = save.strategy
-      this.title = save.title
-    } else {
-      this.title = 'WPlace-bot'
-    }
-
-    this.registerFetchInterceptor()
-
-    // Embed styles
-    const style = document.createElement('style')
-    style.textContent = css as string
-    document.head.append(style)
-
-    void this.widget
-      .run('Initializing', async (progress) => {
-        // Waiting for all of website to load
-        await this.waitForElement('.avatar.center-absolute.absolute')
-        progress(0.01)
-        await this.waitForElement('.btn.btn-primary.btn-lg.relative.z-30')
-        progress(0.02)
-        const $canvasContainer = await this.waitForElement(
-          '.maplibregl-canvas-container',
-        )
-        progress(0.03)
-        new MutationObserver((mutations: MutationRecord[]) => {
-          // If elements were removed, update stars
-          for (let index = 0; index < mutations.length; index++)
-            if (mutations[index]!.removedNodes.length !== 0) {
-              this.updateStars()
-              break
-            }
-          for (let index = 0; index < this.images.length; index++)
-            this.images[index]!.updateUI()
-        }).observe($canvasContainer, {
-          attributes: true,
-          childList: true,
-          subtree: true,
-        })
-        this.updateStars()
-        await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
-        progress(0.04)
-        await this.updateColorsData()
-        progress(0.05)
-        // Load images
-        if (save) {
-          const batchSize = 1 / save.images.length
-          for (let index = 0; index < save.images.length; index++) {
-            await BotImage.fromJSON(this, save.images[index]!, (p) => {
-              progress(0.05 + (index * batchSize + p * batchSize) * 0.95)
-            })
-          }
-        }
-        // Unblock buttons
-        this.widget.setDisabled('draw', false)
-        this.widget.setDisabled('auto-draw', false)
-        this.widget.setDisabled('add-image', false)
-        // this.widget.setDisabled('pumpkin-hunt', false)
-      })
-      .catch(async () => {
-        if (
-          window.confirm(
-            "WPlace-bot couldn't load!\nDo you want to CLEAR ALL DATA to fix it?\n\nHint for next time: Create backup with 📤 button.",
-          )
-        ) {
-          try {
-            const a = document.createElement('a')
-            document.body.append(a)
-            a.href = URL.createObjectURL(
-              new Blob([JSON.stringify(await loadSave())], {
-                type: 'application/json',
-              }),
-            )
-            a.download = `Wplace-Bot-Broken-Save.txt`
-            a.click()
-            window.alert(
-              'Wplace-Bot-Broken-Save.txt is your broken save. If you ACTUALLY need data from this save, create issue on https://github.com/SoundOfTheSky/wplace-bot/issues\n\nDeveloper will try to fix your save. Be vary that github issues are public, and save file contains your images and their positions in world.',
-            )
-          } finally {
-            DELETE_ALL_DATA()
-            document.location.reload()
-          }
-        }
-      })
-  }
 
   /** Start drawing */
   public draw(): Promise<void> {
     this.widget.setDisabled('draw', true)
     this.widget.status = ''
     // Clear maps cache to refetch pixels
-    const $canvas =
-      document.querySelector<HTMLDivElement>('.maplibregl-canvas')!
+    const $canvas = document.querySelector<HTMLDivElement>('.maplibregl-canvas')!
     const prevent = (event: MouseEvent | WheelEvent) => {
       if (!event.shiftKey) event.stopPropagation()
     }
@@ -235,10 +229,7 @@ export class WPlaceBot {
 
         // Calculate tasks and colors to buy
         let tasksLength = 0
-        const colorsToBuyMap = new Map<
-          number,
-          { color: number; amount: number }
-        >()
+        const colorsToBuyMap = new Map<number, { color: number; amount: number }>()
         for (let index = 0; index < this.images.length; index++) {
           const image = this.images[index]!
           if (image.disabled) continue
@@ -246,11 +237,7 @@ export class WPlaceBot {
           if (image.unownedColorStrategy === UnownedColorStrategy.BUY) {
             for (let index = 0; index < image.colors.length; index++) {
               const color = image.colors[index]!
-              if (
-                image.disabledColors.has(color) ||
-                !this.unavailableColors.has(color)
-              )
-                continue
+              if (image.disabledColors.has(color) || !this.unavailableColors.has(color)) continue
               const amount = image.colorsStat.get(color)!.amount
               if (!colorsToBuyMap.has(color))
                 colorsToBuyMap.set(color, {
@@ -261,16 +248,13 @@ export class WPlaceBot {
             }
           }
         }
-        const colorToBuy = [...colorsToBuyMap.values()].sort(
-          (a, b) => b.amount - a.amount,
-        )[0]?.color
+        const colorToBuy = [...colorsToBuyMap.values()].sort((a, b) => b.amount - a.amount)[0]
+          ?.color
         if (this.me!.droplets >= 2000 && colorToBuy !== undefined) {
           document.getElementById('color-' + colorToBuy)?.click()
           await wait(500)
           document
-            .querySelector<HTMLButtonElement>(
-              '.modal-box .flex.w-max.flex-col button',
-            )
+            .querySelector<HTMLButtonElement>('.modal-box .flex.w-max.flex-col button')
             ?.click()
           await wait(1000)
           await this.closeAll()
@@ -298,9 +282,7 @@ export class WPlaceBot {
             ]
 
           if (this.lastColor !== color) {
-            ;(
-              document.getElementById('color-' + color) as HTMLButtonElement
-            ).click()
+            ;(document.getElementById('color-' + color) as HTMLButtonElement).click()
             this.lastColor = color
           }
           const halfPixel = worldPosition.pixelSize / 2
@@ -343,11 +325,7 @@ export class WPlaceBot {
           case BotStrategy.ALL: {
             while (charges > 0) {
               let end = true
-              for (
-                let imageIndex = 0;
-                imageIndex < this.images.length;
-                imageIndex++
-              ) {
+              for (let imageIndex = 0; imageIndex < this.images.length; imageIndex++) {
                 const image = this.images[imageIndex]!
                 if (image.disabled) continue
                 if (await drawTask(image)) end = false
@@ -357,22 +335,13 @@ export class WPlaceBot {
             break
           }
           case BotStrategy.PERCENTAGE: {
-            for (
-              let taskIndex = 0;
-              taskIndex < tasksLength && charges > 0;
-              taskIndex++
-            ) {
+            for (let taskIndex = 0; taskIndex < tasksLength && charges > 0; taskIndex++) {
               let minPercent = 1
               let minImage: BotImage | undefined
-              for (
-                let imageIndex = 0;
-                imageIndex < this.images.length;
-                imageIndex++
-              ) {
+              for (let imageIndex = 0; imageIndex < this.images.length; imageIndex++) {
                 const image = this.images[imageIndex]!
                 if (image.disabled) continue
-                const percent =
-                  1 - image.tasks.length / 2 / (image.width * image.height)
+                const percent = 1 - image.tasks.length / 2 / (image.width * image.height)
                 if (percent < minPercent) {
                   minPercent = percent
                   minImage = image
@@ -383,23 +352,17 @@ export class WPlaceBot {
             break
           }
           case BotStrategy.SEQUENTIAL: {
-            for (
-              let imageIndex = 0;
-              imageIndex < this.images.length;
-              imageIndex++
-            ) {
+            for (let imageIndex = 0; imageIndex < this.images.length; imageIndex++) {
               const image = this.images[imageIndex]!
               if (image.disabled) continue
-              for (let i = 0; i < image.tasks.length / 2 && charges > 0; i++)
-                await drawTask(image)
+              for (let i = 0; i < image.tasks.length / 2 && charges > 0; i++) await drawTask(image)
             }
           }
         }
 
         // Trim tasks from already done
-        for (const [image, value] of indexes)
-          image.tasks = image.tasks.subarray(value * 2)
-
+        for (const [image, value] of indexes) image.tasks = image.tasks.subarray(value * 2)
+        this.me!.charges.count = 0
         this.widget.update()
       },
       () => {
@@ -430,9 +393,7 @@ export class WPlaceBot {
           await this.draw()
           // Click draw
           document
-            .querySelector<HTMLButtonElement>(
-              '.paint-actions > *:nth-child(2) button',
-            )
+            .querySelector<HTMLButtonElement>('.paint-actions > *:nth-child(2) button')
             ?.click()
           errorCount = 0
         } catch {
@@ -458,13 +419,8 @@ export class WPlaceBot {
   public async updateColorsData() {
     await this.openColors()
     this.unavailableColors.clear()
-    const buttons = [
-      ...document.querySelectorAll<HTMLButtonElement>(
-        'button.btn.relative.w-full',
-      ),
-    ]
-    if (buttons.length !== 64)
-      throw new Error(`Expected 64 colors, but got ${buttons.length}`)
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('button.btn.relative.w-full')]
+    if (buttons.length !== 64) throw new Error(`Expected 64 colors, but got ${buttons.length}`)
     for (let index = 0; index < buttons.length; index++) {
       const $button = buttons[index]!
       if ($button.children.length !== 0)
@@ -517,16 +473,13 @@ export class WPlaceBot {
         }
       }
     }
-    const anchorScreenPosition = extractScreenPositionFromStar(
-      this.$stars[anchorIndex],
-    )
+    const anchorScreenPosition = extractScreenPositionFromStar(this.$stars[anchorIndex])
     const anchorWorldPosition = FAVORITE_LOCATIONS_POSITIONS[anchorIndex]!
     return {
       anchorScreenPosition,
       anchorWorldPosition,
       pixelSize:
-        (extractScreenPositionFromStar(this.$stars[minI2]).x -
-          anchorScreenPosition.x) /
+        (extractScreenPositionFromStar(this.$stars[minI2]).x - anchorScreenPosition.x) /
         (FAVORITE_LOCATIONS_POSITIONS[minI2]!.x - anchorWorldPosition.x),
     }
   }
@@ -540,18 +493,13 @@ export class WPlaceBot {
   protected async openColors() {
     this.lastColor = undefined
     // Click close marker
-    document
-      .querySelector<HTMLButtonElement>('.flex.gap-2.px-3 > .btn-circle')
-      ?.click()
+    document.querySelector<HTMLButtonElement>('.flex.gap-2.px-3 > .btn-circle')?.click()
     await wait(1)
     // Click "Paint"
-    document
-      .querySelector<HTMLButtonElement>('.btn.btn-primary.btn-lg.relative.z-30')
-      ?.click()
+    document.querySelector<HTMLButtonElement>('.btn.btn-primary.btn-lg.relative.z-30')?.click()
     await wait(1)
     // Click Unfold colors if folded
-    const unfoldColors =
-      document.querySelector<HTMLButtonElement>('button.bottom-0')
+    const unfoldColors = document.querySelector<HTMLButtonElement>('button.bottom-0')
     if (
       unfoldColors?.innerHTML ===
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" class="size-5"><path d="M480-120 300-300l58-58 122 122 122-122 58 58-180 180ZM358-598l-58-58 180-180 180 180-58 58-122-122-122 122Z"></path></svg><!---->'
@@ -654,11 +602,7 @@ export class WPlaceBot {
       }
       const pixelMatch = pixelRegExp.exec(url)
       if (pixelMatch) {
-        for (
-          let index = 0;
-          index < this.markerPixelPositionResolvers.length;
-          index++
-        )
+        for (let index = 0; index < this.markerPixelPositionResolvers.length; index++)
           this.markerPixelPositionResolvers[index]!(
             new WorldPosition(
               this,
@@ -676,4 +620,4 @@ export class WPlaceBot {
 }
 
 // @ts-ignore
-globalThis.wbot = new WPlaceBot(await loadSave())
+globalThis.wbot = WPlaceBot.create()

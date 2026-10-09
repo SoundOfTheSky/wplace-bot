@@ -1,0 +1,41 @@
+{
+  "[css]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.stylelint": "always",
+      "source.format.oxc": "always"
+    }
+  },
+  "[javascript]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.oxc": "always",
+      "source.format.oxc": "always"
+    }
+  },
+  "[javascriptreact]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.oxc": "always",
+      "source.format.oxc": "always"
+    }
+  },
+  "[scss]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.stylelint": "always",
+      "source.format.oxc": "always"
+    }
+  },
+  "[typescript]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.oxc": "always",
+      "source.format.oxc": "always"
+    }
+  },
+  "[typescriptreact]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.oxc": "always",
+      "source.format.oxc": "always"
+    }
+  },
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
+  "editor.formatOnSaveMode": "file"
+}

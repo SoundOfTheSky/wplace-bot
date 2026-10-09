@@ -2,11 +2,11 @@ import { promisifyEventSource, swap } from '@softsky/utils'
 import { Base } from './base'
 import { WPlaceBot } from './bot'
 import { NoImageError, WPlaceBotError } from './errors'
-import { BotImage, etaText } from './image'
+import { BotImage } from './image'
 import { migrateImage, save } from './save'
 // @ts-ignore
 import sharedCss from './shared.css' with { type: 'text' }
-import { formatPercent } from './utils'
+import { etaText, formatPercent } from './utils'
 // @ts-ignore
 import widgetCss from './widget.css' with { type: 'text' }
 // @ts-ignore
@@ -141,7 +141,7 @@ export class Widget extends Base {
     for (let index = 0; index < this.bot.images.length; index++) {
       const image = this.bot.images[index]!
       if (image.disabled) continue
-      maxTasks += image.width * image.height
+      maxTasks += image.getMaxTasks()
       totalTasks += image.tasks.length / 2
     }
     const doneTasks = maxTasks - totalTasks

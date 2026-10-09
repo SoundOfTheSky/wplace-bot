@@ -1,9 +1,4 @@
-import {
-  formatNumber,
-  promisifyEventSource,
-  removeFromArray,
-  type RequiredKey,
-} from '@softsky/utils'
+import { promisifyEventSource, removeFromArray, type RequiredKey } from '@softsky/utils'
 import { Base } from './base'
 import { WPlaceBot } from './bot'
 import { COLORS, COLORS_RGB, colorToCSS } from './colors'
@@ -14,7 +9,7 @@ import html from './image.html' with { type: 'text' }
 import { save, SAVE_VERSION } from './save'
 // @ts-ignore
 import sharedCss from './shared.css' with { type: 'text' }
-import { formatPercent } from './utils'
+import { etaText, formatPercent } from './utils'
 import { workerPixels } from './worker-client'
 import { WorldPosition } from './world-position'
 
@@ -51,13 +46,6 @@ export enum UnownedColorStrategy {
   SUBSTITUTE = 'SUBSTITUTE',
 }
 
-/** Time left to paint `remaining` pixels, counting the charges already stored */
-export function etaText(bot: WPlaceBot, remaining: number): string {
-  const charges = Math.floor(bot.me?.charges.count ?? 0)
-  const cooldownMs = bot.me?.charges.cooldownMs ?? 30000
-  return formatNumber(Math.max(0, remaining - charges) * cooldownMs, 60000)
-}
-
 export class BotImage extends Base {
   public static async fromJSON(
     bot: WPlaceBot,
@@ -86,7 +74,7 @@ export class BotImage extends Base {
       data.opacity,
       data.drawColorsInOrder,
       data.colors,
-      new Set(data.disabledColors),
+      new Set(data.disabledColors ?? [0]),
       data.lock,
       data.disabled,
       data.name,
@@ -178,10 +166,7 @@ export class BotImage extends Base {
     /** What to do with colors that user does not own */
     public unownedColorStrategy = UnownedColorStrategy.BUY,
   ) {
-    super(
-      html as unknown as string,
-      `${sharedCss as string}\n${imageCss as string}`,
-    )
+    super(html as unknown as string, `${sharedCss as string}\n${imageCss as string}`)
     this.populateElementsWithSelector({
       $brightness: '.brightness',
       $colors: '.colors',
@@ -207,17 +192,12 @@ export class BotImage extends Base {
 
     this.bot.images.push(this)
     this.resolution = image.width / image.height
-    this.imageData = this.image
-      .getContext('2d')!
-      .getImageData(0, 0, image.width, image.height).data
+    this.imageData = this.image.getContext('2d')!.getImageData(0, 0, image.width, image.height).data
 
     this.context = this.$canvas.getContext('2d')!
     this.$unownedColorStrategy =
-      this.$unownedColorStrategyLabel.querySelector<HTMLSelectElement>(
-        'select',
-      )!
-    this.$resetSizeSpan =
-      this.$resetSize.querySelector<HTMLSpanElement>('span')!
+      this.$unownedColorStrategyLabel.querySelector<HTMLSelectElement>('select')!
+    this.$resetSizeSpan = this.$resetSize.querySelector<HTMLSpanElement>('span')!
 
     this.$openSettings.addEventListener('click', () => {
       this.$dialog.showModal()
@@ -228,8 +208,7 @@ export class BotImage extends Base {
     })
     // Unowned color strategy
     this.$unownedColorStrategy.addEventListener('change', () => {
-      this.unownedColorStrategy = this.$unownedColorStrategy
-        .value as UnownedColorStrategy
+      this.unownedColorStrategy = this.$unownedColorStrategy.value as UnownedColorStrategy
       this.updateColors()
       void save(this.bot)
     })
@@ -301,26 +280,22 @@ export class BotImage extends Base {
 
     // Forward wheel event to scroll through image
     this.$wrapper.addEventListener('wheel', (event) =>
-      document
-        .querySelector<HTMLDivElement>('.maplibregl-canvas')!
-        .dispatchEvent(
-          new WheelEvent('wheel', {
-            bubbles: true,
-            deltaX: event.deltaX,
-            deltaY: event.deltaY,
-            deltaZ: event.deltaZ,
-            clientX: event.clientX,
-            clientY: event.clientY,
-          }),
-        ),
+      document.querySelector<HTMLDivElement>('.maplibregl-canvas')!.dispatchEvent(
+        new WheelEvent('wheel', {
+          bubbles: true,
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          deltaZ: event.deltaZ,
+          clientX: event.clientX,
+          clientY: event.clientY,
+        }),
+      ),
     )
     this.registerEvent(document, 'mouseup', this.moveStop.bind(this))
     this.registerEvent(document, 'mousemove', this.move.bind(this))
 
     // Resize
-    for (const $resize of this.shadow.querySelectorAll<HTMLDivElement>(
-      '.resize',
-    ))
+    for (const $resize of this.shadow.querySelectorAll<HTMLDivElement>('.resize'))
       $resize.addEventListener('mousedown', this.resizeStart.bind(this))
   }
 
@@ -422,13 +397,21 @@ export class BotImage extends Base {
     this.$opacity.valueAsNumber = this.opacity
     this.$drawColorsInOrder.checked = this.drawColorsInOrder
     this.$name.value = this.name
-    const maxTasks = this.width * this.height
+    const maxTasks = this.getMaxTasks()
     const doneTasks = maxTasks - this.tasks.length / 2
     const percent = formatPercent(doneTasks / maxTasks)
     this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasks.length / 2)}`
     this.$progressLine.style.transform = `scaleX(${percent})`
     this.$wrapper.classList.toggle('no-pointer-events', this.lock)
     this.$lock.textContent = this.lock ? '🔒' : '🔓'
+  }
+
+  /** Get not disabled pixels count */
+  public getMaxTasks() {
+    let max = 0
+    for (const [color, stat] of this.colorsStat.entries())
+      if (!this.disabledColors.has(color)) max += stat.amount
+    return max
   }
 
   /** Removes image */
@@ -448,7 +431,6 @@ export class BotImage extends Base {
       this.bot.unavailableColors.size === 0,
     )
     this.$colors.innerHTML = ''
-    // Only the colors we show, so the percents add up to 100%
     let pixelsSum = 0
     for (const stat of this.colorsStat.values()) pixelsSum += stat.amount
 
@@ -536,12 +518,7 @@ export class BotImage extends Base {
         const mouseMoveHandler = (event: MouseEvent) => {
           newIndex = Math.min(
             this.colors.length - 1,
-            Math.max(
-              0,
-              Math.round(
-                index + (event.clientY - startEvent.clientY) / LINE_HEIGHT,
-              ),
-            ),
+            Math.max(0, Math.round(index + (event.clientY - startEvent.clientY) / LINE_HEIGHT)),
           )
           if (newIndex !== index) dragging = true
           let childIndex = 0
@@ -560,8 +537,7 @@ export class BotImage extends Base {
           () => {
             $button.classList.remove('dragging')
             document.removeEventListener('mousemove', mouseMoveHandler)
-            if (newIndex !== index)
-              this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1))
+            if (newIndex !== index) this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1))
             void save(this.bot)
             $button.removeEventListener('mousedown', startDrag)
             setTimeout(() => {
@@ -577,8 +553,7 @@ export class BotImage extends Base {
       $button.addEventListener('click', async (event) => {
         event.stopPropagation()
         if (dragging) return
-        if (this.disabledColors.has(drawColor))
-          this.disabledColors.delete(drawColor)
+        if (this.disabledColors.has(drawColor)) this.disabledColors.delete(drawColor)
         else this.disabledColors.add(drawColor)
         $button.classList.toggle('color-disabled')
         await this.updatePixels()
@@ -610,16 +585,11 @@ export class BotImage extends Base {
   /** Resize/move image */
   protected move(event: MouseEvent) {
     if (!this.moveInfo) return
-    const deltaX = Math.round(
-      (event.clientX - this.moveInfo.clientX) / this.position.pixelSize,
-    )
-    const deltaY = Math.round(
-      (event.clientY - this.moveInfo.clientY) / this.position.pixelSize,
-    )
+    const deltaX = Math.round((event.clientX - this.moveInfo.clientX) / this.position.pixelSize)
+    const deltaY = Math.round((event.clientY - this.moveInfo.clientY) / this.position.pixelSize)
     if (this.moveInfo.globalX !== undefined) {
       this.position.globalX = deltaX + this.moveInfo.globalX
-      if (this.moveInfo.width !== undefined)
-        this.width = Math.max(1, this.moveInfo.width - deltaX)
+      if (this.moveInfo.width !== undefined) this.width = Math.max(1, this.moveInfo.width - deltaX)
     } else if (this.moveInfo.width !== undefined)
       this.width = Math.max(1, deltaX + this.moveInfo.width)
     if (this.moveInfo.globalY !== undefined) {
