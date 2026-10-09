@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         wplace-bot
 // @namespace    https://github.com/SoundOfTheSky
-// @version      5.2.1
+// @version      5.2.2
 // @description  Bot to automate painting on website https://wplace.live
 // @author       SoundOfTheSky
 // @license      MPL-2.0
@@ -803,6 +803,11 @@ function formatPercent(n) {
     return "0%";
   return (n * 100 | 0) + "%";
 }
+function etaText(bot, remaining) {
+  const charges = Math.floor(bot.me?.charges.count ?? 0);
+  const cooldownMs = bot.me?.charges.cooldownMs ?? 30000;
+  return formatNumber(Math.max(0, remaining - charges) * cooldownMs, 60000);
+}
 
 // src/worker-client.ts
 var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
@@ -1556,12 +1561,6 @@ class WorldPosition {
 }
 
 // src/image.ts
-function etaText(bot, remaining) {
-  const charges = Math.floor(bot.me?.charges.count ?? 0);
-  const cooldownMs = bot.me?.charges.cooldownMs ?? 30000;
-  return formatNumber(Math.max(0, remaining - charges) * cooldownMs, 60000);
-}
-
 class BotImage extends Base2 {
   bot;
   position;
@@ -2635,6 +2634,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
       }
       for (const [image, value] of indexes)
         image.tasks = image.tasks.subarray(value * 2);
+      this.me.charges.count = 0;
       this.widget.update();
     }, () => {
       globalThis.removeEventListener("mousemove", prevent, true);
