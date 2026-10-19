@@ -1,17 +1,16 @@
 import { promisifyEventSource, removeFromArray, type RequiredKey } from '@softsky/utils'
 import { Base } from './base'
 import { WPlaceBot } from './bot'
-import { COLORS, COLORS_RGB, colorToCSS } from './colors'
+import { COLORS_LAB, COLORS_RGB, colorToCSS } from './colors'
 // @ts-ignore
 import imageCss from './image.css' with { type: 'text' }
 // @ts-ignore
 import html from './image.html' with { type: 'text' }
-import { save, SAVE_VERSION } from './save'
+import { SAVE_VERSION } from './save'
 // @ts-ignore
 import sharedCss from './shared.css' with { type: 'text' }
-import { etaText, formatPercent } from './utils'
-import { workerPixels } from './worker-client'
-import { WorldPosition } from './world-position'
+import { etaText, formatPercent, isColorAvailable } from './utils'
+import { latToPos, lngToPos, posToLat, posToLng, WorldPosition } from './world-position'
 
 export type DrawTask = {
   position: WorldPosition
@@ -40,63 +39,125 @@ export enum ImageStrategy {
   SPIRAL_TO_CENTER = 'SPIRAL_TO_CENTER',
 }
 
-export enum UnownedColorStrategy {
-  BUY = 'BUY',
-  SKIP = 'SKIP',
-  SUBSTITUTE = 'SUBSTITUTE',
+export type ColorMetric = 'lab' | 'ciede2000' | 'compuphase'
+
+export type ColorPaletteMode = 'free' | 'unlocked' | 'template' | 'all'
+
+export type Template = {
+  id: string
+  name: string
+  bounds: {
+    north: number
+    south: number
+    west: number
+    east: number
+  }
+  opacity: number
+  visible: boolean
+  locked: boolean
+  colorMetric: ColorMetric
+  dithering: boolean
+  useLegacyColors: boolean
+  colorPaletteMode: ColorPaletteMode
+  hasPlaced: boolean
+  originalWidth: number
+  originalHeight: number
+  order: number
+  updatedAt: number
+}
+
+export const DEFAULT_TEMPLATE_SETTINGS: Pick<
+  Template,
+  'colorMetric' | 'dithering' | 'useLegacyColors' | 'colorPaletteMode' | 'visible' | 'hasPlaced'
+> = {
+  colorMetric: 'lab',
+  dithering: true,
+  useLegacyColors: false,
+  colorPaletteMode: 'all',
+  visible: true,
+  hasPlaced: false,
 }
 
 export class BotImage extends Base {
   public static async fromJSON(
     bot: WPlaceBot,
-    data: RequiredKey<Partial<Awaited<ReturnType<BotImage['toJSON']>>>, 'url'>,
-    progress?: (p: number) => void,
+    data: RequiredKey<Partial<Awaited<ReturnType<BotImage['toJSON']>>>, 'url' | 'template'>,
   ) {
-    const image = new Image()
-    image.src = data.url.startsWith('http')
-      ? await fetch(data.url, { cache: 'no-store' })
-          .then((x) => x.blob())
-          .then((x) => URL.createObjectURL(x))
-      : data.url
-    await promisifyEventSource(image, ['load'], ['error'])
-
-    const canvas = new OffscreenCanvas(image.naturalWidth, image.naturalHeight)
+    let image: HTMLImageElement | ImageBitmap
+    let blob!: Blob
+    if (typeof data.url === 'string') {
+      image = new Image()
+      image.src = data.url.startsWith('http')
+        ? await fetch(data.url, { cache: 'no-store' })
+            .then((x) => x.blob())
+            .then((x) => {
+              blob = x
+              return URL.createObjectURL(x)
+            })
+        : data.url
+      await promisifyEventSource(image, ['load'], ['error'])
+    } else {
+      image = await createImageBitmap(data.url)
+      blob = data.url
+    }
+    const canvas = new OffscreenCanvas(image.width, image.height)
     const ctx = canvas.getContext('2d')!
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(image, 0, 0)
+
+    if (Number.isNaN(data.template.originalWidth)) data.template.originalWidth = image.width
+    if (Number.isNaN(data.template.originalHeight)) data.template.originalHeight = image.height
+    if (Number.isNaN(data.template.bounds.south))
+      data.template.bounds.south = posToLat(
+        latToPos(data.template.bounds.north) + data.template.originalHeight,
+      )
+    if (Number.isNaN(data.template.bounds.east))
+      data.template.bounds.east = posToLng(
+        lngToPos(data.template.bounds.west) + data.template.originalWidth,
+      )
     const botImage = new BotImage(
       bot,
-      data.position ? WorldPosition.fromJSON(bot, data.position) : undefined,
+      data.template,
       canvas,
-      data.width,
-      data.brightness,
       data.strategy,
-      data.opacity,
       data.drawColorsInOrder,
       data.colors,
       new Set(data.disabledColors ?? [0]),
       data.lock,
       data.disabled,
-      data.name,
-      data.unownedColorStrategy,
+      data.autoBuyColors,
     )
-    await botImage.updatePixels(progress)
+    await bot.worker.register(data.template.id, blob)
+    await botImage.updatePixels()
     return botImage
   }
 
   public pixels = new Uint8Array(0)
-  public readonly resolution: number
-  public colorsStat = new Map<number, PixelColorStat>()
+  public colorsCount = new Uint32Array(64)
+  public colorsLeft = new Uint32Array(64)
+
+  public get width() {
+    const bounds = this.template.bounds
+    return lngToPos(bounds.east) - lngToPos(bounds.west)
+  }
+  public set width(value: number) {
+    this.template.bounds.east = posToLng(value)
+  }
 
   public get height() {
-    return (this.width / this.resolution) | 0
+    const bounds = this.template.bounds
+    return latToPos(bounds.south) - latToPos(bounds.north)
   }
   public set height(value: number) {
-    this.width = (value * this.resolution) | 0
+    this.template.bounds.south = posToLat(value)
   }
 
-  /** Pixels to draw */
-  public tasks = new Uint32Array(0)
+  /** Pixels to draw X */
+  public tasksX = new Uint32Array(0)
+  /** Pixels to draw Y */
+  public tasksY = new Uint32Array(0)
+  /** Position of image. After updating call syncPositionWithTemplate() */
+  public position: WorldPosition
 
   /** Moving/resizing image */
   protected moveInfo?: {
@@ -112,7 +173,6 @@ export class BotImage extends Base {
 
   public readonly $canvas!: HTMLCanvasElement
   protected readonly context
-  protected readonly $brightness!: HTMLInputElement
   protected readonly $colors!: HTMLDivElement
   protected readonly $delete!: HTMLButtonElement
   protected readonly $drawColorsInOrder!: HTMLInputElement
@@ -129,28 +189,19 @@ export class BotImage extends Base {
   protected readonly $topbar!: HTMLDivElement
   protected readonly $wrapper!: HTMLDivElement
   protected readonly $name!: HTMLInputElement
-  protected readonly $unownedColorStrategyLabel!: HTMLLabelElement
-  protected readonly $unownedColorStrategy!: HTMLSelectElement
+  protected readonly $autoBuyColorsLabel!: HTMLLabelElement
+  protected readonly $autoBuyColors!: HTMLInputElement
   protected readonly $openSettings!: HTMLButtonElement
   protected readonly $dialog!: HTMLDialogElement
 
   public constructor(
     protected bot: WPlaceBot,
-    /** Top-left corner of image */
-    public position = WorldPosition.fromScreenPosition(bot, {
-      x: 256,
-      y: 32,
-    }),
+    /** Wplace template */
+    public template: Template,
     /** Source image */
     public readonly image: OffscreenCanvas,
-    /** Width of drawn image */
-    public width = image.width,
-    /** Brightness of image */
-    public brightness = 0,
     /** Order of pixels to draw */
     public strategy = ImageStrategy.SPIRAL_TO_CENTER,
-    /** Opacity of overlay */
-    public opacity = 50,
     /** Should bot draw colors in order */
     public drawColorsInOrder = true,
     /** Colors order */
@@ -161,14 +212,11 @@ export class BotImage extends Base {
     public lock = false,
     /** Disable this image from drawing and from counting toward totals */
     public disabled = false,
-    /** Name of image */
-    public name = `${image.width}x${image.height}`,
     /** What to do with colors that user does not own */
-    public unownedColorStrategy = UnownedColorStrategy.BUY,
+    public autoBuyColors = true,
   ) {
     super(html as unknown as string, `${sharedCss as string}\n${imageCss as string}`)
     this.populateElementsWithSelector({
-      $brightness: '.brightness',
       $colors: '.colors',
       $delete: '.delete',
       $drawColorsInOrder: '.draw-colors-in-order',
@@ -184,19 +232,22 @@ export class BotImage extends Base {
       $topbar: '.topbar',
       $wrapper: '.wrapper',
       $name: '.name',
-      $unownedColorStrategyLabel: '.unowned-color-strategy',
+      $autoBuyColorsLabel: '.auto-buy-colors',
       $openSettings: '.open-settings',
       $dialog: 'dialog',
       $canvas: 'canvas',
     })
 
     this.bot.images.push(this)
-    this.resolution = image.width / image.height
+    this.position = new WorldPosition(
+      bot,
+      lngToPos(this.template.bounds.west),
+      latToPos(this.template.bounds.north),
+    )
     this.imageData = this.image.getContext('2d')!.getImageData(0, 0, image.width, image.height).data
 
     this.context = this.$canvas.getContext('2d')!
-    this.$unownedColorStrategy =
-      this.$unownedColorStrategyLabel.querySelector<HTMLSelectElement>('select')!
+    this.$autoBuyColors = this.$autoBuyColorsLabel.querySelector<HTMLInputElement>('input')!
     this.$resetSizeSpan = this.$resetSize.querySelector<HTMLSpanElement>('span')!
 
     this.$openSettings.addEventListener('click', () => {
@@ -206,71 +257,62 @@ export class BotImage extends Base {
     this.$dialog.addEventListener('click', (event) => {
       if (event.target === this.$dialog) this.$dialog.close()
     })
-    // Unowned color strategy
-    this.$unownedColorStrategy.addEventListener('change', () => {
-      this.unownedColorStrategy = this.$unownedColorStrategy.value as UnownedColorStrategy
+
+    // Auto buy colors
+    this.$autoBuyColors.addEventListener('change', () => {
+      this.autoBuyColors = this.$autoBuyColors.checked
       this.updateColors()
-      void save(this.bot)
+      void this.bot.save.save()
     })
 
     // Strategy
     this.$strategy.addEventListener('change', () => {
       this.strategy = this.$strategy.value as ImageStrategy
-      void save(this.bot)
+      void this.bot.save.save()
     })
 
     // Opacity
     this.$opacity.addEventListener('input', () => {
-      this.opacity = this.$opacity.valueAsNumber
-      this.$opacity.style.setProperty('--val', this.opacity + '%')
+      this.template.opacity = this.$opacity.valueAsNumber
+      this.$opacity.style.setProperty('--val', this.template.opacity + '%')
       this.updateUI()
-      void save(this.bot)
+      void this.bot.save.save()
     })
-    this.$opacity.style.setProperty('--val', this.opacity + '%')
-
-    let timeout: ReturnType<typeof setTimeout> | undefined
-
-    this.$brightness.addEventListener('change', () => {
-      clearTimeout(timeout)
-      timeout = setTimeout(async () => {
-        this.brightness = this.$brightness.valueAsNumber
-        await this.updatePixels()
-        await save(this.bot)
-      }, 1000)
-    })
+    this.$opacity.style.setProperty('--val', this.template.opacity + '%')
 
     // Reset
     this.$resetSize.addEventListener('click', async () => {
-      this.width = this.image.width
+      this.width = this.template.originalWidth
+      this.height = this.template.originalHeight
       await this.updatePixels()
-      await save(this.bot)
+      await this.bot.save.save()
     })
 
     // drawColorsInOrder
     this.$drawColorsInOrder.addEventListener('click', () => {
       this.drawColorsInOrder = this.$drawColorsInOrder.checked
       this.updateColors()
-      void save(this.bot)
+      void this.bot.save.save()
     })
 
     // Lock
     this.$lock.addEventListener('click', () => {
       this.lock = !this.lock
       this.updateUI()
-      void save(this.bot)
+      void this.bot.save.save()
     })
 
     this.$delete.addEventListener('click', this.destroy.bind(this))
 
     // Export
-    this.$export.addEventListener('click', this.export.bind(this))
+    this.$export.addEventListener('click', this.exportSaveFile.bind(this))
 
     // Name
     this.$name.addEventListener('change', () => {
-      this.name = this.$name.value
+      this.template.name = this.$name.value
       this.updateUI()
       this.bot.widget.update()
-      void save(this.bot)
+      void this.bot.save.save()
     })
 
     this.bot.fixSpaceInInput(this.$name)
@@ -299,71 +341,63 @@ export class BotImage extends Base {
       $resize.addEventListener('mousedown', this.resizeStart.bind(this))
   }
 
-  public async toJSON() {
-    const blob = await this.image.convertToBlob({
-      type: 'image/webp',
-      quality: 1,
-    })
-    const url = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        resolve(reader.result as string)
-      }
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
+  public async toJSON(exportBlob?: boolean) {
+    const blob = await this.image.convertToBlob({ type: 'image/png', quality: 1 })
+    let url: Blob | string = blob
+    if (!exportBlob) {
+      url = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          resolve(reader.result as string)
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+    }
     return {
+      id: this.template.id,
       url,
-      width: this.width,
-      brightness: this.brightness,
-      position: this.position.toJSON(),
+      template: this.template,
       strategy: this.strategy,
-      opacity: this.opacity,
       drawColorsInOrder: this.drawColorsInOrder,
       colors: this.colors,
       disabledColors: Array.from(this.disabledColors),
       lock: this.lock,
       disabled: this.disabled,
-      name: this.name,
-      unownedColorStrategy: this.unownedColorStrategy,
+      autoBuyColors: this.autoBuyColors,
       version: SAVE_VERSION,
     }
   }
 
   /** Calculates everything we need to do. Very expensive task! */
-  public async updatePixels(progress?: (p: number) => void) {
-    const progress2 =
-      progress ??
-      ((p: number) => {
-        this.bot.widget.status = `⌛ Loading ${formatPercent(p)}`
-      })
-    const height = this.height
-    const width = this.width
-    const result = await workerPixels(
-      {
-        data: this.imageData,
-        brightness: this.brightness,
-        colors: this.colors,
-        disabledColors: this.disabledColors,
-        drawColorsInOrder: this.drawColorsInOrder,
-        globalX: this.position.globalX,
-        globalY: this.position.globalY,
-        height,
-        width,
-        nativeHeight: this.image.height,
-        nativeWidth: this.image.width,
-        strategy: this.strategy,
-        unavailableColors: this.bot.unavailableColors,
-        unownedColorStrategy: this.unownedColorStrategy,
-      },
-      progress2,
-    )
-    this.colorsStat = result.colorStat
-    this.tasks = this.disabled ? new Uint32Array(0) : result.taskPositions
+  public async updatePixels() {
+    const result = await this.bot.worker.process({
+      colorMetric: this.template.colorMetric,
+      dithering: this.template.dithering,
+      globalX: this.position.globalX,
+      globalY: this.position.globalY,
+      sourceName: this.template.id,
+      strategy: this.strategy,
+      targetHeight: this.height,
+      targetWidth: this.width,
+      drawColorsInOrder: this.drawColorsInOrder,
+      colors: this.colors,
+      // If free no colors, if 'all' or 'template' all the colors
+      extraColorsBitmap:
+        this.template.colorPaletteMode === 'unlocked'
+          ? this.bot.me.extraColorsBitmap
+          : this.template.colorPaletteMode === 'free'
+            ? 0
+            : 4294967295,
+    })
+    this.colorsCount = result.colorsCount
+    this.colorsLeft = result.colorsLeft
     this.pixels = result.pixels
-    this.$canvas.width = width
-    this.$canvas.height = height
-    this.context.clearRect(0, 0, width, height)
+    this.tasksX = result.x
+    this.tasksY = result.y
+    this.$canvas.width = this.width
+    this.$canvas.height = this.height
+    this.context.clearRect(0, 0, this.width, this.height)
     const rgbPixels = new Uint8ClampedArray(this.pixels.length * 4)
     for (let index = 0; index < this.pixels.length; index++) {
       const pixel = this.pixels[index]!
@@ -375,10 +409,9 @@ export class BotImage extends Base {
       rgbPixels[qIndex + 2] = color & 0xff
       rgbPixels[qIndex + 3] = 255
     }
-    this.context.putImageData(new ImageData(rgbPixels, width, height), 0, 0)
+    this.context.putImageData(new ImageData(rgbPixels, this.width, this.height), 0, 0)
     this.updateUI()
     this.updateColors()
-    if (!progress) this.bot.widget.status = ''
     this.bot.widget.update()
   }
 
@@ -388,19 +421,17 @@ export class BotImage extends Base {
     this.element.style.transform = `translate(${x}px, ${y}px)`
     this.element.style.width = `${this.position.pixelSize * this.width}px`
     this.$wrapper.style.opacity = this.disabled ? '0.4' : '1'
-    this.$canvas.style.opacity = `${this.opacity}%`
+    this.$canvas.style.opacity = `${this.template.opacity}%`
     this.element.classList.remove('hidden')
-
     this.$resetSizeSpan.textContent = this.width.toString()
-    this.$brightness.valueAsNumber = this.brightness
     this.$strategy.value = this.strategy
-    this.$opacity.valueAsNumber = this.opacity
+    this.$opacity.valueAsNumber = this.template.opacity
     this.$drawColorsInOrder.checked = this.drawColorsInOrder
-    this.$name.value = this.name
+    this.$name.value = this.template.name
     const maxTasks = this.getMaxTasks()
-    const doneTasks = maxTasks - this.tasks.length / 2
+    const doneTasks = maxTasks - this.tasksX.length
     const percent = formatPercent(doneTasks / maxTasks)
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasks.length / 2)}`
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasksX.length)}`
     this.$progressLine.style.transform = `scaleX(${percent})`
     this.$wrapper.classList.toggle('no-pointer-events', this.lock)
     this.$lock.textContent = this.lock ? '🔒' : '🔓'
@@ -409,8 +440,8 @@ export class BotImage extends Base {
   /** Get not disabled pixels count */
   public getMaxTasks() {
     let max = 0
-    for (const [color, stat] of this.colorsStat.entries())
-      if (!this.disabledColors.has(color)) max += stat.amount
+    for (let index = 0; index < 64; index++)
+      if (!this.disabledColors.has(index)) max += this.colorsCount[index]
     return max
   }
 
@@ -420,45 +451,51 @@ export class BotImage extends Base {
     this.element.remove()
     removeFromArray(this.bot.images, this)
     this.bot.widget.update()
-    void save(this.bot)
+    void this.bot.save.save()
   }
 
   /** Update colors array */
   public updateColors() {
     const LINE_HEIGHT = 20
-    this.$unownedColorStrategyLabel.classList.toggle(
+    this.$autoBuyColorsLabel.classList.toggle(
       'hidden',
-      this.bot.unavailableColors.size === 0,
+      this.bot.me.extraColorsBitmap === 4294967295,
     )
     this.$colors.innerHTML = ''
     let pixelsSum = 0
-    for (const stat of this.colorsStat.values()) pixelsSum += stat.amount
+    const colorsToBe = new Set<number>()
+    for (let index = 0; index < 64; index++) {
+      const x = this.colorsCount[index]!
+      if (x === 0) continue
+      pixelsSum += x
+      colorsToBe.add(x)
+    }
 
     // If not the synced with colors then rebuild order
-    if (
-      this.colors.length !== this.colorsStat.size ||
-      this.colors.some((x) => !this.colorsStat.has(x))
-    ) {
-      this.colors = this.colorsStat
-        .values()
-        .toArray()
-        .sort((a, b) => b.amount - a.amount)
-        .map((color) => color.realColor)
-      void save(this.bot)
+    if (this.colors.length !== colorsToBe.size || this.colors.some((x) => !colorsToBe.has(x))) {
+      this.colors.length = 0
+      for (let index = 0; index < 64; index++) {
+        const x = this.colorsCount[index]!
+        if (x === 0) continue
+        this.colors.push(x)
+      }
+      this.colors.sort((a, b) => this.colorsCount[b] - this.colorsCount[a])
+      void this.bot.save.save()
     }
 
     this.$colors.style.height = `${LINE_HEIGHT * this.colors.length}px`
 
     for (let index = 0; index < this.colors.length; index++) {
       const drawColor = this.colors[index]!
+      const count = this.colorsCount[drawColor]
+      const left = this.colorsLeft[drawColor]
       const css = (color: number) =>
         color === 0
           ? `repeating-linear-gradient(32deg, #ccc 0 8px, transparent 8px 16px)`
           : colorToCSS(color)
-      const colorStat = this.colorsStat.get(drawColor)!
       const $button = document.createElement('button')
       // If dark make text white
-      if (COLORS[drawColor]![0] < 0.6) $button.classList.add('dark')
+      if (COLORS_LAB[drawColor]!.l < 0.6) $button.classList.add('dark')
       $button.title = 'Drag to reorder. Click to disable.'
       $button.style.top = `${index * LINE_HEIGHT}px`
       if (this.disabledColors.has(drawColor)) {
@@ -467,45 +504,22 @@ export class BotImage extends Base {
         $warning.title = 'Disabled and will be skipped.'
         $button.appendChild($warning)
       }
-      switch (this.unownedColorStrategy) {
-        case UnownedColorStrategy.SUBSTITUTE:
-          $button.style.background = css(colorStat.color)
-          if (colorStat.color !== colorStat.realColor) {
-            const $warning = document.createElement('button')
-            $warning.style.backgroundColor = css(colorStat.realColor)
-            $warning.title = 'This is the best color. Click to buy.'
-            $warning.addEventListener('click', async () => {
-              await this.bot.updateColorsData() // Will open colors to click
-              document.getElementById('color-' + colorStat.realColor)?.click()
-            })
-            $button.appendChild($warning)
-          }
-          break
-        case UnownedColorStrategy.BUY:
-          $button.style.background = css(colorStat.realColor)
-          if (this.bot.unavailableColors.has(colorStat.realColor)) {
-            const $warning = document.createElement('div')
-            $warning.innerText = '⌛'
-            $warning.title = 'This color be automatically bought.'
-            $button.appendChild($warning)
-          }
-          break
-        case UnownedColorStrategy.SKIP:
-          $button.style.background = css(colorStat.realColor)
-          if (this.bot.unavailableColors.has(colorStat.realColor)) {
-            const $warning = document.createElement('div')
-            $warning.innerText = '⏩'
-            $warning.title = 'Unowned colors will be skipped.'
-            $button.appendChild($warning)
-          }
-          break
+      $button.style.background = css(drawColor)
+      if (!isColorAvailable(this.bot.me.extraColorsBitmap, drawColor)) {
+        const $warning = document.createElement('div')
+        if (this.autoBuyColors) {
+          $warning.innerText = '⌛'
+          $warning.title = 'This color be automatically bought.'
+        } else {
+          $warning.innerText = '⏩'
+          $warning.title = 'Unowned colors will be skipped.'
+        }
+        $button.appendChild($warning)
       }
       const $percent = document.createElement('span')
       $percent.classList.add('percent')
-      const donePixels = colorStat.amount - colorStat.left
-      const donePercent = donePixels / colorStat.amount
-      const share = colorStat.amount / pixelsSum
-      $percent.innerText = `${donePixels}/${colorStat.amount}px ${formatPercent(donePercent)} (${formatPercent(share)})`
+      const donePixels = count - left
+      $percent.innerText = `${donePixels}/${count}px ${formatPercent(donePixels / count)} (${formatPercent(count / pixelsSum)})`
       $button.appendChild($percent)
       this.$colors.append($button)
 
@@ -538,7 +552,7 @@ export class BotImage extends Base {
             $button.classList.remove('dragging')
             document.removeEventListener('mousemove', mouseMoveHandler)
             if (newIndex !== index) this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1))
-            void save(this.bot)
+            void this.bot.save.save()
             $button.removeEventListener('mousedown', startDrag)
             setTimeout(() => {
               this.updateColors()
@@ -557,9 +571,21 @@ export class BotImage extends Base {
         else this.disabledColors.add(drawColor)
         $button.classList.toggle('color-disabled')
         await this.updatePixels()
-        await save(this.bot)
+        await this.bot.save.save()
       })
     }
+  }
+
+  /** Call after updates to position */
+  public posToTemplate() {
+    this.template.bounds.east = posToLng(this.position.globalX)
+    this.template.bounds.north = posToLat(this.position.globalY)
+  }
+
+  /** Call after updates to template */
+  public posFromTemplate() {
+    this.position.globalX = lngToPos(this.template.bounds.east)
+    this.position.globalY = latToPos(this.template.bounds.north)
   }
 
   /** Called on move image start */
@@ -577,7 +603,6 @@ export class BotImage extends Base {
   protected async moveStop() {
     if (this.moveInfo) {
       this.moveInfo = undefined
-      this.position.updateAnchor()
       await this.updatePixels()
     }
   }
@@ -587,19 +612,31 @@ export class BotImage extends Base {
     if (!this.moveInfo) return
     const deltaX = Math.round((event.clientX - this.moveInfo.clientX) / this.position.pixelSize)
     const deltaY = Math.round((event.clientY - this.moveInfo.clientY) / this.position.pixelSize)
+    const resolution = this.template.originalWidth / this.template.originalHeight
     if (this.moveInfo.globalX !== undefined) {
       this.position.globalX = deltaX + this.moveInfo.globalX
-      if (this.moveInfo.width !== undefined) this.width = Math.max(1, this.moveInfo.width - deltaX)
-    } else if (this.moveInfo.width !== undefined)
+      if (this.moveInfo.width !== undefined) {
+        this.width = Math.max(1, this.moveInfo.width - deltaX)
+        this.height = (this.width / resolution) | 0
+      }
+    } else if (this.moveInfo.width !== undefined) {
       this.width = Math.max(1, deltaX + this.moveInfo.width)
+      this.height = (this.width / resolution) | 0
+    }
     if (this.moveInfo.globalY !== undefined) {
       this.position.globalY = deltaY + this.moveInfo.globalY
-      if (this.moveInfo.height !== undefined)
+      if (this.moveInfo.height !== undefined) {
         this.height = Math.max(1, this.moveInfo.height - deltaY)
-    } else if (this.moveInfo.height !== undefined)
+        this.width = (this.height * resolution) | 0
+      }
+    } else if (this.moveInfo.height !== undefined) {
       this.height = Math.max(1, deltaY + this.moveInfo.height)
+      this.width = (this.height * resolution) | 0
+    }
+    this.position.updateAnchor()
+    this.posToTemplate()
     this.updateUI()
-    void save(this.bot)
+    void this.bot.save.save()
   }
 
   /** Resize start */
@@ -621,8 +658,8 @@ export class BotImage extends Base {
     }
   }
 
-  /** export image */
-  protected async export() {
+  /** export image as save file */
+  protected async exportSaveFile() {
     const a = document.createElement('a')
     document.body.append(a)
     a.href = URL.createObjectURL(
@@ -630,11 +667,11 @@ export class BotImage extends Base {
         type: 'application/json',
       }),
     )
-    a.download = `${this.name}.wbot`
+    a.download = `${this.template.name}.wbot`
     a.click()
     URL.revokeObjectURL(a.href)
-    a.href = this.$canvas.toDataURL('image/webp', 1)
-    a.download = `${this.name}.webp`
+    a.href = this.$canvas.toDataURL('image/png', 1)
+    a.download = `${this.template.name}.png`
     a.click()
     URL.revokeObjectURL(a.href)
     a.remove()

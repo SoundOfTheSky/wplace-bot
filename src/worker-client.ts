@@ -1,52 +1,53 @@
-import { type WorkerPixelsRequest, type WorkerPixelsResponse, type WorkerResponse } from './worker'
+import type { ProcessImageJob, ProcessImageResult, WorkerRequest, WorkerResponse } from './worker'
 
-export const worker = new Worker(
-  URL.createObjectURL(new Blob([`<WORKER_SOURCE_CODE>`], { type: 'application/javascript' })),
-  {
-    type: 'module',
-  },
-)
-const pending = new Map<
-  number,
-  {
-    resolve: (data: MessageEvent['data']) => void
-    reject: (error: Error) => void
-    progress?: (percent: number) => void
-  }
->()
-let nextId = 0
+export class ImageProcessingWorker {
+  private worker: Worker
+  private successHandlers = new Map<string, (r: WorkerResponse) => void>()
+  private errorHandlers = new Map<string, (message: string) => void>()
 
-worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-  const data = pending.get(e.data.id)
-  if (data) {
-    if ('progress' in e.data) data.progress?.(e.data.progress)
-    else if ('error' in e.data) data.reject(new Error(e.data.error))
-    else {
-      pending.delete(e.data.id)
-      data.resolve(e.data)
+  public constructor() {
+    this.worker = new Worker(
+      URL.createObjectURL(new Blob([`<WORKER_SOURCE_CODE>`], { type: 'application/javascript' })),
+      {
+        type: 'module',
+      },
+    )
+    this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+      const msg = e.data
+      switch (msg.type) {
+        case 'processImageResult':
+        case 'success':
+          this.successHandlers.get(msg.id)?.(msg)
+          break
+        case 'error':
+          this.errorHandlers.get(msg.id)?.(msg.message)
+          this.successHandlers.delete(msg.id)
+          break
+      }
+      this.successHandlers.delete(msg.id)
+      this.errorHandlers.delete(msg.id)
     }
+    this.worker.onerror = (error) => console.log('BOT WORKER ERROR', error)
+    this.worker.onmessageerror = (error) => console.log('BOT WORKER MESSAGE ERROR', error)
   }
-}
 
-worker.onerror = (e) => {
-  console.error('[WORKER ERRROR]', e)
-}
+  private post<T>(msg: WorkerRequest, transfer: Transferable[] = []): Promise<any> {
+    return new Promise<T>((resolve, reject) => {
+      this.successHandlers.set(msg.id, resolve as any)
+      this.errorHandlers.set(msg.id, reject)
+      this.worker.postMessage(msg, transfer)
+    })
+  }
 
-worker.onmessageerror = (e) => {
-  console.error('[WORKER MESSAGE ERRROR]', e)
-}
-export function workerPixels(
-  _request: Omit<WorkerPixelsRequest, 'id'>,
-  progress?: (percent: number) => void,
-): Promise<WorkerPixelsResponse> {
-  const request = _request as WorkerPixelsRequest
-  return new Promise((resolve, reject) => {
-    request.id = nextId++
-    worker.postMessage(request)
-    pending.set(request.id, { resolve, progress, reject })
-  })
-}
+  public register(name: string, blob: Blob): Promise<void> {
+    return this.post({ type: 'register', id: crypto.randomUUID(), blob, name })
+  }
 
-export function workerClearMapCache() {
-  worker.postMessage('CLEAR_MAP_CACHE')
+  public clearMapCache() {
+    return this.post({ type: 'clear-map-cache', id: crypto.randomUUID() })
+  }
+
+  public process(job: Omit<ProcessImageJob, 'type' | 'id'>): Promise<ProcessImageResult> {
+    return this.post({ type: 'process', id: crypto.randomUUID(), ...job })
+  }
 }

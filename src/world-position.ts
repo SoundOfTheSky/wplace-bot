@@ -10,7 +10,7 @@ export const WORLD_TILE_SIZE = 1000
 export const WORLD_TILES = 2048
 export const WORLD_PIXEL_SIZE = WORLD_TILE_SIZE * WORLD_TILES
 
-// === Favoriote Locations ===
+// === Favorite Locations ===
 export const FAVORITE_LOCATIONS_POSITIONS: Position[] = []
 export const FAVORITE_LOCATIONS: Me['favoriteLocations'] = []
 let lastId = Date.now()
@@ -18,15 +18,25 @@ export function addFavoriteLocation(position: Position) {
   FAVORITE_LOCATIONS_POSITIONS.push(position)
   FAVORITE_LOCATIONS.push({
     id: lastId++,
-    latitude:
-      ((2 * Math.atan(Math.exp(-((position.y / WORLD_PIXEL_SIZE) * (2 * Math.PI) - Math.PI))) -
-        Math.PI / 2) *
-        180) /
-      Math.PI,
-    longitude: (((position.x / WORLD_PIXEL_SIZE) * (2 * Math.PI) - Math.PI) * 180) / Math.PI,
     name: 'WBOT_FAVORITE',
+    longitude: posToLng(position.x),
+    latitude: posToLat(position.y),
   })
 }
+
+export const lngToPos = (x: number) =>
+  Math.round(WORLD_PIXEL_SIZE * (((x * Math.PI) / 180 + Math.PI) / (2 * Math.PI)))
+export const latToPos = (x: number) =>
+  Math.round(
+    (WORLD_PIXEL_SIZE / (2 * Math.PI)) *
+      (Math.PI - Math.log(Math.tan(Math.PI / 4 + (x * Math.PI) / 180 / 2))),
+  )
+export const posToLng = (x: number) =>
+  (((x / WORLD_PIXEL_SIZE) * (2 * Math.PI) - Math.PI) * 180) / Math.PI
+export const posToLat = (y: number) =>
+  ((2 * Math.atan(Math.exp(-((y / WORLD_PIXEL_SIZE) * (2 * Math.PI) - Math.PI))) - Math.PI / 2) *
+    180) /
+  Math.PI
 
 addFavoriteLocation({
   x: (WORLD_PIXEL_SIZE / 3) | 0,
@@ -59,6 +69,20 @@ export class WorldPosition {
       (anchorWorldPosition.x + (position.x - anchorScreenPosition.x) / pixelSize) | 0,
       (anchorWorldPosition.y + (position.y - anchorScreenPosition.y) / pixelSize) | 0,
     )
+  }
+
+  public static fromTiledPosition(
+    bot: WPlaceBot,
+    tileX: number,
+    tileY: number,
+    x: number,
+    y: number,
+  ) {
+    return new WorldPosition(bot, tileX * WORLD_TILE_SIZE + x, tileY * WORLD_TILE_SIZE + y)
+  }
+
+  public static fromLngLat(bot: WPlaceBot, lng: number, lat: number) {
+    return new WorldPosition(bot, lngToPos(lng), latToPos(lat))
   }
 
   public globalX = 0
@@ -111,18 +135,11 @@ export class WorldPosition {
 
   public constructor(
     protected bot: WPlaceBot,
-    tileorGlobalX: number,
-    tileorGlobalY: number,
-    x?: number,
-    y?: number,
+    globalX: number,
+    globalY: number,
   ) {
-    if (x === undefined || y === undefined) {
-      this.globalX = tileorGlobalX
-      this.globalY = tileorGlobalY
-    } else {
-      this.globalX = tileorGlobalX * WORLD_TILE_SIZE + x
-      this.globalY = tileorGlobalY * WORLD_TILE_SIZE + y
-    }
+    this.globalX = globalX
+    this.globalY = globalY
     this.updateAnchor()
   }
 
@@ -167,10 +184,6 @@ export class WorldPosition {
       x: x - window.innerWidth / 3,
       y: y - window.innerHeight / 3,
     })
-  }
-
-  public clone() {
-    return new WorldPosition(this.bot, this.tileX, this.tileY, this.x, this.y)
   }
 
   public toJSON() {

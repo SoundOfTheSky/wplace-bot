@@ -12,3 +12,8 @@ export function etaText(bot: WPlaceBot, remaining: number): string {
   const cooldownMs = bot.me?.charges.cooldownMs ?? 30000
   return formatNumber(Math.max(0, remaining - charges) * cooldownMs, 60000)
 }
+
+/** Check if colors is available to player by this.me!.extraColorsBitmap */
+export function isColorAvailable(bitmap: number, color: number) {
+  return color < 32 || (bitmap & (1 << (color - 32))) !== 0
+}

@@ -1,12 +1,12 @@
 import { formatNumber, wait } from '@softsky/utils'
-import { BotImage, UnownedColorStrategy } from './image'
-import { DELETE_ALL_DATA, loadSave, SAVE_VERSION } from './save'
+import { BotImage } from './image'
+import { SAVE_VERSION, SaveSystem } from './save'
 // @ts-ignore
 import css from './style.css' with { type: 'text' }
+import { isColorAvailable } from './utils'
 import { BotStrategy, Widget } from './widget'
-import { workerClearMapCache } from './worker-client'
+import { ImageProcessingWorker } from './worker-client'
 import {
-  addFavoriteLocation,
   extractScreenPositionFromStar,
   FAVORITE_LOCATIONS,
   FAVORITE_LOCATIONS_POSITIONS,
@@ -51,99 +51,52 @@ export type Me = {
  * Used to interact with wplace
  * */
 export class WPlaceBot {
-  public static async create() {
-    const bot = new WPlaceBot()
-    return bot.widget
-      .run('Initializing', async (progress) => {
-        const save = await loadSave()
-        // Preinit save data before page has loaded
-        if (save) {
-          for (let index = 0; index < save.images.length; index++) {
-            const image = save.images[index]!
-            addFavoriteLocation({
-              x: image.position[0] - 1000,
-              y: image.position[1] - 1000,
-            })
-            addFavoriteLocation({
-              x: image.position[0] + 1000,
-              y: image.position[1] + 1000,
-            })
-          }
-
-          bot.strategy = save.strategy
-          bot.title = save.title
-        } else bot.title = 'WPlace-bot'
-
-        bot.registerFetchInterceptor()
+  public constructor() {
+    this.widget
+      .run('Initializing', async () => {
+        this.registerFetchInterceptor()
 
         // Embed styles
         const style = document.createElement('style')
         style.textContent = css as string
         document.head.append(style)
-        progress(0.01)
 
-        // Waiting for all of website to load
-        await bot.waitForElement('.avatar.center-absolute.absolute')
-        progress(0.02)
-        await bot.waitForElement('.btn.btn-primary.btn-lg.relative.z-30')
-        progress(0.03)
+        await this.save.load(true)
+
+        // Watching for stars change to move overlays
         new MutationObserver((mutations: MutationRecord[]) => {
           // If elements were removed, update stars
           for (let index = 0; index < mutations.length; index++)
             if (mutations[index]!.removedNodes.length !== 0) {
-              bot.updateStars()
+              this.updateStars()
               break
             }
-          for (let index = 0; index < bot.images.length; index++) bot.images[index]!.updateUI()
-        }).observe(await bot.waitForElement('.maplibregl-canvas-container'), {
+          for (let index = 0; index < this.images.length; index++) this.images[index]!.updateUI()
+        }).observe(document.querySelector('.maplibregl-canvas-container')!, {
           attributes: true,
           childList: true,
           subtree: true,
         })
-        bot.updateStars()
+
         await wait(500) // Sometimes wplace UI becomes bugged if interacted too early
-        progress(0.04)
-        await bot.updateColorsData()
-        progress(0.05)
-        // Load images
-        if (save) {
-          const batchSize = 1 / save.images.length
-          for (let index = 0; index < save.images.length; index++) {
-            await BotImage.fromJSON(bot, save.images[index]!, (p) => {
-              progress(0.05 + (index * batchSize + p * batchSize) * 0.95)
-            })
-          }
-        }
+
         // Unblock buttons
-        bot.widget.setDisabled('draw', false)
-        bot.widget.setDisabled('auto-draw', false)
-        bot.widget.setDisabled('add-image', false)
-        // this.widget.setDisabled('pumpkin-hunt', false)
+        this.widget.setDisabled('draw', false)
+        this.widget.setDisabled('auto-draw', false)
+        this.widget.setDisabled('add-image', false)
       })
       .catch(async (error) => {
         if (
-          !window.confirm(
+          window.confirm(
             "WPlace-bot couldn't load!\nDo you want to DELETE ALL DATA to fix it?\n\nERROR: " +
               error,
           )
-        )
-          throw error
-        try {
-          const a = document.createElement('a')
-          document.body.append(a)
-          a.href = URL.createObjectURL(
-            new Blob([JSON.stringify(await loadSave())], {
-              type: 'application/json',
-            }),
-          )
-          a.download = `Wplace-Bot-Broken-Save.txt`
-          a.click()
-          window.alert(
-            'Wplace-Bot-Broken-Save.txt is your broken save. If you ACTUALLY need data from this save, create issue on https://github.com/SoundOfTheSky/wplace-bot/issues\n\nDeveloper will try to fix your save. Be vary that github issues are public, and save file contains your images and their positions in world.',
-          )
-        } finally {
-          DELETE_ALL_DATA()
-          document.location.reload()
+        ) {
+          try {
+            await this.save.deleteAllData()
+          } finally {
+            document.location.reload()
+          }
         }
       })
   }
@@ -151,17 +104,8 @@ export class WPlaceBot {
   /** Title in widget */
   public title = ''
 
-  /** Colors that can be bought */
-  public unavailableColors = new Set<number>()
-
-  /** Keys to  */
-  public mapsCacheKeys = new Uint32Array(0)
-
-  /** Cache of parsed images of world map */
-  public mapsCache = new Uint8Array(0)
-
   /** Data about account */
-  public me?: Me
+  public me!: Me
 
   /** Cached stars elements */
   public $stars: HTMLDivElement[] = []
@@ -177,11 +121,26 @@ export class WPlaceBot {
 
   public widget = new Widget(this)
 
-  /** Used to wait for pixel data on marker set */
-  protected markerPixelPositionResolvers: ((position: WorldPosition) => unknown)[] = []
+  public save = new SaveSystem(this)
+
+  public worker = new ImageProcessingWorker()
 
   /** Last color drawn */
   protected lastColor?: number
+
+  public isColorAvailable(color: number) {
+    return isColorAvailable(this.me.extraColorsBitmap, color)
+  }
+
+  public refetchMe() {
+    return fetch('https://backend.wplace.live/me', {
+      credentials: 'include',
+    })
+      .then((x) => x.json())
+      .then((x) => {
+        return (this.me = x as Me)
+      })
+  }
 
   /** Start drawing */
   public draw(): Promise<void> {
@@ -194,7 +153,7 @@ export class WPlaceBot {
     }
     return this.widget.run(
       'Drawing',
-      async (progress) => {
+      async () => {
         const firstImage = this.images[0]
         if (!firstImage) return
 
@@ -202,27 +161,21 @@ export class WPlaceBot {
         globalThis.addEventListener('mousemove', prevent, true)
         $canvas.addEventListener('wheel', prevent, true)
 
-        await this.widget.run('Loading', (progress) =>
-          Promise.all([
-            this.updateColorsData().then(async () => {
-              workerClearMapCache()
-              await wait(100)
-              const batchSize = 1 / this.images.length
-              for (let index = 0; index < this.images.length; index++)
-                await this.images[index]!.updatePixels((p) => {
-                  progress(index * batchSize + p * batchSize)
-                })
-            }),
-            this.zoomIn(4, $canvas),
-            fetch('https://backend.wplace.live/me', {
-              credentials: 'include',
-            })
-              .then((x) => x.json())
-              .then((x) => {
-                this.me = x as Me
-              }),
-          ]),
-        )
+        /**
+         * Run async:
+         * - Zoom
+         * - Load
+         *   - Fetch me
+         *   - Clear cache
+         *     - Updating pixels
+         */
+        await Promise.all([
+          Promise.all([this.refetchMe(), this.worker.clearMapCache()]).then(async () => {
+            for (let index = 0; index < this.images.length; index++)
+              await this.images[index]!.updatePixels()
+          }),
+          this.zoomIn(4, $canvas),
+        ])
 
         const initialCharges = Math.floor(this.me!.charges.count)
         let charges = initialCharges
@@ -233,12 +186,12 @@ export class WPlaceBot {
         for (let index = 0; index < this.images.length; index++) {
           const image = this.images[index]!
           if (image.disabled) continue
-          tasksLength += image.tasks.length / 2
-          if (image.unownedColorStrategy === UnownedColorStrategy.BUY) {
+          tasksLength += image.tasksX.length
+          if (image.autoBuyColors) {
             for (let index = 0; index < image.colors.length; index++) {
               const color = image.colors[index]!
-              if (image.disabledColors.has(color) || !this.unavailableColors.has(color)) continue
-              const amount = image.colorsStat.get(color)!.amount
+              if (image.disabledColors.has(color) || !this.isColorAvailable(color)) continue
+              const amount = image.colorsCount[color]
               if (!colorsToBuyMap.has(color))
                 colorsToBuyMap.set(color, {
                   color: color,
@@ -267,14 +220,9 @@ export class WPlaceBot {
         const drawTask = async (image: BotImage) => {
           let index = indexes.get(image)
           if (index === undefined) indexes.set(image, (index = 0))
-          const dIndex = index * 2
-          if (dIndex === image.tasks.length) return false
+          if (index === image.tasksX.length) return false
           indexes.set(image, index + 1)
-          const worldPosition = new WorldPosition(
-            this,
-            image.tasks[dIndex]!,
-            image.tasks[dIndex + 1]!,
-          )
+          const worldPosition = new WorldPosition(this, image.tasksX[index]!, image.tasksY[index]!)
           const color =
             image.pixels[
               (worldPosition.globalY - image.position.globalY) * image.width +
@@ -316,7 +264,6 @@ export class WPlaceBot {
             }),
           )
           charges--
-          progress((initialCharges - charges) / initialCharges)
           await wait(1)
           return true
         }
@@ -341,7 +288,7 @@ export class WPlaceBot {
               for (let imageIndex = 0; imageIndex < this.images.length; imageIndex++) {
                 const image = this.images[imageIndex]!
                 if (image.disabled) continue
-                const percent = 1 - image.tasks.length / 2 / (image.width * image.height)
+                const percent = 1 - image.tasksX.length / (image.width * image.height)
                 if (percent < minPercent) {
                   minPercent = percent
                   minImage = image
@@ -355,13 +302,16 @@ export class WPlaceBot {
             for (let imageIndex = 0; imageIndex < this.images.length; imageIndex++) {
               const image = this.images[imageIndex]!
               if (image.disabled) continue
-              for (let i = 0; i < image.tasks.length / 2 && charges > 0; i++) await drawTask(image)
+              for (let i = 0; i < image.tasksX.length && charges > 0; i++) await drawTask(image)
             }
           }
         }
 
         // Trim tasks from already done
-        for (const [image, value] of indexes) image.tasks = image.tasks.subarray(value * 2)
+        for (const [image, value] of indexes) {
+          image.tasksX = image.tasksX.subarray(value)
+          image.tasksY = image.tasksY.subarray(value)
+        }
         this.me!.charges.count = 0
         this.widget.update()
       },
@@ -406,25 +356,12 @@ export class WPlaceBot {
   }
 
   /** Serialize bot */
-  public async toJSON() {
+  public async toJSON(exportToBlob?: boolean) {
     return {
       version: SAVE_VERSION,
-      images: await Promise.all(this.images.map((x) => x.toJSON())),
+      images: await Promise.all(this.images.map((x) => x.toJSON(exportToBlob))),
       strategy: this.strategy,
       title: this.title,
-    }
-  }
-
-  /** Read colors */
-  public async updateColorsData() {
-    await this.openColors()
-    this.unavailableColors.clear()
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>('button.btn.relative.w-full')]
-    if (buttons.length !== 64) throw new Error(`Expected 64 colors, but got ${buttons.length}`)
-    for (let index = 0; index < buttons.length; index++) {
-      const $button = buttons[index]!
-      if ($button.children.length !== 0)
-        this.unavailableColors.add(Number.parseInt($button.id.slice(6)))
     }
   }
 
@@ -490,7 +427,7 @@ export class WPlaceBot {
   }
 
   /** Opens colors and makes them visible for selection */
-  protected async openColors() {
+  public async openColors() {
     this.lastColor = undefined
     // Click close marker
     document.querySelector<HTMLButtonElement>('.flex.gap-2.px-3 > .btn-circle')?.click()
@@ -525,7 +462,7 @@ export class WPlaceBot {
   }
 
   /** Wait for element to show up in document */
-  protected waitForElement<T extends Element>(selector: string): Promise<T> {
+  public waitForElement<T extends Element>(selector: string): Promise<T> {
     return new Promise<T>((resolve) => {
       // If element already exists, resolve immediately
       const existing = document.querySelector<T>(selector)
@@ -584,35 +521,15 @@ export class WPlaceBot {
   /** Start listening to fetch requests */
   protected registerFetchInterceptor() {
     const originalFetch = globalThis.fetch
-    const pixelRegExp =
-      /https:\/\/backend.wplace.live\/s\d+\/pixel\/(-?\d+)\/(-?\d+)\?x=(-?\d+)&y=(-?\d+)/
     // @ts-ignore
     globalThis.fetch = async (request, options) => {
       const response = await originalFetch(request, options)
       const cloned = response.clone()
-      let url = ''
-      if (typeof request == 'string') url = request
-      else if (request instanceof Request) url = request.url
-      else if (request instanceof URL) url = request.href
       if (response.url === 'https://backend.wplace.live/me') {
         this.me = (await cloned.json()) as Me
         this.me.favoriteLocations.unshift(...FAVORITE_LOCATIONS)
         this.me.maxFavoriteLocations = Infinity
         response.json = () => Promise.resolve(this.me)
-      }
-      const pixelMatch = pixelRegExp.exec(url)
-      if (pixelMatch) {
-        for (let index = 0; index < this.markerPixelPositionResolvers.length; index++)
-          this.markerPixelPositionResolvers[index]!(
-            new WorldPosition(
-              this,
-              +pixelMatch[1]!,
-              +pixelMatch[2]!,
-              +pixelMatch[3]!,
-              +pixelMatch[4]!,
-            ),
-          )
-        this.markerPixelPositionResolvers.length = 0
       }
       return response
     }
@@ -620,4 +537,4 @@ export class WPlaceBot {
 }
 
 // @ts-ignore
-globalThis.wbot = WPlaceBot.create()
+globalThis.wbot = new WPlaceBot()

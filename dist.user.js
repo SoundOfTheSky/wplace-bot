@@ -127,6 +127,85 @@ function formatNumber(time, min = 0, ranges = FORMAT_NUMBER_RANGES) {
 }
 // node_modules/@softsky/utils/dist/signals.js
 var effectsMap = new WeakMap;
+// src/idb.ts
+class IDB {
+  db;
+  constructor(db) {
+    this.db = db;
+  }
+  static open(name, version, onUpgrade) {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(name, version);
+      req.onupgradeneeded = (event) => {
+        onUpgrade(req.result, event.oldVersion, event.newVersion);
+      };
+      req.onsuccess = () => {
+        resolve(new IDB(req.result));
+      };
+      req.onerror = () => {
+        reject(req.error ?? new Error("Unknown IDB error"));
+      };
+      req.onblocked = () => {
+        reject(new Error(`IDB open blocked: ${name}`));
+      };
+    });
+  }
+  static delete(name) {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(name);
+      req.onsuccess = () => {
+        resolve();
+      };
+      req.onerror = () => {
+        reject(req.error ?? new Error("Unknown IDB error"));
+      };
+      req.onblocked = () => {
+        reject(new Error(`IDB delete blocked: ${name}`));
+      };
+    });
+  }
+  get(store, key) {
+    return this.wrap(this.t(store, "readonly").get(key));
+  }
+  getAll(store, query) {
+    return this.wrap(this.t(store, "readonly").getAll(query));
+  }
+  getAllKeys(store) {
+    return this.wrap(this.t(store, "readonly").getAllKeys());
+  }
+  put(store, value, key) {
+    return this.wrap(this.t(store, "readwrite").put(value, key));
+  }
+  add(store, value, key) {
+    return this.wrap(this.t(store, "readwrite").add(value, key));
+  }
+  delete(store, key) {
+    return this.wrap(this.t(store, "readwrite").delete(key));
+  }
+  clear(store) {
+    return this.wrap(this.t(store, "readwrite").clear());
+  }
+  count(store) {
+    return this.wrap(this.t(store, "readonly").count());
+  }
+  close() {
+    this.db.close();
+  }
+  t(store, mode) {
+    return this.db.transaction(store, mode).objectStore(store);
+  }
+  wrap(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => {
+        resolve(req.result);
+      };
+      req.onerror = () => {
+        reject(req.error ?? new Error("Unknown IDB error"));
+      };
+    });
+  }
+}
+
 // src/base.ts
 class Base2 {
   element = document.createElement("div");
@@ -161,72 +240,11 @@ class Base2 {
 }
 
 // src/colors.ts
-var COLORS = [
-  [Number.NaN, Number.NaN, Number.NaN],
-  [0, 0, 0],
-  [0.356, 0, 0],
-  [0.573, 0, 0],
-  [0.864, 0, 0],
-  [1, 0, 0],
-  [0.31, 0.119, 0.037],
-  [0.603, 0.209, 0.107],
-  [0.732, 0.118, 0.137],
-  [0.791, 0.039, 0.16],
-  [0.895, -0.026, 0.168],
-  [0.974, -0.019, 0.077],
-  [0.691, -0.154, 0.075],
-  [0.812, -0.185, 0.096],
-  [0.898, -0.17, 0.149],
-  [0.541, -0.097, 0.005],
-  [0.678, -0.114, -0.018],
-  [0.814, -0.15, 0.011],
-  [0.447, -0.019, -0.134],
-  [0.65, -0.048, -0.137],
-  [0.895, -0.124, -0.027],
-  [0.561, 0.054, -0.229],
-  [0.771, 0, -0.11],
-  [0.431, 0.145, -0.143],
-  [0.557, 0.168, -0.127],
-  [0.796, 0.102, -0.097],
-  [0.551, 0.225, -0.023],
-  [0.62, 0.238, 0],
-  [0.759, 0.127, 0.006],
-  [0.428, 0.036, 0.041],
-  [0.552, 0.03, 0.092],
-  [0.817, 0.055, 0.097],
-  [0.738, 0, 0],
-  [0.46, 0.163, 0.074],
-  [0.735, 0.134, 0.071],
-  [0.642, 0.137, 0.122],
-  [0.794, 0.023, 0.054],
-  [0.62, -0.005, 0.105],
-  [0.747, -0.019, 0.138],
-  [0.864, -0.023, 0.136],
-  [0.489, -0.06, 0.058],
-  [0.609, -0.092, 0.08],
-  [0.76, -0.099, 0.085],
-  [0.54, -0.067, -0.079],
-  [0.941, -0.064, -0.007],
-  [0.803, -0.05, -0.096],
-  [0.438, 0.048, -0.192],
-  [0.421, 0.03, -0.102],
-  [0.593, 0.036, -0.119],
-  [0.781, 0.031, -0.09],
-  [0.757, 0.036, 0.098],
-  [0.676, 0.076, 0.09],
-  [0.868, 0.051, 0.061],
-  [0.524, 0.087, 0.047],
-  [0.684, 0.091, 0.045],
-  [0.835, 0.068, 0.048],
-  [0.519, 0.022, 0.034],
-  [0.629, 0.017, 0.043],
-  [0.342, -0.004, -0.016],
-  [0.564, 0, -0.038],
-  [0.789, 0.003, -0.035],
-  [0.502, -0.006, 0.055],
-  [0.638, -0.005, 0.047],
-  [0.82, -0.007, 0.053]
-];
+var unpackRGB = (packed) => ({
+  r: packed >> 16 & 255,
+  g: packed >> 8 & 255,
+  b: packed & 255
+});
 var COLORS_RGB = [
   NaN,
   0,
@@ -294,13 +312,32 @@ var COLORS_RGB = [
   13485470
 ];
 var COLORS_RGB_MAP = new Map;
-for (let index = 0;index < COLORS_RGB.length; index++)
-  COLORS_RGB_MAP.set(COLORS_RGB[index], index);
+for (let i = 0;i < COLORS_RGB.length; i++)
+  COLORS_RGB_MAP.set(COLORS_RGB[i], i);
+var SRGB_TO_LINEAR = new Float64Array(256);
+for (let i = 0;i < 256; i++) {
+  const c = i / 255;
+  SRGB_TO_LINEAR[i] = c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92;
+}
+var COLORS_LAB = new Array(64);
+COLORS_LAB[0] = { l: 0, a: 0, b: 0 };
+for (let i = 1;i < 64; i++)
+  COLORS_LAB[i] = rgbToLab(unpackRGB(COLORS_RGB[i]));
+function rgbToLab(rgb) {
+  const rl = SRGB_TO_LINEAR[rgb.r], gl = SRGB_TO_LINEAR[rgb.g], bl = SRGB_TO_LINEAR[rgb.b];
+  let x = (rl * 0.4124 + gl * 0.3576 + bl * 0.1805) / 0.95047;
+  let y = rl * 0.2126 + gl * 0.7152 + bl * 0.0722;
+  let z = (rl * 0.0193 + gl * 0.1192 + bl * 0.9505) / 1.08883;
+  x = x > 0.008856 ? Math.cbrt(x) : 7.787 * x + 16 / 116;
+  y = y > 0.008856 ? Math.cbrt(y) : 7.787 * y + 16 / 116;
+  z = z > 0.008856 ? Math.cbrt(z) : 7.787 * z + 16 / 116;
+  return { l: 116 * y - 16, a: 500 * (x - y), b: 200 * (y - z) };
+}
 function colorToCSS(colorId) {
   if (colorId === 0)
     return "transparent";
-  const color = COLORS[colorId];
-  return `oklab(${color[0] * 100}% ${color[1]} ${color[2]})`;
+  const color = COLORS_LAB[colorId];
+  return `oklab(${color.l * 100}% ${color.a} ${color.b})`;
 }
 
 // src/image.css
@@ -478,15 +515,8 @@ var image_default2 = `<div class="topbar">
     <div></div>
     <span></span>
   </div>
-  <label class="unowned-color-strategy" title="What to do with unonwned colors">
-    Unowned Colors:&nbsp;<select>
-      <option value="BUY" selected>Buy</option>
-      <option value="SKIP">Skip</option>
-      <option value="SUBSTITUTE">Substitute</option>
-    </select>
-  </label>
+  <label class="auto-buy-colors"> <input type="checkbox" />&nbsp;Auto buy colors </label>
   <label>Opacity:&nbsp;<input class="opacity" type="range" min="0" max="100" /></label>
-  <label>Brightness:&nbsp;<input class="brightness" type="number" step="0.1" /></label>
   <label color="How to draw">
     Strategy:&nbsp;<select class="strategy">
       <option value="RANDOM">Random</option>
@@ -503,159 +533,6 @@ var image_default2 = `<div class="topbar">
   <div class="colors" title="Pixels drawn / total, drawn % (% of the image)"></div>
 </dialog>
 `;
-
-// src/save.ts
-var DB_NAME = "wbot";
-var STORE_NAME = "saves";
-var KEY_NAME = "wbot";
-var DB_VERSION = 1;
-var SAVE_VERSION = 4;
-var dbPromise = new Promise((resolve, reject) => {
-  const request = indexedDB.open(DB_NAME, DB_VERSION);
-  request.onupgradeneeded = () => {
-    const db = request.result;
-    if (!db.objectStoreNames.contains(STORE_NAME))
-      db.createObjectStore(STORE_NAME);
-  };
-  request.onsuccess = () => {
-    resolve(request.result);
-  };
-  request.onerror = () => {
-    reject(request.error);
-  };
-});
-async function idbGet(key) {
-  const db = await dbPromise;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const request = tx.objectStore(STORE_NAME).get(key);
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
-    request.onerror = () => {
-      reject(request.error);
-    };
-  });
-}
-async function idbSet(key, value) {
-  const db = await dbPromise;
-  const tx = db.transaction(STORE_NAME, "readwrite");
-  tx.objectStore(STORE_NAME).put(value, key);
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => {
-      resolve();
-    };
-    tx.onerror = () => {
-      reject(tx.error);
-    };
-  });
-}
-function DELETE_ALL_DATA() {
-  indexedDB.deleteDatabase(DB_NAME);
-}
-async function loadSave() {
-  try {
-    await migrateSaveFromLS();
-    const raw = await idbGet(KEY_NAME);
-    if (typeof raw !== "object" || raw === null)
-      return;
-    return migrate(raw);
-  } catch {
-    return;
-  }
-}
-var saveTimeout;
-async function save(bot, immediate = false) {
-  clearTimeout(saveTimeout);
-  if (immediate)
-    await idbSet(KEY_NAME, await bot.toJSON());
-  else
-    await new Promise((resolve) => {
-      saveTimeout = setTimeout(async () => {
-        await idbSet(KEY_NAME, await bot.toJSON());
-        resolve();
-      }, 1000);
-    });
-}
-async function migrateSaveFromLS() {
-  let legacyKey = "";
-  for (let index = 0;index < localStorage.length; index++) {
-    legacyKey = localStorage.key(index);
-    if (legacyKey.endsWith(KEY_NAME))
-      break;
-  }
-  if (legacyKey.endsWith(KEY_NAME)) {
-    const json = localStorage.getItem(legacyKey);
-    if (json) {
-      try {
-        const parsed = JSON.parse(json);
-        if (typeof parsed === "object")
-          await idbSet(KEY_NAME, parsed);
-      } catch {}
-    }
-    localStorage.removeItem(legacyKey);
-  }
-}
-function migrateImage(old) {
-  const img = structuredClone(old);
-  if (!img.version) {
-    return {
-      url: img.url || "",
-      width: img.width || 0,
-      brightness: img.brightness || 1,
-      position: img.position || { globalX: 0, globalY: 0 },
-      strategy: img.strategy || "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */,
-      opacity: img.opacity || 0.5,
-      drawColorsInOrder: img.drawColorsInOrder || true,
-      colors: img.colors || [],
-      disabledColors: img.disabledColors || [0],
-      lock: img.lock || false,
-      disabled: img.disabled || false,
-      name: img.name || `Unnamed image`,
-      unownedColorStrategy: img.unownedColorStrategy || "BUY" /* BUY */,
-      version: SAVE_VERSION
-    };
-  }
-  if (img.version === 2) {
-    const { url, width, brightness } = old.pixels;
-    return migrateImage({
-      url,
-      width,
-      brightness,
-      position: img.position || { globalX: 0, globalY: 0 },
-      strategy: img.strategy || "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */,
-      opacity: img.opacity || 0.5,
-      drawColorsInOrder: img.drawColorsInOrder || true,
-      colors: img.colors || [],
-      disabledColors: img.disabledColors || [0],
-      lock: img.lock || false,
-      disabled: img.disabled || false,
-      name: img.name || `Unnamed image`,
-      unownedColorStrategy: img.unownedColorStrategy || "BUY" /* BUY */,
-      version: 3
-    });
-  }
-  if (img.version === 3) {
-    if (!img.drawTransparentPixels && !img.disabledColors.includes(0)) {
-      img.disabledColors.push(0);
-      delete img.drawTransparentPixels;
-    }
-    img.version = 4;
-    return migrateImage(img);
-  }
-  return img;
-}
-function migrate(old) {
-  if (!old.version || old.version < SAVE_VERSION) {
-    return {
-      version: SAVE_VERSION,
-      images: old.images.map(migrateImage),
-      strategy: old.strategy,
-      title: "WPlace-bot"
-    };
-  }
-  return old;
-}
 
 // src/shared.css
 var shared_default = `/* stylelint-disable declaration-no-important */
@@ -808,610 +685,8 @@ function etaText(bot, remaining) {
   const cooldownMs = bot.me?.charges.cooldownMs ?? 30000;
   return formatNumber(Math.max(0, remaining - charges) * cooldownMs, 60000);
 }
-
-// src/worker-client.ts
-var worker = new Worker(URL.createObjectURL(new Blob([`(() => {
-  var __defProp = Object.defineProperty;
-  var __getOwnPropNames = Object.getOwnPropertyNames;
-  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-  var __hasOwnProp = Object.prototype.hasOwnProperty;
-  function __accessProp(key) {
-    return this[key];
-  }
-  var __toCommonJS = (from) => {
-    var entry = (__moduleCache ??= new WeakMap).get(from), desc;
-    if (entry)
-      return entry;
-    entry = __defProp({}, "__esModule", { value: true });
-    if (from && typeof from === "object" || typeof from === "function") {
-      for (var key of __getOwnPropNames(from))
-        if (!__hasOwnProp.call(entry, key))
-          __defProp(entry, key, {
-            get: __accessProp.bind(from, key),
-            enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
-          });
-    }
-    __moduleCache.set(from, entry);
-    return entry;
-  };
-  var __moduleCache;
-
-  // src/worker.ts
-  var exports_worker = {};
-
-  // src/colors.ts
-  function srgbNonlinearTransformInv(c) {
-    return c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92;
-  }
-  function rgbToOklab(r, g, b) {
-    const lr = srgbNonlinearTransformInv(r / 255);
-    const lg = srgbNonlinearTransformInv(g / 255);
-    const lb = srgbNonlinearTransformInv(b / 255);
-    const lp = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
-    const mp = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
-    const sp = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
-    const l = 0.2104542553 * lp + 0.793617785 * mp - 0.0040720468 * sp;
-    const aa = 1.9779984951 * lp - 2.428592205 * mp + 0.4505937099 * sp;
-    const bb = 0.0259040371 * lp + 0.7827717662 * mp - 0.808675766 * sp;
-    return [l, aa, bb];
-  }
-  function deltaE2000(lab1, lab2, brightness) {
-    const [L1, a1, b1] = lab1;
-    const [L2, a2, b2] = lab2;
-    const rad2deg = (rad) => rad * 180 / Math.PI;
-    const deg2rad = (deg) => deg * Math.PI / 180;
-    const kL = 1, kC = 1, kH = 1;
-    const C1 = Math.sqrt(a1 ** 2 + b1 ** 2);
-    const C2 = Math.sqrt(a2 ** 2 + b2 ** 2);
-    const avgC = (C1 + C2) / 2;
-    const G = 0.5 * (1 - Math.sqrt(avgC ** 7 / (avgC ** 7 + 25 ** 7)));
-    const a1p = a1 * (1 + G);
-    const a2p = a2 * (1 + G);
-    const C1p = Math.sqrt(a1p ** 2 + b1 ** 2);
-    const C2p = Math.sqrt(a2p ** 2 + b2 ** 2);
-    const h1p = b1 === 0 && a1p === 0 ? 0 : rad2deg(Math.atan2(b1, a1p)) % 360;
-    const h2p = b2 === 0 && a2p === 0 ? 0 : rad2deg(Math.atan2(b2, a2p)) % 360;
-    const Lp = L2 - L1;
-    const Cp = C2p - C1p;
-    let hp = 0;
-    if (C1p * C2p !== 0) {
-      hp = h2p - h1p;
-      if (hp > 180) {
-        hp -= 360;
-      } else if (hp < -180) {
-        hp += 360;
-      }
-    }
-    const Hp = 2 * Math.sqrt(C1p * C2p) * Math.sin(deg2rad(hp) / 2);
-    const avgLp = (L1 + L2) / 2;
-    const avgCp = (C1p + C2p) / 2;
-    let avghp = (h1p + h2p) / 2;
-    if (Math.abs(h1p - h2p) > 180) {
-      avghp += 180;
-    }
-    const T = 1 - 0.17 * Math.cos(deg2rad(avghp - 30)) + 0.24 * Math.cos(deg2rad(2 * avghp)) + 0.32 * Math.cos(deg2rad(3 * avghp + 6)) - 0.2 * Math.cos(deg2rad(4 * avghp - 63));
-    const SL = 1 + 0.015 * (avgLp - 50) ** 2 / Math.sqrt(20 + (avgLp - 50) ** 2);
-    const SC = 1 + 0.045 * avgCp;
-    const SH = 1 + 0.015 * avgCp * T;
-    const θ = 30 * Math.exp((-((avghp - 275) / 25)) ** 2);
-    const RC = 2 * Math.sqrt(avgCp ** 7 / (avgCp ** 7 + 25 ** 7));
-    const RT = -RC * Math.sin(deg2rad(2 * θ));
-    return Math.sqrt((Lp / (kL * SL)) ** 2 + (Cp / (kC * SC)) ** 2 + (Hp / (kH * SH)) ** 2 + RT * (Cp / (kC * SC)) * (Hp / (kH * SH))) - Lp * brightness;
-  }
-  var COLORS = [
-    [Number.NaN, Number.NaN, Number.NaN],
-    [0, 0, 0],
-    [0.356, 0, 0],
-    [0.573, 0, 0],
-    [0.864, 0, 0],
-    [1, 0, 0],
-    [0.31, 0.119, 0.037],
-    [0.603, 0.209, 0.107],
-    [0.732, 0.118, 0.137],
-    [0.791, 0.039, 0.16],
-    [0.895, -0.026, 0.168],
-    [0.974, -0.019, 0.077],
-    [0.691, -0.154, 0.075],
-    [0.812, -0.185, 0.096],
-    [0.898, -0.17, 0.149],
-    [0.541, -0.097, 0.005],
-    [0.678, -0.114, -0.018],
-    [0.814, -0.15, 0.011],
-    [0.447, -0.019, -0.134],
-    [0.65, -0.048, -0.137],
-    [0.895, -0.124, -0.027],
-    [0.561, 0.054, -0.229],
-    [0.771, 0, -0.11],
-    [0.431, 0.145, -0.143],
-    [0.557, 0.168, -0.127],
-    [0.796, 0.102, -0.097],
-    [0.551, 0.225, -0.023],
-    [0.62, 0.238, 0],
-    [0.759, 0.127, 0.006],
-    [0.428, 0.036, 0.041],
-    [0.552, 0.03, 0.092],
-    [0.817, 0.055, 0.097],
-    [0.738, 0, 0],
-    [0.46, 0.163, 0.074],
-    [0.735, 0.134, 0.071],
-    [0.642, 0.137, 0.122],
-    [0.794, 0.023, 0.054],
-    [0.62, -0.005, 0.105],
-    [0.747, -0.019, 0.138],
-    [0.864, -0.023, 0.136],
-    [0.489, -0.06, 0.058],
-    [0.609, -0.092, 0.08],
-    [0.76, -0.099, 0.085],
-    [0.54, -0.067, -0.079],
-    [0.941, -0.064, -0.007],
-    [0.803, -0.05, -0.096],
-    [0.438, 0.048, -0.192],
-    [0.421, 0.03, -0.102],
-    [0.593, 0.036, -0.119],
-    [0.781, 0.031, -0.09],
-    [0.757, 0.036, 0.098],
-    [0.676, 0.076, 0.09],
-    [0.868, 0.051, 0.061],
-    [0.524, 0.087, 0.047],
-    [0.684, 0.091, 0.045],
-    [0.835, 0.068, 0.048],
-    [0.519, 0.022, 0.034],
-    [0.629, 0.017, 0.043],
-    [0.342, -0.004, -0.016],
-    [0.564, 0, -0.038],
-    [0.789, 0.003, -0.035],
-    [0.502, -0.006, 0.055],
-    [0.638, -0.005, 0.047],
-    [0.82, -0.007, 0.053]
-  ];
-  var COLORS_RGB = [
-    NaN,
-    0,
-    3947580,
-    7895160,
-    13816530,
-    16777215,
-    6291480,
-    15539236,
-    16744231,
-    16165385,
-    16375099,
-    16775868,
-    964968,
-    1304187,
-    8912734,
-    819566,
-    1093286,
-    1302974,
-    2642078,
-    4232164,
-    6354930,
-    7033078,
-    10072571,
-    7867545,
-    11155641,
-    14721017,
-    13303930,
-    15474560,
-    15961513,
-    6833716,
-    9791530,
-    16298615,
-    11184810,
-    10817054,
-    16416882,
-    14965786,
-    14071188,
-    10257457,
-    12954929,
-    15258719,
-    4877114,
-    5936202,
-    8701299,
-    1014175,
-    12319474,
-    8243199,
-    5059000,
-    4866692,
-    8024516,
-    11906801,
-    14394467,
-    13729873,
-    16762277,
-    10179145,
-    13729912,
-    16430756,
-    8086354,
-    10257515,
-    3356993,
-    7173517,
-    11778513,
-    7169087,
-    9735275,
-    13485470
-  ];
-  var COLORS_RGB_MAP = new Map;
-  for (let index = 0;index < COLORS_RGB.length; index++)
-    COLORS_RGB_MAP.set(COLORS_RGB[index], index);
-
-  // src/world-position.ts
-  var WORLD_TILE_SIZE = 1000;
-  var WORLD_TILES = 2048;
-  var WORLD_PIXEL_SIZE = WORLD_TILE_SIZE * WORLD_TILES;
-  var FAVORITE_LOCATIONS_POSITIONS = [];
-  var FAVORITE_LOCATIONS = [];
-  var lastId = Date.now();
-  function addFavoriteLocation(position) {
-    FAVORITE_LOCATIONS_POSITIONS.push(position);
-    FAVORITE_LOCATIONS.push({
-      id: lastId++,
-      latitude: (2 * Math.atan(Math.exp(-(position.y / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI))) - Math.PI / 2) * 180 / Math.PI,
-      longitude: (position.x / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI) * 180 / Math.PI,
-      name: "WBOT_FAVORITE"
-    });
-  }
-  addFavoriteLocation({
-    x: WORLD_PIXEL_SIZE / 3 | 0,
-    y: WORLD_PIXEL_SIZE / 3 | 0
-  });
-  addFavoriteLocation({
-    x: WORLD_PIXEL_SIZE / 3 * 2 | 0,
-    y: WORLD_PIXEL_SIZE / 3 * 2 | 0
-  });
-
-  // src/worker.ts
-  self.onmessage = async (e) => {
-    if (e.data === "CLEAR_MAP_CACHE")
-      mapsCache.clear();
-    else {
-      const data = e.data;
-      await readMap(data.id, data.globalX, data.globalY, data.width, data.height);
-      pixels(data);
-    }
-  };
-  function pixels(request) {
-    const {
-      id,
-      data,
-      nativeWidth,
-      nativeHeight,
-      width,
-      height,
-      unavailableColors,
-      brightness,
-      colors,
-      disabledColors,
-      drawColorsInOrder,
-      strategy,
-      unownedColorStrategy,
-      globalX,
-      globalY
-    } = request;
-    let lastProgress = 0;
-    let scaled;
-    if (nativeWidth === width && nativeHeight === height)
-      scaled = data;
-    else {
-      scaled = new Uint8ClampedArray(width * height * 4);
-      const xRatio = nativeWidth / width;
-      const yRatio = nativeHeight / height;
-      for (let y = 0;y < height; y++) {
-        const sy = Math.min(nativeHeight - 1, Math.floor(y * yRatio));
-        for (let x = 0;x < width; x++) {
-          const sx = Math.min(nativeWidth - 1, Math.floor(x * xRatio));
-          const si = (sy * nativeWidth + sx) * 4;
-          const di = (y * width + x) * 4;
-          scaled[di] = data[si];
-          scaled[di + 1] = data[si + 1];
-          scaled[di + 2] = data[si + 2];
-          scaled[di + 3] = data[si + 3];
-        }
-        const progress = y / height * 5 | 0;
-        if (progress !== lastProgress) {
-          lastProgress = progress;
-          sendProgress(id, 0.1 + progress / 100);
-        }
-      }
-    }
-    const SIZE = width * height;
-    const pixels = new Uint8Array(SIZE);
-    const isSubstitute = unownedColorStrategy === "SUBSTITUTE" /* SUBSTITUTE */;
-    const realPixels = isSubstitute ? new Uint8Array(SIZE) : pixels;
-    const colorStat = new Map;
-    const colorCache = new Map;
-    for (let index = 1;index < 64; index++)
-      if (!unavailableColors.has(index))
-        colorCache.set(COLORS_RGB[index], [index, index]);
-    let i = 0;
-    let pi = 0;
-    lastProgress = 0;
-    for (let y = 0;y < height; y++) {
-      for (let x = 0;x < width; x++) {
-        const progress = pi / SIZE * 75 | 0;
-        if (progress !== lastProgress) {
-          lastProgress = progress;
-          sendProgress(id, 0.15 + progress / 100);
-        }
-        const r = scaled[i];
-        const g = scaled[i + 1];
-        const b = scaled[i + 2];
-        const a = scaled[i + 3];
-        const key = r << 16 | g << 8 | b;
-        let min;
-        let minReal;
-        if (a < 100)
-          min = minReal = 0;
-        else if (colorCache.has(key))
-          [min, minReal] = colorCache.get(key);
-        else {
-          let minDelta = Infinity;
-          let minDeltaReal = Infinity;
-          for (let colorIndex = 1;colorIndex < 64; colorIndex++) {
-            const delta = deltaE2000(rgbToOklab(r, g, b), COLORS[colorIndex], brightness);
-            if (!unavailableColors.has(colorIndex) && delta < minDelta) {
-              minDelta = delta;
-              min = colorIndex;
-            }
-            if (delta < minDeltaReal) {
-              minDeltaReal = delta;
-              minReal = colorIndex;
-            }
-          }
-          colorCache.set(key, [min, minReal]);
-        }
-        pixels[pi] = isSubstitute ? min : minReal;
-        if (isSubstitute)
-          realPixels[pi] = minReal;
-        const stat = colorStat.get(minReal);
-        if (stat)
-          stat.amount++;
-        else
-          colorStat.set(minReal, {
-            color: min,
-            amount: 1,
-            left: 0,
-            realColor: minReal
-          });
-        i += 4;
-        pi++;
-      }
-    }
-    const skipColors = new Set;
-    const colorsOrderMap = new Map;
-    for (let index = 0;index < colors.length; index++) {
-      const drawColor = colors[index];
-      if (disabledColors.has(drawColor) || unavailableColors.has(drawColor))
-        skipColors.add(drawColor);
-      colorsOrderMap.set(drawColor, index);
-    }
-    const positions = strategyPosition(strategy, height, width);
-    const tasks = [];
-    lastProgress = 0;
-    for (let index = 0;index < positions.length; index += 2) {
-      const progress = index / positions.length * 10 | 0;
-      if (progress !== lastProgress) {
-        lastProgress = progress;
-        sendProgress(id, 0.9 + progress / 100);
-      }
-      const dx = positions[index];
-      const dy = positions[index + 1];
-      const color = pixels[dy * width + dx];
-      const gx = globalX + dx;
-      const gy = globalY + dy;
-      const map = mapsCache.get(packTile(toTile(gx), toTile(gy)));
-      const mapColor = map[toTilePosition(gy) * 1000 + toTilePosition(gx)];
-      if (color === mapColor)
-        continue;
-      const realColor = realPixels[dy * width + dx];
-      colorStat.get(realColor).left++;
-      if (skipColors.has(color))
-        continue;
-      tasks.push({
-        gx,
-        gy,
-        color,
-        realColor
-      });
-    }
-    if (drawColorsInOrder)
-      tasks.sort((a, b) => (colorsOrderMap.get(a.color) ?? 0) - (colorsOrderMap.get(b.color) ?? 0));
-    const taskPositions = new Uint32Array(tasks.length * 2);
-    for (let index = 0;index < tasks.length; index++) {
-      const task = tasks[index];
-      const dIndex = index * 2;
-      taskPositions[dIndex] = task.gx;
-      taskPositions[dIndex + 1] = task.gy;
-    }
-    postMessage({
-      id,
-      taskPositions,
-      colorStat,
-      pixels
-    }, [taskPositions.buffer, pixels.buffer]);
-  }
-  function strategyPosition(strategy, height, width) {
-    const SIZE = width * height;
-    const result = new Uint16Array(SIZE * 2);
-    let index = 0;
-    switch (strategy) {
-      case "DOWN" /* DOWN */: {
-        for (let y = 0;y < height; y++)
-          for (let x = 0;x < width; x++) {
-            result[index] = x;
-            result[index + 1] = y;
-            index += 2;
-          }
-        break;
-      }
-      case "UP" /* UP */: {
-        for (let y = height - 1;y >= 0; y--)
-          for (let x = 0;x < width; x++) {
-            result[index] = x;
-            result[index + 1] = y;
-            index += 2;
-          }
-        break;
-      }
-      case "LEFT" /* LEFT */: {
-        for (let x = 0;x < width; x++)
-          for (let y = 0;y < height; y++) {
-            result[index] = x;
-            result[index + 1] = y;
-            index += 2;
-          }
-        break;
-      }
-      case "RIGHT" /* RIGHT */: {
-        for (let x = width - 1;x >= 0; x--)
-          for (let y = 0;y < height; y++) {
-            result[index] = x;
-            result[index + 1] = y;
-            index += 2;
-          }
-        break;
-      }
-      case "RANDOM" /* RANDOM */: {
-        for (let y = 0;y < height; y++)
-          for (let x = 0;x < width; x++) {
-            result[index] = x;
-            result[index + 1] = y;
-            index += 2;
-          }
-        for (let index = SIZE - 1;index >= 0; index--) {
-          const randIndex = Math.floor(Math.random() * (index + 1)) * 2;
-          const realIndex = index * 2;
-          const temporaryX = result[realIndex];
-          const temporaryY = result[realIndex + 1];
-          result[realIndex] = result[randIndex];
-          result[realIndex + 1] = result[randIndex + 1];
-          result[randIndex] = temporaryX;
-          result[randIndex + 1] = temporaryY;
-        }
-        break;
-      }
-      case "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */:
-      case "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */: {
-        const reverse = strategy === "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */;
-        let idx = reverse ? SIZE - 1 : 0;
-        const step = reverse ? -1 : 1;
-        let top = 0, bottom = height - 1, left = 0, right = width - 1;
-        while (top <= bottom && left <= right) {
-          for (let x = left;x <= right; x++) {
-            result[idx * 2] = x;
-            result[idx * 2 + 1] = top;
-            idx += step;
-          }
-          top++;
-          for (let y = top;y <= bottom; y++) {
-            result[idx * 2] = right;
-            result[idx * 2 + 1] = y;
-            idx += step;
-          }
-          right--;
-          if (top <= bottom) {
-            for (let x = right;x >= left; x--) {
-              result[idx * 2] = x;
-              result[idx * 2 + 1] = bottom;
-              idx += step;
-            }
-            bottom--;
-          }
-          if (left <= right) {
-            for (let y = bottom;y >= top; y--) {
-              result[idx * 2] = left;
-              result[idx * 2 + 1] = y;
-              idx += step;
-            }
-            left++;
-          }
-        }
-        break;
-      }
-    }
-    return result;
-  }
-  var mapsCache = new Map;
-  function readMap(id, x, y, width, height) {
-    const imagesToDownload = [];
-    const tileXEnd = toTile(x + width);
-    const tileYEnd = toTile(y + height);
-    const tileYStart = toTile(y);
-    for (let tileX = toTile(x);tileX <= tileXEnd; tileX++)
-      for (let tileY = tileYStart;tileY <= tileYEnd; tileY++)
-        if (!mapsCache.has(packTile(tileX, tileY)))
-          imagesToDownload.push({ tileX, tileY });
-    let done = 0;
-    return Promise.all([...imagesToDownload].map(async ({ tileX, tileY }) => {
-      await updateMapPixels(tileX, tileY);
-      done++;
-      sendProgress(id, done / imagesToDownload.length * 0.1);
-    }));
-  }
-  async function updateMapPixels(tileX, tileY) {
-    const res = await fetch(\`https://backend.wplace.live/files/s0/tiles/\${tileX}/\${tileY}.png\`);
-    const blob = await res.blob();
-    const bitmap = await createImageBitmap(blob);
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(bitmap, 0, 0);
-    const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
-    const SIZE = bitmap.height * bitmap.width;
-    const pixels = new Uint8Array(SIZE);
-    for (let i = 0, pi = 0;i < data.length; i += 4, pi++) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const a = data[i + 3];
-      const key = r << 16 | g << 8 | b;
-      pixels[pi] = a < 100 ? 0 : COLORS_RGB_MAP.get(key) ?? 0;
-    }
-    mapsCache.set(packTile(tileX, tileY), pixels);
-    return pixels;
-  }
-  var packTile = (tileX, tileY) => tileX << 11 | tileY;
-  var toTile = (n) => n / WORLD_TILE_SIZE | 0;
-  var toTilePosition = (n) => n % WORLD_TILE_SIZE;
-  function sendProgress(id, progress) {
-    postMessage({
-      id,
-      progress
-    });
-  }
-})();
-`], { type: "application/javascript" })), {
-  type: "module"
-});
-var pending = new Map;
-var nextId = 0;
-worker.onmessage = (e) => {
-  const data = pending.get(e.data.id);
-  if (data) {
-    if ("progress" in e.data)
-      data.progress?.(e.data.progress);
-    else if ("error" in e.data)
-      data.reject(new Error(e.data.error));
-    else {
-      pending.delete(e.data.id);
-      data.resolve(e.data);
-    }
-  }
-};
-worker.onerror = (e) => {
-  console.error("[WORKER ERRROR]", e);
-};
-worker.onmessageerror = (e) => {
-  console.error("[WORKER MESSAGE ERRROR]", e);
-};
-function workerPixels(_request, progress) {
-  const request = _request;
-  return new Promise((resolve, reject) => {
-    request.id = nextId++;
-    worker.postMessage(request);
-    pending.set(request.id, { resolve, progress, reject });
-  });
-}
-function workerClearMapCache() {
-  worker.postMessage("CLEAR_MAP_CACHE");
+function isColorAvailable(bitmap, color) {
+  return color < 32 || (bitmap & 1 << color - 32) !== 0;
 }
 
 // src/errors.ts
@@ -1444,11 +719,15 @@ function addFavoriteLocation(position) {
   FAVORITE_LOCATIONS_POSITIONS.push(position);
   FAVORITE_LOCATIONS.push({
     id: lastId++,
-    latitude: (2 * Math.atan(Math.exp(-(position.y / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI))) - Math.PI / 2) * 180 / Math.PI,
-    longitude: (position.x / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI) * 180 / Math.PI,
-    name: "WBOT_FAVORITE"
+    name: "WBOT_FAVORITE",
+    longitude: posToLng(position.x),
+    latitude: posToLat(position.y)
   });
 }
+var lngToPos = (x) => Math.round(WORLD_PIXEL_SIZE * ((x * Math.PI / 180 + Math.PI) / (2 * Math.PI)));
+var latToPos = (x) => Math.round(WORLD_PIXEL_SIZE / (2 * Math.PI) * (Math.PI - Math.log(Math.tan(Math.PI / 4 + x * Math.PI / 180 / 2))));
+var posToLng = (x) => (x / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI) * 180 / Math.PI;
+var posToLat = (y) => (2 * Math.atan(Math.exp(-(y / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI))) - Math.PI / 2) * 180 / Math.PI;
 addFavoriteLocation({
   x: WORLD_PIXEL_SIZE / 3 | 0,
   y: WORLD_PIXEL_SIZE / 3 | 0
@@ -1472,6 +751,12 @@ class WorldPosition {
   static fromScreenPosition(bot, position) {
     const { anchorScreenPosition, pixelSize, anchorWorldPosition } = bot.findAnchorsForScreen(position);
     return new WorldPosition(bot, anchorWorldPosition.x + (position.x - anchorScreenPosition.x) / pixelSize | 0, anchorWorldPosition.y + (position.y - anchorScreenPosition.y) / pixelSize | 0);
+  }
+  static fromTiledPosition(bot, tileX, tileY, x, y) {
+    return new WorldPosition(bot, tileX * WORLD_TILE_SIZE + x, tileY * WORLD_TILE_SIZE + y);
+  }
+  static fromLngLat(bot, lng, lat) {
+    return new WorldPosition(bot, lngToPos(lng), latToPos(lat));
   }
   globalX = 0;
   globalY = 0;
@@ -1504,15 +789,10 @@ class WorldPosition {
   get pixelSize() {
     return (extractScreenPositionFromStar(this.bot.$stars[this.anchor2Index]).x - extractScreenPositionFromStar(this.bot.$stars[this.anchor1Index]).x) / (FAVORITE_LOCATIONS_POSITIONS[this.anchor2Index].x - FAVORITE_LOCATIONS_POSITIONS[this.anchor1Index].x);
   }
-  constructor(bot, tileorGlobalX, tileorGlobalY, x, y) {
+  constructor(bot, globalX, globalY) {
     this.bot = bot;
-    if (x === undefined || y === undefined) {
-      this.globalX = tileorGlobalX;
-      this.globalY = tileorGlobalY;
-    } else {
-      this.globalX = tileorGlobalX * WORLD_TILE_SIZE + x;
-      this.globalY = tileorGlobalY * WORLD_TILE_SIZE + y;
-    }
+    this.globalX = globalX;
+    this.globalY = globalY;
     this.updateAnchor();
   }
   updateAnchor() {
@@ -1552,9 +832,6 @@ class WorldPosition {
       y: y - window.innerHeight / 3
     });
   }
-  clone() {
-    return new WorldPosition(this.bot, this.tileX, this.tileY, this.x, this.y);
-  }
   toJSON() {
     return [this.globalX, this.globalY];
   }
@@ -1563,46 +840,70 @@ class WorldPosition {
 // src/image.ts
 class BotImage extends Base2 {
   bot;
-  position;
+  template;
   image;
-  width;
-  brightness;
   strategy;
-  opacity;
   drawColorsInOrder;
   colors;
   disabledColors;
   lock;
   disabled;
-  name;
-  unownedColorStrategy;
-  static async fromJSON(bot, data, progress) {
-    const image = new Image;
-    image.src = data.url.startsWith("http") ? await fetch(data.url, { cache: "no-store" }).then((x) => x.blob()).then((x) => URL.createObjectURL(x)) : data.url;
-    await promisifyEventSource(image, ["load"], ["error"]);
-    const canvas = new OffscreenCanvas(image.naturalWidth, image.naturalHeight);
+  autoBuyColors;
+  static async fromJSON(bot, data) {
+    let image;
+    let blob;
+    if (typeof data.url === "string") {
+      image = new Image;
+      image.src = data.url.startsWith("http") ? await fetch(data.url, { cache: "no-store" }).then((x) => x.blob()).then((x) => {
+        blob = x;
+        return URL.createObjectURL(x);
+      }) : data.url;
+      await promisifyEventSource(image, ["load"], ["error"]);
+    } else {
+      image = await createImageBitmap(data.url);
+      blob = data.url;
+    }
+    const canvas = new OffscreenCanvas(image.width, image.height);
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(image, 0, 0);
-    const botImage = new BotImage(bot, data.position ? WorldPosition.fromJSON(bot, data.position) : undefined, canvas, data.width, data.brightness, data.strategy, data.opacity, data.drawColorsInOrder, data.colors, new Set(data.disabledColors ?? [0]), data.lock, data.disabled, data.name, data.unownedColorStrategy);
-    await botImage.updatePixels(progress);
+    if (Number.isNaN(data.template.originalWidth))
+      data.template.originalWidth = image.width;
+    if (Number.isNaN(data.template.originalHeight))
+      data.template.originalHeight = image.height;
+    if (Number.isNaN(data.template.bounds.south))
+      data.template.bounds.south = posToLat(latToPos(data.template.bounds.north) + data.template.originalHeight);
+    if (Number.isNaN(data.template.bounds.east))
+      data.template.bounds.east = posToLng(lngToPos(data.template.bounds.west) + data.template.originalWidth);
+    const botImage = new BotImage(bot, data.template, canvas, data.strategy, data.drawColorsInOrder, data.colors, new Set(data.disabledColors ?? [0]), data.lock, data.disabled, data.autoBuyColors);
+    await bot.worker.register(data.template.id, blob);
+    await botImage.updatePixels();
     return botImage;
   }
   pixels = new Uint8Array(0);
-  resolution;
-  colorsStat = new Map;
+  colorsCount = new Uint32Array(64);
+  colorsLeft = new Uint32Array(64);
+  get width() {
+    const bounds = this.template.bounds;
+    return lngToPos(bounds.east) - lngToPos(bounds.west);
+  }
+  set width(value) {
+    this.template.bounds.east = posToLng(value);
+  }
   get height() {
-    return this.width / this.resolution | 0;
+    const bounds = this.template.bounds;
+    return latToPos(bounds.south) - latToPos(bounds.north);
   }
   set height(value) {
-    this.width = value * this.resolution | 0;
+    this.template.bounds.south = posToLat(value);
   }
-  tasks = new Uint32Array(0);
+  tasksX = new Uint32Array(0);
+  tasksY = new Uint32Array(0);
+  position;
   moveInfo;
   imageData;
   $canvas;
   context;
-  $brightness;
   $colors;
   $delete;
   $drawColorsInOrder;
@@ -1619,32 +920,24 @@ class BotImage extends Base2 {
   $topbar;
   $wrapper;
   $name;
-  $unownedColorStrategyLabel;
-  $unownedColorStrategy;
+  $autoBuyColorsLabel;
+  $autoBuyColors;
   $openSettings;
   $dialog;
-  constructor(bot, position = WorldPosition.fromScreenPosition(bot, {
-    x: 256,
-    y: 32
-  }), image, width = image.width, brightness = 0, strategy = "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */, opacity = 50, drawColorsInOrder = true, colors = [], disabledColors = new Set([0]), lock = false, disabled = false, name = `${image.width}x${image.height}`, unownedColorStrategy = "BUY" /* BUY */) {
+  constructor(bot, template, image, strategy = "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */, drawColorsInOrder = true, colors = [], disabledColors = new Set([0]), lock = false, disabled = false, autoBuyColors = true) {
     super(image_default2, `${shared_default}
 ${image_default}`);
     this.bot = bot;
-    this.position = position;
+    this.template = template;
     this.image = image;
-    this.width = width;
-    this.brightness = brightness;
     this.strategy = strategy;
-    this.opacity = opacity;
     this.drawColorsInOrder = drawColorsInOrder;
     this.colors = colors;
     this.disabledColors = disabledColors;
     this.lock = lock;
     this.disabled = disabled;
-    this.name = name;
-    this.unownedColorStrategy = unownedColorStrategy;
+    this.autoBuyColors = autoBuyColors;
     this.populateElementsWithSelector({
-      $brightness: ".brightness",
       $colors: ".colors",
       $delete: ".delete",
       $drawColorsInOrder: ".draw-colors-in-order",
@@ -1660,16 +953,16 @@ ${image_default}`);
       $topbar: ".topbar",
       $wrapper: ".wrapper",
       $name: ".name",
-      $unownedColorStrategyLabel: ".unowned-color-strategy",
+      $autoBuyColorsLabel: ".auto-buy-colors",
       $openSettings: ".open-settings",
       $dialog: "dialog",
       $canvas: "canvas"
     });
     this.bot.images.push(this);
-    this.resolution = image.width / image.height;
+    this.position = new WorldPosition(bot, lngToPos(this.template.bounds.west), latToPos(this.template.bounds.north));
     this.imageData = this.image.getContext("2d").getImageData(0, 0, image.width, image.height).data;
     this.context = this.$canvas.getContext("2d");
-    this.$unownedColorStrategy = this.$unownedColorStrategyLabel.querySelector("select");
+    this.$autoBuyColors = this.$autoBuyColorsLabel.querySelector("input");
     this.$resetSizeSpan = this.$resetSize.querySelector("span");
     this.$openSettings.addEventListener("click", () => {
       this.$dialog.showModal();
@@ -1678,53 +971,45 @@ ${image_default}`);
       if (event.target === this.$dialog)
         this.$dialog.close();
     });
-    this.$unownedColorStrategy.addEventListener("change", () => {
-      this.unownedColorStrategy = this.$unownedColorStrategy.value;
+    this.$autoBuyColors.addEventListener("change", () => {
+      this.autoBuyColors = this.$autoBuyColors.checked;
       this.updateColors();
-      save(this.bot);
+      this.bot.save.save();
     });
     this.$strategy.addEventListener("change", () => {
       this.strategy = this.$strategy.value;
-      save(this.bot);
+      this.bot.save.save();
     });
     this.$opacity.addEventListener("input", () => {
-      this.opacity = this.$opacity.valueAsNumber;
-      this.$opacity.style.setProperty("--val", this.opacity + "%");
+      this.template.opacity = this.$opacity.valueAsNumber;
+      this.$opacity.style.setProperty("--val", this.template.opacity + "%");
       this.updateUI();
-      save(this.bot);
+      this.bot.save.save();
     });
-    this.$opacity.style.setProperty("--val", this.opacity + "%");
-    let timeout;
-    this.$brightness.addEventListener("change", () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(async () => {
-        this.brightness = this.$brightness.valueAsNumber;
-        await this.updatePixels();
-        await save(this.bot);
-      }, 1000);
-    });
+    this.$opacity.style.setProperty("--val", this.template.opacity + "%");
     this.$resetSize.addEventListener("click", async () => {
-      this.width = this.image.width;
+      this.width = this.template.originalWidth;
+      this.height = this.template.originalHeight;
       await this.updatePixels();
-      await save(this.bot);
+      await this.bot.save.save();
     });
     this.$drawColorsInOrder.addEventListener("click", () => {
       this.drawColorsInOrder = this.$drawColorsInOrder.checked;
       this.updateColors();
-      save(this.bot);
+      this.bot.save.save();
     });
     this.$lock.addEventListener("click", () => {
       this.lock = !this.lock;
       this.updateUI();
-      save(this.bot);
+      this.bot.save.save();
     });
     this.$delete.addEventListener("click", this.destroy.bind(this));
-    this.$export.addEventListener("click", this.export.bind(this));
+    this.$export.addEventListener("click", this.exportSaveFile.bind(this));
     this.$name.addEventListener("change", () => {
-      this.name = this.$name.value;
+      this.template.name = this.$name.value;
       this.updateUI();
       this.bot.widget.update();
-      save(this.bot);
+      this.bot.save.save();
     });
     this.bot.fixSpaceInInput(this.$name);
     this.$canvas.addEventListener("mousedown", this.moveStart.bind(this));
@@ -1741,64 +1026,55 @@ ${image_default}`);
     for (const $resize of this.shadow.querySelectorAll(".resize"))
       $resize.addEventListener("mousedown", this.resizeStart.bind(this));
   }
-  async toJSON() {
-    const blob = await this.image.convertToBlob({
-      type: "image/webp",
-      quality: 1
-    });
-    const url = await new Promise((resolve, reject) => {
-      const reader = new FileReader;
-      reader.onload = () => {
-        resolve(reader.result);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  async toJSON(exportBlob) {
+    const blob = await this.image.convertToBlob({ type: "image/png", quality: 1 });
+    let url = blob;
+    if (!exportBlob) {
+      url = await new Promise((resolve, reject) => {
+        const reader = new FileReader;
+        reader.onload = () => {
+          resolve(reader.result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
     return {
+      id: this.template.id,
       url,
-      width: this.width,
-      brightness: this.brightness,
-      position: this.position.toJSON(),
+      template: this.template,
       strategy: this.strategy,
-      opacity: this.opacity,
       drawColorsInOrder: this.drawColorsInOrder,
       colors: this.colors,
       disabledColors: Array.from(this.disabledColors),
       lock: this.lock,
       disabled: this.disabled,
-      name: this.name,
-      unownedColorStrategy: this.unownedColorStrategy,
+      autoBuyColors: this.autoBuyColors,
       version: SAVE_VERSION
     };
   }
-  async updatePixels(progress) {
-    const progress2 = progress ?? ((p) => {
-      this.bot.widget.status = `⌛ Loading ${formatPercent(p)}`;
-    });
-    const height = this.height;
-    const width = this.width;
-    const result = await workerPixels({
-      data: this.imageData,
-      brightness: this.brightness,
-      colors: this.colors,
-      disabledColors: this.disabledColors,
-      drawColorsInOrder: this.drawColorsInOrder,
+  async updatePixels() {
+    const result = await this.bot.worker.process({
+      colorMetric: this.template.colorMetric,
+      dithering: this.template.dithering,
       globalX: this.position.globalX,
       globalY: this.position.globalY,
-      height,
-      width,
-      nativeHeight: this.image.height,
-      nativeWidth: this.image.width,
+      sourceName: this.template.id,
       strategy: this.strategy,
-      unavailableColors: this.bot.unavailableColors,
-      unownedColorStrategy: this.unownedColorStrategy
-    }, progress2);
-    this.colorsStat = result.colorStat;
-    this.tasks = this.disabled ? new Uint32Array(0) : result.taskPositions;
+      targetHeight: this.height,
+      targetWidth: this.width,
+      drawColorsInOrder: this.drawColorsInOrder,
+      colors: this.colors,
+      extraColorsBitmap: this.template.colorPaletteMode === "unlocked" ? this.bot.me.extraColorsBitmap : this.template.colorPaletteMode === "free" ? 0 : 4294967295
+    });
+    this.colorsCount = result.colorsCount;
+    this.colorsLeft = result.colorsLeft;
     this.pixels = result.pixels;
-    this.$canvas.width = width;
-    this.$canvas.height = height;
-    this.context.clearRect(0, 0, width, height);
+    this.tasksX = result.x;
+    this.tasksY = result.y;
+    this.$canvas.width = this.width;
+    this.$canvas.height = this.height;
+    this.context.clearRect(0, 0, this.width, this.height);
     const rgbPixels = new Uint8ClampedArray(this.pixels.length * 4);
     for (let index = 0;index < this.pixels.length; index++) {
       const pixel = this.pixels[index];
@@ -1811,11 +1087,9 @@ ${image_default}`);
       rgbPixels[qIndex + 2] = color & 255;
       rgbPixels[qIndex + 3] = 255;
     }
-    this.context.putImageData(new ImageData(rgbPixels, width, height), 0, 0);
+    this.context.putImageData(new ImageData(rgbPixels, this.width, this.height), 0, 0);
     this.updateUI();
     this.updateColors();
-    if (!progress)
-      this.bot.widget.status = "";
     this.bot.widget.update();
   }
   updateUI() {
@@ -1823,27 +1097,26 @@ ${image_default}`);
     this.element.style.transform = `translate(${x}px, ${y}px)`;
     this.element.style.width = `${this.position.pixelSize * this.width}px`;
     this.$wrapper.style.opacity = this.disabled ? "0.4" : "1";
-    this.$canvas.style.opacity = `${this.opacity}%`;
+    this.$canvas.style.opacity = `${this.template.opacity}%`;
     this.element.classList.remove("hidden");
     this.$resetSizeSpan.textContent = this.width.toString();
-    this.$brightness.valueAsNumber = this.brightness;
     this.$strategy.value = this.strategy;
-    this.$opacity.valueAsNumber = this.opacity;
+    this.$opacity.valueAsNumber = this.template.opacity;
     this.$drawColorsInOrder.checked = this.drawColorsInOrder;
-    this.$name.value = this.name;
+    this.$name.value = this.template.name;
     const maxTasks = this.getMaxTasks();
-    const doneTasks = maxTasks - this.tasks.length / 2;
+    const doneTasks = maxTasks - this.tasksX.length;
     const percent = formatPercent(doneTasks / maxTasks);
-    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasks.length / 2)}`;
+    this.$progressText.textContent = `${doneTasks}/${maxTasks} ${percent} ETA: ${etaText(this.bot, this.tasksX.length)}`;
     this.$progressLine.style.transform = `scaleX(${percent})`;
     this.$wrapper.classList.toggle("no-pointer-events", this.lock);
     this.$lock.textContent = this.lock ? "\uD83D\uDD12" : "\uD83D\uDD13";
   }
   getMaxTasks() {
     let max = 0;
-    for (const [color, stat] of this.colorsStat.entries())
-      if (!this.disabledColors.has(color))
-        max += stat.amount;
+    for (let index = 0;index < 64; index++)
+      if (!this.disabledColors.has(index))
+        max += this.colorsCount[index];
     return max;
   }
   destroy() {
@@ -1851,26 +1124,40 @@ ${image_default}`);
     this.element.remove();
     removeFromArray(this.bot.images, this);
     this.bot.widget.update();
-    save(this.bot);
+    this.bot.save.save();
   }
   updateColors() {
     const LINE_HEIGHT = 20;
-    this.$unownedColorStrategyLabel.classList.toggle("hidden", this.bot.unavailableColors.size === 0);
+    this.$autoBuyColorsLabel.classList.toggle("hidden", this.bot.me.extraColorsBitmap === 4294967295);
     this.$colors.innerHTML = "";
     let pixelsSum = 0;
-    for (const stat of this.colorsStat.values())
-      pixelsSum += stat.amount;
-    if (this.colors.length !== this.colorsStat.size || this.colors.some((x) => !this.colorsStat.has(x))) {
-      this.colors = this.colorsStat.values().toArray().sort((a, b) => b.amount - a.amount).map((color) => color.realColor);
-      save(this.bot);
+    const colorsToBe = new Set;
+    for (let index = 0;index < 64; index++) {
+      const x = this.colorsCount[index];
+      if (x === 0)
+        continue;
+      pixelsSum += x;
+      colorsToBe.add(x);
+    }
+    if (this.colors.length !== colorsToBe.size || this.colors.some((x) => !colorsToBe.has(x))) {
+      this.colors.length = 0;
+      for (let index = 0;index < 64; index++) {
+        const x = this.colorsCount[index];
+        if (x === 0)
+          continue;
+        this.colors.push(x);
+      }
+      this.colors.sort((a, b) => this.colorsCount[b] - this.colorsCount[a]);
+      this.bot.save.save();
     }
     this.$colors.style.height = `${LINE_HEIGHT * this.colors.length}px`;
     for (let index = 0;index < this.colors.length; index++) {
       const drawColor = this.colors[index];
+      const count = this.colorsCount[drawColor];
+      const left = this.colorsLeft[drawColor];
       const css = (color) => color === 0 ? `repeating-linear-gradient(32deg, #ccc 0 8px, transparent 8px 16px)` : colorToCSS(color);
-      const colorStat = this.colorsStat.get(drawColor);
       const $button = document.createElement("button");
-      if (COLORS[drawColor][0] < 0.6)
+      if (COLORS_LAB[drawColor].l < 0.6)
         $button.classList.add("dark");
       $button.title = "Drag to reorder. Click to disable.";
       $button.style.top = `${index * LINE_HEIGHT}px`;
@@ -1880,45 +1167,22 @@ ${image_default}`);
         $warning.title = "Disabled and will be skipped.";
         $button.appendChild($warning);
       }
-      switch (this.unownedColorStrategy) {
-        case "SUBSTITUTE" /* SUBSTITUTE */:
-          $button.style.background = css(colorStat.color);
-          if (colorStat.color !== colorStat.realColor) {
-            const $warning = document.createElement("button");
-            $warning.style.backgroundColor = css(colorStat.realColor);
-            $warning.title = "This is the best color. Click to buy.";
-            $warning.addEventListener("click", async () => {
-              await this.bot.updateColorsData();
-              document.getElementById("color-" + colorStat.realColor)?.click();
-            });
-            $button.appendChild($warning);
-          }
-          break;
-        case "BUY" /* BUY */:
-          $button.style.background = css(colorStat.realColor);
-          if (this.bot.unavailableColors.has(colorStat.realColor)) {
-            const $warning = document.createElement("div");
-            $warning.innerText = "⌛";
-            $warning.title = "This color be automatically bought.";
-            $button.appendChild($warning);
-          }
-          break;
-        case "SKIP" /* SKIP */:
-          $button.style.background = css(colorStat.realColor);
-          if (this.bot.unavailableColors.has(colorStat.realColor)) {
-            const $warning = document.createElement("div");
-            $warning.innerText = "⏩";
-            $warning.title = "Unowned colors will be skipped.";
-            $button.appendChild($warning);
-          }
-          break;
+      $button.style.background = css(drawColor);
+      if (!isColorAvailable(this.bot.me.extraColorsBitmap, drawColor)) {
+        const $warning = document.createElement("div");
+        if (this.autoBuyColors) {
+          $warning.innerText = "⌛";
+          $warning.title = "This color be automatically bought.";
+        } else {
+          $warning.innerText = "⏩";
+          $warning.title = "Unowned colors will be skipped.";
+        }
+        $button.appendChild($warning);
       }
       const $percent = document.createElement("span");
       $percent.classList.add("percent");
-      const donePixels = colorStat.amount - colorStat.left;
-      const donePercent = donePixels / colorStat.amount;
-      const share = colorStat.amount / pixelsSum;
-      $percent.innerText = `${donePixels}/${colorStat.amount}px ${formatPercent(donePercent)} (${formatPercent(share)})`;
+      const donePixels = count - left;
+      $percent.innerText = `${donePixels}/${count}px ${formatPercent(donePixels / count)} (${formatPercent(count / pixelsSum)})`;
       $button.appendChild($percent);
       this.$colors.append($button);
       let dragging = false;
@@ -1946,7 +1210,7 @@ ${image_default}`);
           document.removeEventListener("mousemove", mouseMoveHandler);
           if (newIndex !== index)
             this.colors.splice(newIndex, 0, ...this.colors.splice(index, 1));
-          save(this.bot);
+          this.bot.save.save();
           $button.removeEventListener("mousedown", startDrag);
           setTimeout(() => {
             this.updateColors();
@@ -1966,9 +1230,17 @@ ${image_default}`);
           this.disabledColors.add(drawColor);
         $button.classList.toggle("color-disabled");
         await this.updatePixels();
-        await save(this.bot);
+        await this.bot.save.save();
       });
     }
+  }
+  posToTemplate() {
+    this.template.bounds.east = posToLng(this.position.globalX);
+    this.template.bounds.north = posToLat(this.position.globalY);
+  }
+  posFromTemplate() {
+    this.position.globalX = lngToPos(this.template.bounds.east);
+    this.position.globalY = latToPos(this.template.bounds.north);
   }
   moveStart(event) {
     if (!this.lock)
@@ -1982,7 +1254,6 @@ ${image_default}`);
   async moveStop() {
     if (this.moveInfo) {
       this.moveInfo = undefined;
-      this.position.updateAnchor();
       await this.updatePixels();
     }
   }
@@ -1991,20 +1262,31 @@ ${image_default}`);
       return;
     const deltaX = Math.round((event.clientX - this.moveInfo.clientX) / this.position.pixelSize);
     const deltaY = Math.round((event.clientY - this.moveInfo.clientY) / this.position.pixelSize);
+    const resolution = this.template.originalWidth / this.template.originalHeight;
     if (this.moveInfo.globalX !== undefined) {
       this.position.globalX = deltaX + this.moveInfo.globalX;
-      if (this.moveInfo.width !== undefined)
+      if (this.moveInfo.width !== undefined) {
         this.width = Math.max(1, this.moveInfo.width - deltaX);
-    } else if (this.moveInfo.width !== undefined)
+        this.height = this.width / resolution | 0;
+      }
+    } else if (this.moveInfo.width !== undefined) {
       this.width = Math.max(1, deltaX + this.moveInfo.width);
+      this.height = this.width / resolution | 0;
+    }
     if (this.moveInfo.globalY !== undefined) {
       this.position.globalY = deltaY + this.moveInfo.globalY;
-      if (this.moveInfo.height !== undefined)
+      if (this.moveInfo.height !== undefined) {
         this.height = Math.max(1, this.moveInfo.height - deltaY);
-    } else if (this.moveInfo.height !== undefined)
+        this.width = this.height * resolution | 0;
+      }
+    } else if (this.moveInfo.height !== undefined) {
       this.height = Math.max(1, deltaY + this.moveInfo.height);
+      this.width = this.height * resolution | 0;
+    }
+    this.position.updateAnchor();
+    this.posToTemplate();
     this.updateUI();
-    save(this.bot);
+    this.bot.save.save();
   }
   resizeStart(event) {
     this.moveInfo = {
@@ -2025,42 +1307,22 @@ ${image_default}`);
       this.moveInfo.globalX = this.position.globalX;
     }
   }
-  async export() {
+  async exportSaveFile() {
     const a = document.createElement("a");
     document.body.append(a);
     a.href = URL.createObjectURL(new Blob([JSON.stringify(await this.toJSON())], {
       type: "application/json"
     }));
-    a.download = `${this.name}.wbot`;
+    a.download = `${this.template.name}.wbot`;
     a.click();
     URL.revokeObjectURL(a.href);
-    a.href = this.$canvas.toDataURL("image/webp", 1);
-    a.download = `${this.name}.webp`;
+    a.href = this.$canvas.toDataURL("image/png", 1);
+    a.download = `${this.template.name}.png`;
     a.click();
     URL.revokeObjectURL(a.href);
     a.remove();
   }
 }
-
-// src/style.css
-var style_default = `/* stylelint-disable declaration-no-important */
-@import 'https://fonts.googleapis.com/css2?family=Tiny5&display=swap';
-
-:root {
-  --text-invert: #fff;
-  --resize: 8px;
-  --text: #422e2c;
-  --background: #fbe3cb;
-  --background-hover: #f0d1b3;
-  --background-disabled: #a37648;
-  --main: #66bbb4;
-  --main-hover: #48a19a;
-}
-
-.maplibregl-marker[aria-label='WBOT_FAVORITE'] {
-  display: none !important;
-}
-`;
 
 // src/widget.css
 var widget_default = `:host {
@@ -2244,14 +1506,14 @@ ${widget_default}`);
     this.$openButton.addEventListener("click", () => this.open = !this.open);
     this.$title.addEventListener("change", () => {
       this.bot.title = this.$title.value.trim();
-      save(this.bot);
+      this.bot.save.save();
     });
     this.bot.fixSpaceInInput(this.$title);
     this.$draw.addEventListener("click", () => this.bot.draw());
     this.$addImage.addEventListener("click", () => this.addImage());
     this.$strategy.addEventListener("change", () => {
       this.bot.strategy = this.$strategy.value;
-      save(this.bot);
+      this.bot.save.save();
     });
     this.$autoDraw.addEventListener("click", () => this.bot.autoDraw());
     this.update();
@@ -2270,20 +1532,45 @@ ${widget_default}`);
       const file = input.files?.[0];
       if (!file)
         throw new NoImageError;
-      await this.bot.updateColorsData();
       this.bot.updateStars();
       if (file.name.endsWith(".wbot")) {
-        await BotImage.fromJSON(this.bot, migrateImage(JSON.parse(await file.text())));
+        await BotImage.fromJSON(this.bot, JSON.parse(await file.text()));
       } else {
         const reader = new FileReader;
         const loaded = promisifyEventSource(reader, ["load"], ["error"]);
         reader.readAsDataURL(file);
         await loaded;
+        const position = WorldPosition.fromScreenPosition(this.bot, {
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2
+        });
         await BotImage.fromJSON(this.bot, {
-          url: reader.result
+          url: reader.result,
+          template: {
+            bounds: {
+              west: posToLng(position.globalX),
+              north: posToLat(position.globalY),
+              east: NaN,
+              south: NaN
+            },
+            colorMetric: "lab",
+            colorPaletteMode: "all",
+            dithering: false,
+            hasPlaced: true,
+            id: crypto.randomUUID(),
+            locked: false,
+            name: file.name ?? "New image",
+            opacity: 0.5,
+            order: this.bot.images.reduce((p, x) => x.template.order > p ? x.template.order : p, -1) + 1,
+            originalHeight: NaN,
+            originalWidth: NaN,
+            updatedAt: Date.now(),
+            useLegacyColors: false,
+            visible: false
+          }
         });
       }
-      await save(this.bot, true);
+      await this.bot.save.save(true);
       document.location.reload();
     }, () => {
       this.setDisabled("add-image", false);
@@ -2299,7 +1586,7 @@ ${widget_default}`);
       if (image.disabled)
         continue;
       maxTasks += image.getMaxTasks();
-      totalTasks += image.tasks.length / 2;
+      totalTasks += image.tasksX.length;
     }
     const doneTasks = maxTasks - totalTasks;
     const percent = formatPercent(doneTasks / maxTasks);
@@ -2331,41 +1618,39 @@ ${widget_default}`);
         image.position.moveScreenTo();
       });
       const $name = $image.querySelector(".name");
-      $name.value = image.name;
+      $name.value = image.template.name;
       $name.addEventListener("change", () => {
-        image.name = $name.value;
+        image.template.name = $name.value;
         image.updateUI();
         this.update();
-        save(this.bot);
+        this.bot.save.save();
       });
       const $enabled = $image.querySelector(".enabled");
       $enabled.addEventListener("change", async () => {
         image.disabled = !$enabled.checked;
         await image.updatePixels();
-        await save(this.bot);
+        await this.bot.save.save();
       });
       this.bot.fixSpaceInInput($name);
       $image.querySelector(".up").addEventListener("click", () => {
         swap(this.bot.images, index, index - 1);
         this.update();
-        save(this.bot);
+        this.bot.save.save();
       });
       $image.querySelector(".down").addEventListener("click", () => {
         swap(this.bot.images, index, index + 1);
         this.update();
-        save(this.bot);
+        this.bot.save.save();
       });
     }
   }
   setDisabled(name, disabled) {
     this.shadow.querySelector("." + name).disabled = disabled;
   }
-  async run(status, run, fin, emoji = "⌛") {
+  async run(status, run, fin) {
     const originalStatus = this.status;
     try {
-      const result = await run((p) => {
-        this.status = `${emoji} ${status} ${formatPercent(p)}`;
-      });
+      const result = await run();
       this.status = originalStatus;
       return result;
     } catch (error) {
@@ -2382,101 +1667,933 @@ ${widget_default}`);
   }
 }
 
+// src/save.ts
+var SAVE_VERSION = 5;
+var WPLACE_IDB_VERSION = 4;
+var WPLACE_TEMPLATE_LS_KEY = "template-overlays";
+var LS_KEY = "tamplate-overlays";
+var IDB_KEY = "wplace-templates";
+
+class SaveSystem {
+  bot;
+  idb = IDB.open(IDB_KEY, WPLACE_IDB_VERSION, (db) => {
+    if (!db.objectStoreNames.contains(IDB_KEY))
+      db.createObjectStore(IDB_KEY);
+  });
+  localStorageSetItem = localStorage.setItem.bind(localStorage);
+  saveTimeout;
+  constructor(bot) {
+    this.bot = bot;
+    localStorage.setItem = (key, value) => {
+      if (key === WPLACE_TEMPLATE_LS_KEY)
+        this.load();
+      return this.localStorageSetItem(key, value);
+    };
+  }
+  async deleteAllData() {
+    localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(WPLACE_TEMPLATE_LS_KEY);
+    await IDB.delete(IDB_KEY);
+  }
+  async save(immediate) {
+    clearTimeout(this.saveTimeout);
+    const saveImmediate = async () => {
+      const idb = await this.idb;
+      const data = await this.bot.toJSON(true);
+      await Promise.all(data.images.map((x) => idb.put("images", x.url, x.template.id)));
+      this.localStorageSetItem(WPLACE_TEMPLATE_LS_KEY, JSON.stringify(data.images.map((x) => x.template)));
+      this.localStorageSetItem(LS_KEY, JSON.stringify(data.images.map((x) => {
+        const copy = structuredClone(x);
+        delete copy.url;
+        delete copy.template;
+        return copy;
+      })));
+    };
+    if (immediate)
+      await saveImmediate();
+    else
+      await new Promise((resolve, reject) => {
+        this.saveTimeout = setTimeout(async () => {
+          try {
+            await saveImmediate();
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        }, 1000);
+      });
+  }
+  async load(isInitial) {
+    let templates;
+    try {
+      templates = JSON.parse(localStorage.getItem(WPLACE_TEMPLATE_LS_KEY) ?? "[]");
+    } catch {
+      templates = [];
+    }
+    let save;
+    try {
+      save = JSON.parse(localStorage.getItem(LS_KEY) ?? "{");
+    } catch {
+      save = {
+        images: [],
+        strategy: "SEQUENTIAL" /* SEQUENTIAL */,
+        title: "WPlaceBot",
+        version: SAVE_VERSION
+      };
+    }
+    if (isInitial) {
+      for (let index = 0;index < save.images.length; index++) {
+        const image = save.images[index];
+        addFavoriteLocation({
+          x: lngToPos(image.template.bounds.west) - 1000,
+          y: latToPos(image.template.bounds.north) - 1000
+        });
+        addFavoriteLocation({
+          x: lngToPos(image.template.bounds.east) + 1000,
+          y: latToPos(image.template.bounds.south) + 1000
+        });
+      }
+    }
+    this.bot.title = save.title;
+    this.bot.strategy = save.strategy;
+    const imagesSave = new Map;
+    for (let index = 0;index < this.bot.images.length; index++)
+      this.bot.images[index].destroy();
+    for (let index = 0;index < save.images.length; index++)
+      imagesSave.set(save.images[index].id, save.images[index]);
+    const idb = await this.idb;
+    await this.bot.waitForElement(".avatar.center-absolute.absolute");
+    await this.bot.waitForElement(".btn.btn-primary.btn-lg.relative.z-30");
+    await this.bot.waitForElement(".maplibregl-canvas-container");
+    await wait(500);
+    this.bot.updateStars();
+    for (let index = 0;index < templates.length; index++) {
+      const template = templates[index];
+      const blob = await idb.get("images", template.id);
+      await BotImage.fromJSON(this.bot, {
+        ...imagesSave.get(template.id),
+        url: blob,
+        template,
+        version: SAVE_VERSION
+      });
+    }
+    this.bot.widget.update();
+  }
+}
+
+// src/style.css
+var style_default = `/* stylelint-disable declaration-no-important */
+@import 'https://fonts.googleapis.com/css2?family=Tiny5&display=swap';
+
+:root {
+  --text-invert: #fff;
+  --resize: 8px;
+  --text: #422e2c;
+  --background: #fbe3cb;
+  --background-hover: #f0d1b3;
+  --background-disabled: #a37648;
+  --main: #66bbb4;
+  --main-hover: #48a19a;
+}
+
+.maplibregl-marker[aria-label='WBOT_FAVORITE'] {
+  display: none !important;
+}
+`;
+
+// src/worker-client.ts
+class ImageProcessingWorker {
+  worker;
+  successHandlers = new Map;
+  errorHandlers = new Map;
+  constructor() {
+    this.worker = new Worker(URL.createObjectURL(new Blob([`(() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  function __accessProp(key) {
+    return this[key];
+  }
+  var __toCommonJS = (from) => {
+    var entry = (__moduleCache ??= new WeakMap).get(from), desc;
+    if (entry)
+      return entry;
+    entry = __defProp({}, "__esModule", { value: true });
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (var key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(entry, key))
+          __defProp(entry, key, {
+            get: __accessProp.bind(from, key),
+            enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+          });
+    }
+    __moduleCache.set(from, entry);
+    return entry;
+  };
+  var __moduleCache;
+  var __returnValue = (v) => v;
+  function __exportSetter(name, newValue) {
+    this[name] = __returnValue.bind(null, newValue);
+  }
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, {
+        get: all[name],
+        enumerable: true,
+        configurable: true,
+        set: __exportSetter.bind(all, name)
+      });
+  };
+
+  // src/worker.ts
+  var exports_worker = {};
+  __export(exports_worker, {
+    nearestColorIndex: () => nearestColorIndex,
+    quantize: () => quantize,
+    resizeNearestNeighbor: () => resizeNearestNeighbor
+  });
+
+  // src/colors.ts
+  var packRGB = (rgb) => rgb.r << 16 | rgb.g << 8 | rgb.b;
+  var unpackRGB = (packed) => ({
+    r: packed >> 16 & 255,
+    g: packed >> 8 & 255,
+    b: packed & 255
+  });
+  var COLORS_RGB = [
+    NaN,
+    0,
+    3947580,
+    7895160,
+    13816530,
+    16777215,
+    6291480,
+    15539236,
+    16744231,
+    16165385,
+    16375099,
+    16775868,
+    964968,
+    1304187,
+    8912734,
+    819566,
+    1093286,
+    1302974,
+    2642078,
+    4232164,
+    6354930,
+    7033078,
+    10072571,
+    7867545,
+    11155641,
+    14721017,
+    13303930,
+    15474560,
+    15961513,
+    6833716,
+    9791530,
+    16298615,
+    11184810,
+    10817054,
+    16416882,
+    14965786,
+    14071188,
+    10257457,
+    12954929,
+    15258719,
+    4877114,
+    5936202,
+    8701299,
+    1014175,
+    12319474,
+    8243199,
+    5059000,
+    4866692,
+    8024516,
+    11906801,
+    14394467,
+    13729873,
+    16762277,
+    10179145,
+    13729912,
+    16430756,
+    8086354,
+    10257515,
+    3356993,
+    7173517,
+    11778513,
+    7169087,
+    9735275,
+    13485470
+  ];
+  var COLORS_RGB_MAP = new Map;
+  for (let i = 0;i < COLORS_RGB.length; i++)
+    COLORS_RGB_MAP.set(COLORS_RGB[i], i);
+  var SRGB_TO_LINEAR = new Float64Array(256);
+  for (let i = 0;i < 256; i++) {
+    const c = i / 255;
+    SRGB_TO_LINEAR[i] = c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92;
+  }
+  var COLORS_LAB = new Array(64);
+  COLORS_LAB[0] = { l: 0, a: 0, b: 0 };
+  for (let i = 1;i < 64; i++)
+    COLORS_LAB[i] = rgbToLab(unpackRGB(COLORS_RGB[i]));
+  function rgbToLab(rgb) {
+    const rl = SRGB_TO_LINEAR[rgb.r], gl = SRGB_TO_LINEAR[rgb.g], bl = SRGB_TO_LINEAR[rgb.b];
+    let x = (rl * 0.4124 + gl * 0.3576 + bl * 0.1805) / 0.95047;
+    let y = rl * 0.2126 + gl * 0.7152 + bl * 0.0722;
+    let z = (rl * 0.0193 + gl * 0.1192 + bl * 0.9505) / 1.08883;
+    x = x > 0.008856 ? Math.cbrt(x) : 7.787 * x + 16 / 116;
+    y = y > 0.008856 ? Math.cbrt(y) : 7.787 * y + 16 / 116;
+    z = z > 0.008856 ? Math.cbrt(z) : 7.787 * z + 16 / 116;
+    return { l: 116 * y - 16, a: 500 * (x - y), b: 200 * (y - z) };
+  }
+  // node_modules/@softsky/utils/dist/objects.js
+  class Base {
+    static lastId = 0;
+    static idMap = new Map;
+    static subclasses = new Map;
+    runOnDestroy = [];
+    _id;
+    get id() {
+      return this._id;
+    }
+    set id(value) {
+      Base.idMap.delete(this._id);
+      Base.idMap.set(value, this);
+      this._id = value;
+    }
+    constructor(id = ++Base.lastId) {
+      this._id = id;
+      Base.idMap.set(id, this);
+    }
+    static registerSubclass() {
+      Base.subclasses.set(this.name, this);
+    }
+    destroy() {
+      Base.idMap.delete(this._id);
+      for (let index = 0;index < this.runOnDestroy.length; index++)
+        this.runOnDestroy[index]();
+    }
+    registerEvent(target, type, listener, options = {}) {
+      options.passive ??= true;
+      target.addEventListener(type, listener, options);
+      this.runOnDestroy.push(() => {
+        target.removeEventListener(type, listener);
+      });
+    }
+  }
+
+  // node_modules/@softsky/utils/dist/control.js
+  var lastIncId = Math.floor(Math.random() * 65536);
+  var SESSION_ID = Math.floor(Math.random() * 4503599627370496).toString(16).padStart(13, "0");
+  // node_modules/@softsky/utils/dist/signals.js
+  var effectsMap = new WeakMap;
+  // src/utils.ts
+  function isColorAvailable(bitmap, color) {
+    return color < 32 || (bitmap & 1 << color - 32) !== 0;
+  }
+
+  // src/world-position.ts
+  var WORLD_TILE_SIZE = 1000;
+  var WORLD_TILES = 2048;
+  var WORLD_PIXEL_SIZE = WORLD_TILE_SIZE * WORLD_TILES;
+  var FAVORITE_LOCATIONS_POSITIONS = [];
+  var FAVORITE_LOCATIONS = [];
+  var lastId = Date.now();
+  function addFavoriteLocation(position) {
+    FAVORITE_LOCATIONS_POSITIONS.push(position);
+    FAVORITE_LOCATIONS.push({
+      id: lastId++,
+      name: "WBOT_FAVORITE",
+      longitude: posToLng(position.x),
+      latitude: posToLat(position.y)
+    });
+  }
+  var posToLng = (x) => (x / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI) * 180 / Math.PI;
+  var posToLat = (y) => (2 * Math.atan(Math.exp(-(y / WORLD_PIXEL_SIZE * (2 * Math.PI) - Math.PI))) - Math.PI / 2) * 180 / Math.PI;
+  addFavoriteLocation({
+    x: WORLD_PIXEL_SIZE / 3 | 0,
+    y: WORLD_PIXEL_SIZE / 3 | 0
+  });
+  addFavoriteLocation({
+    x: WORLD_PIXEL_SIZE / 3 * 2 | 0,
+    y: WORLD_PIXEL_SIZE / 3 * 2 | 0
+  });
+
+  // src/worker.ts
+  var TAU = 2 * Math.PI;
+  var POW7_25 = 6103515625;
+  var DEG30_RAD = 0.5235987755982988;
+  var toTile = (n) => Math.floor(n / WORLD_TILE_SIZE);
+  var toTilePos = (n) => (n % WORLD_TILE_SIZE + WORLD_TILE_SIZE) % WORLD_TILE_SIZE;
+  var packTile = (tx, ty) => tx << 11 | ty;
+  var tileCache = new Map;
+  var tileInFlight = new Map;
+  var sources = new Map;
+  self.onmessage = handleMessage;
+  function cie94Distance(sample, candidate) {
+    const dL = sample.l - candidate.l;
+    const da = sample.a - candidate.a;
+    const db = sample.b - candidate.b;
+    const c1 = Math.sqrt(sample.a * sample.a + sample.b * sample.b);
+    const c2 = Math.sqrt(candidate.a * candidate.a + candidate.b * candidate.b);
+    const dC = c1 - c2;
+    let dHSq = da * da + db * db - dC * dC;
+    if (dHSq < 0)
+      dHSq = 0;
+    const dH = Math.sqrt(dHSq);
+    const sC = 1 + 0.045 * c1;
+    const sH = 1 + 0.015 * c1;
+    const termC = dC / sC;
+    const termH = dH / sH;
+    const sumSq = dL * dL + termC * termC + termH * termH;
+    return sumSq < 0 ? 0 : Math.sqrt(sumSq);
+  }
+  function pow7(x) {
+    const sq = x * x;
+    return sq * sq * sq * x;
+  }
+  function atan2Normalized(y, x) {
+    const a = Math.atan2(y, x);
+    return a < 0 ? a + TAU : a;
+  }
+  function ciede2000DistanceSquared(sample, candidate) {
+    const c1 = Math.sqrt(sample.a * sample.a + sample.b * sample.b);
+    const c2 = Math.sqrt(candidate.a * candidate.a + candidate.b * candidate.b);
+    const cBar7 = pow7((c1 + c2) * 0.5);
+    const g = 0.5 * (1 - Math.sqrt(cBar7 / (cBar7 + POW7_25)));
+    const a1p = (1 + g) * sample.a, a2p = (1 + g) * candidate.a;
+    const c1p = Math.sqrt(a1p * a1p + sample.b * sample.b);
+    const c2p = Math.sqrt(a2p * a2p + candidate.b * candidate.b);
+    const c1pc2p = c1p * c2p;
+    const h1p = c1p === 0 ? 0 : atan2Normalized(sample.b, a1p);
+    const h2p = c2p === 0 ? 0 : atan2Normalized(candidate.b, a2p);
+    const deltaLp = candidate.l - sample.l;
+    const deltaCp = c2p - c1p;
+    let deltahp = 0;
+    if (c1pc2p !== 0) {
+      deltahp = h2p - h1p;
+      if (deltahp > Math.PI)
+        deltahp -= TAU;
+      else if (deltahp < -Math.PI)
+        deltahp += TAU;
+    }
+    const deltaHp = c1pc2p === 0 ? 0 : 2 * Math.sqrt(c1pc2p) * Math.sin(deltahp * 0.5);
+    const lBarP = (sample.l + candidate.l) * 0.5;
+    const cBarP = (c1p + c2p) * 0.5;
+    let hBarP = h1p + h2p;
+    if (c1pc2p !== 0) {
+      hBarP = Math.abs(h1p - h2p) > Math.PI ? hBarP < TAU ? (hBarP + TAU) * 0.5 : (hBarP - TAU) * 0.5 : hBarP * 0.5;
+    }
+    const tWeight = 1 - 0.17 * Math.cos(hBarP - DEG30_RAD) + 0.24 * Math.cos(2 * hBarP) + 0.32 * Math.cos(3 * hBarP + 0.10471975511965977) - 0.2 * Math.cos(4 * hBarP - 1.0995574287564276);
+    const deltaTheta = DEG30_RAD * Math.exp(-(((hBarP - 4.799655442984406) / 0.4363323129985824) ** 2));
+    const cBarP7 = pow7(cBarP);
+    const rC = 2 * Math.sqrt(cBarP7 / (cBarP7 + POW7_25));
+    const lMinus50Sq = (lBarP - 50) * (lBarP - 50);
+    const sL = 1 + 0.015 * lMinus50Sq / Math.sqrt(20 + lMinus50Sq);
+    const sC = 1 + 0.045 * cBarP;
+    const sH = 1 + 0.015 * cBarP * tWeight;
+    const rT = -Math.sin(2 * deltaTheta) * rC;
+    const termL = deltaLp / sL, termC = deltaCp / sC, termH = deltaHp / sH;
+    const result = termL * termL + termC * termC + termH * termH + rT * termC * termH;
+    return result > 0 ? result : 0;
+  }
+  function redmeanDistanceSquared(rgb1, rgb2) {
+    const rMean = (rgb1.r + rgb2.r) / 2;
+    const dr = rgb1.r - rgb2.r, dg = rgb1.g - rgb2.g, db = rgb1.b - rgb2.b;
+    const wR = 2 + rMean / 256;
+    const wB = 2 + (255 - rMean) / 256;
+    return wR * dr * dr + 4 * dg * dg + wB * db * db;
+  }
+  function nearestColorIndex(rgb, metric, allowed) {
+    let bestIdx = 1;
+    let bestDist = Infinity;
+    const n = allowed ? allowed.length : 63;
+    if (metric === "compuphase") {
+      for (let k = 0;k < n; k++) {
+        const idx = allowed ? allowed[k] : k + 1;
+        if (idx === 0)
+          continue;
+        const v = COLORS_RGB[idx];
+        const rgb2 = unpackRGB(v);
+        const dist = redmeanDistanceSquared(rgb, rgb2);
+        if (dist < bestDist || dist === bestDist && idx < bestIdx) {
+          bestDist = dist;
+          bestIdx = idx;
+        }
+      }
+      return bestIdx;
+    }
+    const sample = rgbToLab(rgb);
+    const distanceFn = metric === "ciede2000" ? ciede2000DistanceSquared : cie94Distance;
+    for (let k = 0;k < n; k++) {
+      const idx = allowed ? allowed[k] : k + 1;
+      if (idx === 0)
+        continue;
+      const dist = distanceFn(sample, COLORS_LAB[idx]);
+      if (dist < bestDist || dist === bestDist && idx < bestIdx) {
+        bestDist = dist;
+        bestIdx = idx;
+      }
+    }
+    return bestIdx;
+  }
+  function resizeNearestNeighbor(src, srcW, srcH, dstW, dstH) {
+    if (srcW === dstW && srcH === dstH)
+      return src;
+    const dst = new Uint8Array(dstW * dstH * 4);
+    const colMap = new Uint32Array(dstW);
+    for (let x = 0;x < dstW; x++)
+      colMap[x] = Math.min(srcW - 1, Math.floor(x * srcW / dstW));
+    for (let y = 0;y < dstH; y++) {
+      const sy = Math.min(srcH - 1, Math.floor(y * srcH / dstH));
+      const srcRow = sy * srcW;
+      const dstRow = y * dstW;
+      for (let x = 0;x < dstW; x++) {
+        const si = (srcRow + colMap[x]) * 4;
+        const di = (dstRow + x) * 4;
+        dst[di] = src[si];
+        dst[di + 1] = src[si + 1];
+        dst[di + 2] = src[si + 2];
+        dst[di + 3] = src[si + 3];
+      }
+    }
+    return dst;
+  }
+  function strategyPositions(strategy, width, height) {
+    const size = width * height;
+    const result = new Uint32Array(size * 2);
+    let idx = 0;
+    switch (strategy) {
+      case "DOWN" /* DOWN */:
+        for (let y = 0;y < height; y++)
+          for (let x = 0;x < width; x++) {
+            result[idx++] = x;
+            result[idx++] = y;
+          }
+        break;
+      case "UP" /* UP */:
+        for (let y = height - 1;y >= 0; y--)
+          for (let x = 0;x < width; x++) {
+            result[idx++] = x;
+            result[idx++] = y;
+          }
+        break;
+      case "LEFT" /* LEFT */:
+        for (let x = 0;x < width; x++)
+          for (let y = 0;y < height; y++) {
+            result[idx++] = x;
+            result[idx++] = y;
+          }
+        break;
+      case "RIGHT" /* RIGHT */:
+        for (let x = width - 1;x >= 0; x--)
+          for (let y = 0;y < height; y++) {
+            result[idx++] = x;
+            result[idx++] = y;
+          }
+        break;
+      case "RANDOM" /* RANDOM */: {
+        for (let y = 0;y < height; y++)
+          for (let x = 0;x < width; x++) {
+            result[idx++] = x;
+            result[idx++] = y;
+          }
+        for (let i = size - 1;i >= 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1)) * 2;
+          const ri = i * 2;
+          const tx = result[ri], ty = result[ri + 1];
+          result[ri] = result[j];
+          result[ri + 1] = result[j + 1];
+          result[j] = tx;
+          result[j + 1] = ty;
+        }
+        break;
+      }
+      case "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */:
+      case "SPIRAL_TO_CENTER" /* SPIRAL_TO_CENTER */: {
+        const reverse = strategy === "SPIRAL_FROM_CENTER" /* SPIRAL_FROM_CENTER */;
+        let i = reverse ? size - 1 : 0;
+        const step = reverse ? -1 : 1;
+        let top = 0, bottom = height - 1, left = 0, right = width - 1;
+        while (top <= bottom && left <= right) {
+          for (let x = left;x <= right; x++) {
+            result[i * 2] = x;
+            result[i * 2 + 1] = top;
+            i += step;
+          }
+          top++;
+          for (let y = top;y <= bottom; y++) {
+            result[i * 2] = right;
+            result[i * 2 + 1] = y;
+            i += step;
+          }
+          right--;
+          if (top <= bottom) {
+            for (let x = right;x >= left; x--) {
+              result[i * 2] = x;
+              result[i * 2 + 1] = bottom;
+              i += step;
+            }
+            bottom--;
+          }
+          if (left <= right) {
+            for (let y = bottom;y >= top; y--) {
+              result[i * 2] = left;
+              result[i * 2 + 1] = y;
+              i += step;
+            }
+            left++;
+          }
+        }
+        break;
+      }
+    }
+    return result;
+  }
+  async function fetchTile(tileX, tileY) {
+    const key = packTile(tileX, tileY);
+    const cached = tileCache.get(key);
+    if (cached)
+      return cached;
+    const inFlight = tileInFlight.get(key);
+    if (inFlight)
+      return inFlight;
+    const promise = (async () => {
+      try {
+        const res = await fetch(\`https://backend.wplace.live/files/s0/tiles/\${tileX}/\${tileY}.png\`);
+        if (!res.ok)
+          throw new Error(\`tile \${tileX},\${tileY} fetch failed: \${res.status}\`);
+        const blob = await res.blob();
+        const bitmap = await createImageBitmap(blob);
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(bitmap, 0, 0);
+        const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+        const out = new Uint8Array(bitmap.width * bitmap.height);
+        for (let i = 0, pi = 0;i < data.length; i += 4, pi++) {
+          const a = data[i + 3];
+          out[pi] = a < 16 ? 0 : COLORS_RGB_MAP.get(packRGB({ r: data[i], g: data[i + 1] << 8, b: data[i + 2] })) ?? 0;
+        }
+        tileCache.set(key, out);
+        bitmap.close();
+        return out;
+      } catch {
+        const empty = new Uint8Array(WORLD_TILE_SIZE * WORLD_TILE_SIZE);
+        tileCache.set(key, empty);
+        return empty;
+      } finally {
+        tileInFlight.delete(key);
+      }
+    })();
+    tileInFlight.set(key, promise);
+    return promise;
+  }
+  function ensureTiles(globalX, globalY, width, height) {
+    const jobs = [];
+    const tx0 = toTile(globalX), tx1 = toTile(globalX + width - 1);
+    const ty0 = toTile(globalY), ty1 = toTile(globalY + height - 1);
+    for (let tx = tx0;tx <= tx1; tx++)
+      for (let ty = ty0;ty <= ty1; ty++)
+        if (!tileCache.has(packTile(tx, ty)))
+          jobs.push(fetchTile(tx, ty));
+    return Promise.all(jobs);
+  }
+  function readTilePixel(gx, gy) {
+    const tile = tileCache.get(packTile(toTile(gx), toTile(gy)));
+    return tile[toTilePos(gy) * WORLD_TILE_SIZE + toTilePos(gx)] ?? 0;
+  }
+  async function decodeBlob(blob) {
+    const bitmap = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(bitmap, 0, 0);
+    const { data, width, height } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    bitmap.close();
+    return { pixels: data, width, height };
+  }
+  function send(msg, transfer = []) {
+    postMessage(msg, transfer);
+  }
+  function handleMessage(e) {
+    const req = e.data;
+    switch (req.type) {
+      case "register": {
+        decodeBlob(req.blob).then((source) => {
+          sources.set(req.name, source);
+          send({ type: "success", id: req.id });
+        }).catch((err) => send({
+          type: "error",
+          id: req.id,
+          message: err instanceof Error ? err.message : "decode failed"
+        }));
+        return;
+      }
+      case "clear-map-cache": {
+        tileCache.clear();
+        return;
+      }
+      case "process": {
+        process(req);
+        return;
+      }
+    }
+  }
+  function quantize(rgba, width, height, metric, dithering, allowed, cache) {
+    const out = new Uint8Array(width * height);
+    if (!dithering) {
+      for (let py = 0, pi = 0;py < height; py++) {
+        for (let px = 0;px < width; px++, pi++) {
+          const i = pi * 4;
+          const a = rgba[i + 3];
+          if (a < 16) {
+            out[pi] = 0;
+            continue;
+          }
+          const rgb = { r: rgba[i], g: rgba[i + 1], b: rgba[i + 2] };
+          const key = packRGB(rgb);
+          let idx = cache.get(key);
+          if (idx === undefined) {
+            idx = nearestColorIndex(rgb, metric, allowed);
+            cache.set(key, idx);
+          }
+          out[pi] = idx;
+        }
+      }
+      return out;
+    }
+    const rowSize = width * 3;
+    let errCurrent = new Float32Array(rowSize);
+    let errNext = new Float32Array(rowSize);
+    for (let row = 0;row < height; row++) {
+      const swap = errCurrent;
+      errCurrent = errNext;
+      errNext = swap;
+      errNext.fill(0);
+      for (let col = 0;col < width; col++) {
+        const pi = row * width + col;
+        const i = pi * 4;
+        if (rgba[i + 3] < 16) {
+          out[pi] = 0;
+          continue;
+        }
+        const e = col * 3;
+        const rgb = {
+          r: Math.min(255, Math.max(0, Math.round(rgba[i] + errCurrent[e]))),
+          g: Math.min(255, Math.max(0, Math.round(rgba[i + 1] + errCurrent[e + 1]))),
+          b: Math.min(255, Math.max(0, Math.round(rgba[i + 2] + errCurrent[e + 2])))
+        };
+        const key = packRGB(rgb);
+        let idx = cache.get(key);
+        if (idx === undefined) {
+          idx = nearestColorIndex(rgb, metric, allowed);
+          cache.set(key, idx);
+        }
+        out[pi] = idx;
+        const v = COLORS_RGB[idx];
+        const qrgb = idx === 0 ? { r: 0, g: 0, b: 0 } : unpackRGB(v);
+        const errR = rgb.r - qrgb.r, errG = rgb.g - qrgb.g, errB = rgb.b - qrgb.b;
+        if (col + 1 < width) {
+          const ne = (col + 1) * 3;
+          errCurrent[ne] += 7 / 16 * errR;
+          errCurrent[ne + 1] += 7 / 16 * errG;
+          errCurrent[ne + 2] += 7 / 16 * errB;
+        }
+        if (row + 1 < height) {
+          if (col > 0) {
+            const bl = (col - 1) * 3;
+            errNext[bl] += 3 / 16 * errR;
+            errNext[bl + 1] += 3 / 16 * errG;
+            errNext[bl + 2] += 3 / 16 * errB;
+          }
+          const bm = col * 3;
+          errNext[bm] += 5 / 16 * errR;
+          errNext[bm + 1] += 5 / 16 * errG;
+          errNext[bm + 2] += 5 / 16 * errB;
+          if (col + 1 < width) {
+            const br = (col + 1) * 3;
+            errNext[br] += 1 / 16 * errR;
+            errNext[br + 1] += 1 / 16 * errG;
+            errNext[br + 2] += 1 / 16 * errB;
+          }
+        }
+      }
+    }
+    return out;
+  }
+  async function process(job) {
+    try {
+      const source = sources.get(job.sourceName);
+      if (!source)
+        throw new Error(\`No registered source for \${job.sourceName}\`);
+      const tilesReady = ensureTiles(job.globalX, job.globalY, job.targetWidth, job.targetHeight);
+      const resized = resizeNearestNeighbor(source.pixels, source.width, source.height, job.targetWidth, job.targetHeight);
+      const cache = new Map;
+      const allowedColorsIds = Array(32);
+      for (let index = 0;index < 32; index++)
+        allowedColorsIds[index] = index;
+      for (let index = 32;index < 64; index++)
+        if (isColorAvailable(job.extraColorsBitmap, index))
+          allowedColorsIds.push(index);
+      const pixels = quantize(resized, job.targetWidth, job.targetHeight, job.colorMetric, job.dithering, allowedColorsIds, cache);
+      await tilesReady;
+      const { targetWidth: width, targetHeight: height } = job;
+      const colorsCount = new Uint32Array(64);
+      const colorsLeft = new Uint32Array(64);
+      const colorsOrder = job.drawColorsInOrder && job.colors ? new Map(job.colors.map((c, i) => [c, i])) : undefined;
+      const positions = strategyPositions(job.strategy, width, height);
+      const maxMismatches = positions.length / 2;
+      const xScratch = new Uint32Array(maxMismatches);
+      const yScratch = new Uint32Array(maxMismatches);
+      const colorScratch = colorsOrder ? new Uint8Array(maxMismatches) : undefined;
+      let mismatchCount = 0;
+      for (let p = 0;p < positions.length; p += 2) {
+        const dx = positions[p], dy = positions[p + 1];
+        const color = pixels[dy * width + dx];
+        colorsCount[color]++;
+        const gx = job.globalX + dx, gy = job.globalY + dy;
+        const mapColor = readTilePixel(gx, gy);
+        if (color !== mapColor) {
+          colorsLeft[color]++;
+          xScratch[mismatchCount] = gx;
+          yScratch[mismatchCount] = gy;
+          if (colorScratch)
+            colorScratch[mismatchCount] = color;
+          mismatchCount++;
+        }
+      }
+      let x = xScratch.slice(0, mismatchCount);
+      let y = yScratch.slice(0, mismatchCount);
+      if (colorsOrder && colorScratch) {
+        const order = Array.from({ length: mismatchCount }, (_, i) => i);
+        order.sort((a, b) => (colorsOrder.get(colorScratch[a]) ?? Infinity) - (colorsOrder.get(colorScratch[b]) ?? Infinity));
+        const sx = new Uint32Array(mismatchCount), sy = new Uint32Array(mismatchCount);
+        for (let i = 0;i < mismatchCount; i++) {
+          sx[i] = x[order[i]];
+          sy[i] = y[order[i]];
+        }
+        x = sx;
+        y = sy;
+      }
+      send({ type: "processImageResult", id: job.id, pixels, colorsCount, colorsLeft, x, y }, [
+        pixels.buffer,
+        colorsCount.buffer,
+        colorsLeft.buffer,
+        x.buffer,
+        y.buffer
+      ]);
+    } catch (err) {
+      send({
+        type: "error",
+        id: job.id,
+        message: err instanceof Error ? err.message : "decode failed"
+      });
+    } finally {
+      sources.delete(job.id);
+    }
+  }
+})();
+`], { type: "application/javascript" })), {
+      type: "module"
+    });
+    this.worker.onmessage = (e) => {
+      const msg = e.data;
+      switch (msg.type) {
+        case "processImageResult":
+        case "success":
+          this.successHandlers.get(msg.id)?.(msg);
+          break;
+        case "error":
+          this.errorHandlers.get(msg.id)?.(msg.message);
+          this.successHandlers.delete(msg.id);
+          break;
+      }
+      this.successHandlers.delete(msg.id);
+      this.errorHandlers.delete(msg.id);
+    };
+    this.worker.onerror = (error) => console.log("BOT WORKER ERROR", error);
+    this.worker.onmessageerror = (error) => console.log("BOT WORKER MESSAGE ERROR", error);
+  }
+  post(msg, transfer = []) {
+    return new Promise((resolve, reject) => {
+      this.successHandlers.set(msg.id, resolve);
+      this.errorHandlers.set(msg.id, reject);
+      this.worker.postMessage(msg, transfer);
+    });
+  }
+  register(name, blob) {
+    return this.post({ type: "register", id: crypto.randomUUID(), blob, name });
+  }
+  clearMapCache() {
+    return this.post({ type: "clear-map-cache", id: crypto.randomUUID() });
+  }
+  process(job) {
+    return this.post({ type: "process", id: crypto.randomUUID(), ...job });
+  }
+}
+
 // src/bot.ts
 class WPlaceBot {
-  static async create() {
-    const bot = new WPlaceBot;
-    return bot.widget.run("Initializing", async (progress) => {
-      const save = await loadSave();
-      if (save) {
-        for (let index = 0;index < save.images.length; index++) {
-          const image = save.images[index];
-          addFavoriteLocation({
-            x: image.position[0] - 1000,
-            y: image.position[1] - 1000
-          });
-          addFavoriteLocation({
-            x: image.position[0] + 1000,
-            y: image.position[1] + 1000
-          });
-        }
-        bot.strategy = save.strategy;
-        bot.title = save.title;
-      } else
-        bot.title = "WPlace-bot";
-      bot.registerFetchInterceptor();
+  constructor() {
+    this.widget.run("Initializing", async () => {
+      this.registerFetchInterceptor();
       const style = document.createElement("style");
       style.textContent = style_default;
       document.head.append(style);
-      progress(0.01);
-      await bot.waitForElement(".avatar.center-absolute.absolute");
-      progress(0.02);
-      await bot.waitForElement(".btn.btn-primary.btn-lg.relative.z-30");
-      progress(0.03);
+      await this.save.load(true);
       new MutationObserver((mutations) => {
         for (let index = 0;index < mutations.length; index++)
           if (mutations[index].removedNodes.length !== 0) {
-            bot.updateStars();
+            this.updateStars();
             break;
           }
-        for (let index = 0;index < bot.images.length; index++)
-          bot.images[index].updateUI();
-      }).observe(await bot.waitForElement(".maplibregl-canvas-container"), {
+        for (let index = 0;index < this.images.length; index++)
+          this.images[index].updateUI();
+      }).observe(document.querySelector(".maplibregl-canvas-container"), {
         attributes: true,
         childList: true,
         subtree: true
       });
-      bot.updateStars();
       await wait(500);
-      progress(0.04);
-      await bot.updateColorsData();
-      progress(0.05);
-      if (save) {
-        const batchSize = 1 / save.images.length;
-        for (let index = 0;index < save.images.length; index++) {
-          await BotImage.fromJSON(bot, save.images[index], (p) => {
-            progress(0.05 + (index * batchSize + p * batchSize) * 0.95);
-          });
-        }
-      }
-      bot.widget.setDisabled("draw", false);
-      bot.widget.setDisabled("auto-draw", false);
-      bot.widget.setDisabled("add-image", false);
+      this.widget.setDisabled("draw", false);
+      this.widget.setDisabled("auto-draw", false);
+      this.widget.setDisabled("add-image", false);
     }).catch(async (error) => {
-      if (!window.confirm(`WPlace-bot couldn't load!
+      if (window.confirm(`WPlace-bot couldn't load!
 Do you want to DELETE ALL DATA to fix it?
 
-ERROR: ` + error))
-        throw error;
-      try {
-        const a = document.createElement("a");
-        document.body.append(a);
-        a.href = URL.createObjectURL(new Blob([JSON.stringify(await loadSave())], {
-          type: "application/json"
-        }));
-        a.download = `Wplace-Bot-Broken-Save.txt`;
-        a.click();
-        window.alert(`Wplace-Bot-Broken-Save.txt is your broken save. If you ACTUALLY need data from this save, create issue on https://github.com/SoundOfTheSky/wplace-bot/issues
-
-Developer will try to fix your save. Be vary that github issues are public, and save file contains your images and their positions in world.`);
-      } finally {
-        DELETE_ALL_DATA();
-        document.location.reload();
+ERROR: ` + error)) {
+        try {
+          await this.save.deleteAllData();
+        } finally {
+          document.location.reload();
+        }
       }
     });
   }
   title = "";
-  unavailableColors = new Set;
-  mapsCacheKeys = new Uint32Array(0);
-  mapsCache = new Uint8Array(0);
   me;
   $stars = [];
   strategy = "SEQUENTIAL" /* SEQUENTIAL */;
   images = [];
   autoDrawInterval;
   widget = new Widget(this);
-  markerPixelPositionResolvers = [];
+  save = new SaveSystem(this);
+  worker = new ImageProcessingWorker;
   lastColor;
+  isColorAvailable(color) {
+    return isColorAvailable(this.me.extraColorsBitmap, color);
+  }
+  refetchMe() {
+    return fetch("https://backend.wplace.live/me", {
+      credentials: "include"
+    }).then((x) => x.json()).then((x) => {
+      return this.me = x;
+    });
+  }
   draw() {
     this.widget.setDisabled("draw", true);
     this.widget.status = "";
@@ -2485,29 +2602,19 @@ Developer will try to fix your save. Be vary that github issues are public, and 
       if (!event.shiftKey)
         event.stopPropagation();
     };
-    return this.widget.run("Drawing", async (progress) => {
+    return this.widget.run("Drawing", async () => {
       const firstImage = this.images[0];
       if (!firstImage)
         return;
       globalThis.addEventListener("mousemove", prevent, true);
       $canvas.addEventListener("wheel", prevent, true);
-      await this.widget.run("Loading", (progress) => Promise.all([
-        this.updateColorsData().then(async () => {
-          workerClearMapCache();
-          await wait(100);
-          const batchSize = 1 / this.images.length;
+      await Promise.all([
+        Promise.all([this.refetchMe(), this.worker.clearMapCache()]).then(async () => {
           for (let index = 0;index < this.images.length; index++)
-            await this.images[index].updatePixels((p) => {
-              progress(index * batchSize + p * batchSize);
-            });
+            await this.images[index].updatePixels();
         }),
-        this.zoomIn(4, $canvas),
-        fetch("https://backend.wplace.live/me", {
-          credentials: "include"
-        }).then((x) => x.json()).then((x) => {
-          this.me = x;
-        })
-      ]));
+        this.zoomIn(4, $canvas)
+      ]);
       const initialCharges = Math.floor(this.me.charges.count);
       let charges = initialCharges;
       let tasksLength = 0;
@@ -2516,13 +2623,13 @@ Developer will try to fix your save. Be vary that github issues are public, and 
         const image = this.images[index];
         if (image.disabled)
           continue;
-        tasksLength += image.tasks.length / 2;
-        if (image.unownedColorStrategy === "BUY" /* BUY */) {
+        tasksLength += image.tasksX.length;
+        if (image.autoBuyColors) {
           for (let index = 0;index < image.colors.length; index++) {
             const color = image.colors[index];
-            if (image.disabledColors.has(color) || !this.unavailableColors.has(color))
+            if (image.disabledColors.has(color) || !this.isColorAvailable(color))
               continue;
-            const amount = image.colorsStat.get(color).amount;
+            const amount = image.colorsCount[color];
             if (!colorsToBuyMap.has(color))
               colorsToBuyMap.set(color, {
                 color,
@@ -2548,11 +2655,10 @@ Developer will try to fix your save. Be vary that github issues are public, and 
         let index = indexes.get(image);
         if (index === undefined)
           indexes.set(image, index = 0);
-        const dIndex = index * 2;
-        if (dIndex === image.tasks.length)
+        if (index === image.tasksX.length)
           return false;
         indexes.set(image, index + 1);
-        const worldPosition = new WorldPosition(this, image.tasks[dIndex], image.tasks[dIndex + 1]);
+        const worldPosition = new WorldPosition(this, image.tasksX[index], image.tasksY[index]);
         const color = image.pixels[(worldPosition.globalY - image.position.globalY) * image.width + (worldPosition.globalX - image.position.globalX)];
         if (this.lastColor !== color) {
           document.getElementById("color-" + color).click();
@@ -2583,7 +2689,6 @@ Developer will try to fix your save. Be vary that github issues are public, and 
           cancelable: true
         }));
         charges--;
-        progress((initialCharges - charges) / initialCharges);
         await wait(1);
         return true;
       };
@@ -2611,7 +2716,7 @@ Developer will try to fix your save. Be vary that github issues are public, and 
               const image = this.images[imageIndex];
               if (image.disabled)
                 continue;
-              const percent = 1 - image.tasks.length / 2 / (image.width * image.height);
+              const percent = 1 - image.tasksX.length / (image.width * image.height);
               if (percent < minPercent) {
                 minPercent = percent;
                 minImage = image;
@@ -2627,13 +2732,15 @@ Developer will try to fix your save. Be vary that github issues are public, and 
             const image = this.images[imageIndex];
             if (image.disabled)
               continue;
-            for (let i = 0;i < image.tasks.length / 2 && charges > 0; i++)
+            for (let i = 0;i < image.tasksX.length && charges > 0; i++)
               await drawTask(image);
           }
         }
       }
-      for (const [image, value] of indexes)
-        image.tasks = image.tasks.subarray(value * 2);
+      for (const [image, value] of indexes) {
+        image.tasksX = image.tasksX.subarray(value);
+        image.tasksY = image.tasksY.subarray(value);
+      }
       this.me.charges.count = 0;
       this.widget.update();
     }, () => {
@@ -2671,25 +2778,13 @@ Developer will try to fix your save. Be vary that github issues are public, and 
     }, 1000);
     return true;
   }
-  async toJSON() {
+  async toJSON(exportToBlob) {
     return {
       version: SAVE_VERSION,
-      images: await Promise.all(this.images.map((x) => x.toJSON())),
+      images: await Promise.all(this.images.map((x) => x.toJSON(exportToBlob))),
       strategy: this.strategy,
       title: this.title
     };
-  }
-  async updateColorsData() {
-    await this.openColors();
-    this.unavailableColors.clear();
-    const buttons = [...document.querySelectorAll("button.btn.relative.w-full")];
-    if (buttons.length !== 64)
-      throw new Error(`Expected 64 colors, but got ${buttons.length}`);
-    for (let index = 0;index < buttons.length; index++) {
-      const $button = buttons[index];
-      if ($button.children.length !== 0)
-        this.unavailableColors.add(Number.parseInt($button.id.slice(6)));
-    }
   }
   moveMap(delta) {
     const canvas = document.querySelector(".maplibregl-canvas");
@@ -2812,34 +2907,20 @@ Developer will try to fix your save. Be vary that github issues are public, and 
   }
   registerFetchInterceptor() {
     const originalFetch = globalThis.fetch;
-    const pixelRegExp = /https:\/\/backend.wplace.live\/s\d+\/pixel\/(-?\d+)\/(-?\d+)\?x=(-?\d+)&y=(-?\d+)/;
     globalThis.fetch = async (request, options) => {
       const response = await originalFetch(request, options);
       const cloned = response.clone();
-      let url = "";
-      if (typeof request == "string")
-        url = request;
-      else if (request instanceof Request)
-        url = request.url;
-      else if (request instanceof URL)
-        url = request.href;
       if (response.url === "https://backend.wplace.live/me") {
         this.me = await cloned.json();
         this.me.favoriteLocations.unshift(...FAVORITE_LOCATIONS);
         this.me.maxFavoriteLocations = Infinity;
         response.json = () => Promise.resolve(this.me);
       }
-      const pixelMatch = pixelRegExp.exec(url);
-      if (pixelMatch) {
-        for (let index = 0;index < this.markerPixelPositionResolvers.length; index++)
-          this.markerPixelPositionResolvers[index](new WorldPosition(this, +pixelMatch[1], +pixelMatch[2], +pixelMatch[3], +pixelMatch[4]));
-        this.markerPixelPositionResolvers.length = 0;
-      }
       return response;
     };
   }
 }
-globalThis.wbot = WPlaceBot.create();
+globalThis.wbot = new WPlaceBot;
 {
   WPlaceBot
 };

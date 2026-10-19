@@ -3,7 +3,6 @@ import { Base } from './base'
 import { WPlaceBot } from './bot'
 import { NoImageError, WPlaceBotError } from './errors'
 import { BotImage } from './image'
-import { migrateImage, save } from './save'
 // @ts-ignore
 import sharedCss from './shared.css' with { type: 'text' }
 import { etaText, formatPercent } from './utils'
@@ -11,6 +10,7 @@ import { etaText, formatPercent } from './utils'
 import widgetCss from './widget.css' with { type: 'text' }
 // @ts-ignore
 import html from './widget.html' with { type: 'text' }
+import { posToLat, posToLng, WorldPosition } from './world-position'
 
 export enum BotStrategy {
   ALL = 'ALL',
@@ -74,7 +74,7 @@ export class Widget extends Base {
     this.$openButton.addEventListener('click', () => (this.open = !this.open))
     this.$title.addEventListener('change', () => {
       this.bot.title = this.$title.value.trim()
-      void save(this.bot)
+      void this.bot.save.save()
     })
     this.bot.fixSpaceInInput(this.$title)
     this.$draw.addEventListener('click', () => this.bot.draw())
@@ -82,7 +82,7 @@ export class Widget extends Base {
     this.$addImage.addEventListener('click', () => this.addImage())
     this.$strategy.addEventListener('change', () => {
       this.bot.strategy = this.$strategy.value as BotStrategy
-      void save(this.bot)
+      void this.bot.save.save()
     })
     this.$autoDraw.addEventListener('click', () => this.bot.autoDraw())
 
@@ -106,23 +106,52 @@ export class Widget extends Base {
         await load
         const file = input.files?.[0]
         if (!file) throw new NoImageError()
-        await this.bot.updateColorsData()
         this.bot.updateStars()
         if (file.name.endsWith('.wbot')) {
           await BotImage.fromJSON(
             this.bot,
-            migrateImage(JSON.parse(await file.text()) as Awaited<ReturnType<BotImage['toJSON']>>),
+            JSON.parse(await file.text()) as Awaited<ReturnType<BotImage['toJSON']>>,
           )
         } else {
           const reader = new FileReader()
           const loaded = promisifyEventSource(reader, ['load'], ['error'])
           reader.readAsDataURL(file)
           await loaded
+          const position = WorldPosition.fromScreenPosition(this.bot, {
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 2,
+          })
           await BotImage.fromJSON(this.bot, {
             url: reader.result as string,
+            template: {
+              bounds: {
+                west: posToLng(position.globalX),
+                north: posToLat(position.globalY),
+                east: NaN,
+                south: NaN,
+              },
+              colorMetric: 'lab',
+              colorPaletteMode: 'all',
+              dithering: false,
+              hasPlaced: true,
+              id: crypto.randomUUID(),
+              locked: false,
+              name: file.name ?? 'New image',
+              opacity: 0.5,
+              order:
+                this.bot.images.reduce(
+                  (p, x) => (x.template.order > p ? x.template.order : p),
+                  -1,
+                ) + 1,
+              originalHeight: NaN,
+              originalWidth: NaN,
+              updatedAt: Date.now(),
+              useLegacyColors: false,
+              visible: false,
+            },
           })
         }
-        await save(this.bot, true)
+        await this.bot.save.save(true)
         document.location.reload()
       },
       () => {
@@ -142,7 +171,7 @@ export class Widget extends Base {
       const image = this.bot.images[index]!
       if (image.disabled) continue
       maxTasks += image.getMaxTasks()
-      totalTasks += image.tasks.length / 2
+      totalTasks += image.tasksX.length
     }
     const doneTasks = maxTasks - totalTasks
     const percent = formatPercent(doneTasks / maxTasks)
@@ -179,30 +208,30 @@ export class Widget extends Base {
       })
 
       const $name = $image.querySelector<HTMLInputElement>('.name')!
-      $name.value = image.name
+      $name.value = image.template.name
       $name.addEventListener('change', () => {
-        image.name = $name.value
+        image.template.name = $name.value
         image.updateUI()
         this.update()
-        void save(this.bot)
+        void this.bot.save.save()
       })
       const $enabled = $image.querySelector<HTMLInputElement>('.enabled')!
       $enabled.addEventListener('change', async () => {
         image.disabled = !$enabled.checked
         await image.updatePixels()
-        await save(this.bot)
+        await this.bot.save.save()
       })
       // Close on input to not consume space
       this.bot.fixSpaceInInput($name)
       $image.querySelector<HTMLButtonElement>('.up')!.addEventListener('click', () => {
         swap(this.bot.images, index, index - 1)
         this.update()
-        void save(this.bot)
+        void this.bot.save.save()
       })
       $image.querySelector<HTMLButtonElement>('.down')!.addEventListener('click', () => {
         swap(this.bot.images, index, index + 1)
         this.update()
-        void save(this.bot)
+        void this.bot.save.save()
       })
     }
   }
@@ -213,17 +242,10 @@ export class Widget extends Base {
   }
 
   /** Show status of running task */
-  public async run<T>(
-    status: string,
-    run: (progress: (progress: number) => void) => Promise<T>,
-    fin?: () => unknown,
-    emoji = '⌛',
-  ): Promise<T> {
+  public async run<T>(status: string, run: () => Promise<T>, fin?: () => unknown): Promise<T> {
     const originalStatus = this.status
     try {
-      const result = await run((p) => {
-        this.status = `${emoji} ${status} ${formatPercent(p)}`
-      })
+      const result = await run()
       this.status = originalStatus
       return result
     } catch (error) {
