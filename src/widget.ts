@@ -4,6 +4,7 @@ import { WPlaceBot } from './bot'
 import { NoImageError, WPlaceBotError } from './errors'
 import { BotImage } from './image'
 import { migrateImage, save } from './save'
+import { SevenSeals } from './seven-seals'
 // @ts-ignore
 import sharedCss from './shared.css' with { type: 'text' }
 import { etaText, formatPercent } from './utils'
@@ -42,12 +43,14 @@ export class Widget extends Base {
   protected readonly $title!: HTMLInputElement
   protected readonly $draw!: HTMLButtonElement
   protected readonly $addImage!: HTMLButtonElement
+  protected readonly $sevenSeals!: HTMLButtonElement
   protected readonly $strategy!: HTMLInputElement
   protected readonly $progressLine!: HTMLDivElement
   protected readonly $progressText!: HTMLSpanElement
   protected readonly $images!: HTMLDivElement
   protected readonly $openButton!: HTMLButtonElement
   public readonly $autoDraw!: HTMLButtonElement
+  public readonly sevenSeals: SevenSeals
 
   // protected readonly $pumpkinHunt!: HTMLButtonElement
 
@@ -62,6 +65,7 @@ export class Widget extends Base {
       $title: '.title',
       $draw: '.draw',
       $addImage: '.add-image',
+      $sevenSeals: '.seven-seals',
       $strategy: '.strategy',
       $progressLine: '.progress div',
       $progressText: '.progress span',
@@ -80,6 +84,8 @@ export class Widget extends Base {
     this.$draw.addEventListener('click', () => this.bot.draw())
     // this.$pumpkinHunt.addEventListener('click', () => this.pumpkinHunt())
     this.$addImage.addEventListener('click', () => this.addImage())
+    this.sevenSeals = new SevenSeals(bot)
+    this.$sevenSeals.addEventListener('click', () => this.sevenSeals.toggle())
     this.$strategy.addEventListener('change', () => {
       this.bot.strategy = this.$strategy.value as BotStrategy
       void save(this.bot)

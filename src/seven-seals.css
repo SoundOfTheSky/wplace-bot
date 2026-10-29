@@ -1,0 +1,280 @@
+/* Panel is a fixed overlay inside the widget shadow root, so it can be wider
+   than the 256px widget without changing the widget layout. */
+
+:host {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483000;
+  width: 0;
+  height: 0;
+}
+
+.seals {
+  /* Clear the widget itself so both stay usable. */
+  position: fixed;
+  bottom: 118px;
+  left: 268px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* Never let the top edge leave the viewport on short windows. */
+  width: min(620px, calc(100vw - 292px));
+  max-height: min(76vh, 720px, calc(100vh - 140px));
+  border: var(--text) 2px solid;
+  background-color: var(--background);
+  box-shadow: 0 8px 16px -8px var(--main);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.seals[hidden] {
+  display: none;
+}
+
+.seals header {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border-bottom: var(--text) 2px solid;
+  background-color: var(--main);
+}
+
+.seals .title {
+  border: none;
+  background: none;
+  font-size: 20px;
+  line-height: 1.1;
+  text-align: left;
+}
+
+.seals .sub {
+  font-size: 14px;
+}
+
+.seals .spacer {
+  flex: 1;
+}
+
+.seals button {
+  padding: 4px 8px;
+  border: var(--text) 2px solid;
+  border-radius: 0;
+  background-color: var(--background);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.1;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.seals button:hover:not(:disabled) {
+  background-color: var(--background-hover);
+}
+
+.seals button:disabled {
+  background-color: var(--background-disabled);
+  color: var(--text-invert);
+  cursor: no-drop;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px 4px;
+}
+
+.chip {
+  padding: 2px 8px;
+  font-size: 15px;
+}
+
+.chip[aria-pressed='true'] {
+  background-color: var(--main);
+}
+
+.chip[aria-pressed='true']:hover {
+  background-color: var(--main-hover);
+}
+
+.chip .n {
+  margin-left: 4px;
+}
+
+.tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 0 8px 6px;
+}
+
+.tools .query {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 8px;
+  border: var(--text) 2px solid;
+  background-color: var(--background);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.tools .query:hover {
+  background-color: var(--background-hover);
+}
+
+.only-label {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 8px;
+  border: var(--text) 2px solid;
+  font-size: 15px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.only-label:hover {
+  background-color: var(--background-hover);
+}
+
+.only-label input {
+  width: 1em;
+  height: 1em;
+}
+
+.body {
+  overflow-y: auto;
+  padding: 0 8px 8px;
+  scrollbar-width: thin;
+}
+
+.seal {
+  margin-top: 8px;
+}
+
+.seal h3 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  padding: 4px 0;
+  border-bottom: var(--text) 2px solid;
+  background-color: var(--background);
+  font-weight: 400;
+  font-size: 18px;
+  text-transform: uppercase;
+}
+
+.seal h3 .meta {
+  font-size: 14px;
+  text-transform: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 52px 56px 104px 1fr 52px 84px;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 4px;
+}
+
+.row:hover {
+  background-color: var(--background-hover);
+}
+
+.row[hidden] {
+  display: none;
+}
+
+.row.st-locked {
+  opacity: 0.6;
+}
+
+.row.st-complete .id,
+.row.st-complete .tag {
+  color: var(--background-disabled);
+}
+
+.pill {
+  padding: 0 6px;
+  font-size: 14px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.p-open {
+  background-color: var(--main);
+}
+
+.p-complete {
+  background-color: var(--background-hover);
+}
+
+.p-locked,
+.p-unknown {
+  background-color: var(--background-disabled);
+  color: var(--text-invert);
+}
+
+.bar {
+  height: 12px;
+  border: var(--text) 2px solid;
+  background-color: var(--background);
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  background-color: var(--main);
+}
+
+.pct {
+  text-align: right;
+}
+
+.act {
+  justify-self: end;
+}
+
+.act button {
+  padding: 2px 10px;
+  background-color: var(--main);
+  font-size: 15px;
+}
+
+.act button:hover:not(:disabled) {
+  background-color: var(--main-hover);
+}
+
+.row.imported .act {
+  font-size: 15px;
+}
+
+.empty {
+  padding: 12px 4px;
+}
+
+.seals footer {
+  overflow: hidden;
+  min-height: 26px;
+  padding: 4px 8px;
+  border-top: var(--text) 2px solid;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seals footer .err::before {
+  content: '! ';
+}

@@ -118,6 +118,7 @@ export class WPlaceBot {
         bot.widget.setDisabled('draw', false)
         bot.widget.setDisabled('auto-draw', false)
         bot.widget.setDisabled('add-image', false)
+        bot.widget.setDisabled('seven-seals', false)
         // this.widget.setDisabled('pumpkin-hunt', false)
       })
       .catch(async (error) => {
